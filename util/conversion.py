@@ -221,7 +221,7 @@ def RemoveFailedFromHDF5(h5_file):
 def SplitHDF5(h5_file, split_ratio = (7,2,1), train_name=None, val_name=None, test_name=None):
     
     if(train_name is None): train_name = 'train.h5'
-    if(val_name is None): val_name   =   'val.h5'
+    if(val_name is None): val_name   =   'valid.h5'
     if(test_name is None): test_name  =  'test.h5'
             
     f = h5.File(h5_file,'r')
