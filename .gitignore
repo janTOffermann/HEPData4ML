@@ -1,0 +1,24 @@
+# Remove DS Store files (macOS directory management)
+*DS_Store
+.DS_Store
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+*.dylib
+*.lib
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+#IDE
+.vscode/
+.vscode
