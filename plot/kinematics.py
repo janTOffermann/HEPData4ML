@@ -1,4 +1,4 @@
-event_dir = 'events3'
+event_dir = 'events1'
 
 import sys, os
 import numpy as np
@@ -60,26 +60,17 @@ nobj = f['Nobj'][:]
 # Constituent momenta (throwing away the zero-padding).
 pmu = GetJagged(f['Pmu'][:],f['Nobj'][:])
 
-# particle energy
+# particle energy -- component 0
 E = {
-    'constituents':f['Pmu'][:,3].flatten(),
-    'top':f['truth_Pmu'][:][top][:,3].flatten(),
-    'bottom':f['truth_Pmu'][:][bottom][:,3].flatten(),
-    'W':f['truth_Pmu'][:][W][:,3].flatten(),
-    'jet': f['jet_Pmu'][:][:,3].flatten()
-}
-
-# particle px
-px = {
-    'constituents': f['Pmu'][:,0].flatten(),
+    'constituents':f['Pmu'][:,0].flatten(),
     'top':f['truth_Pmu'][:][top][:,0].flatten(),
     'bottom':f['truth_Pmu'][:][bottom][:,0].flatten(),
     'W':f['truth_Pmu'][:][W][:,0].flatten(),
-    'jet':f['jet_Pmu'][:][:,0].flatten()
+    'jet': f['jet_Pmu'][:][:,0].flatten()
 }
 
-# particle py
-py = {
+# particle px -- component 1
+px = {
     'constituents': f['Pmu'][:,1].flatten(),
     'top':f['truth_Pmu'][:][top][:,1].flatten(),
     'bottom':f['truth_Pmu'][:][bottom][:,1].flatten(),
@@ -87,13 +78,22 @@ py = {
     'jet':f['jet_Pmu'][:][:,1].flatten()
 }
 
-# particle pz
-pz = {
+# particle py -- component 2
+py = {
     'constituents': f['Pmu'][:,2].flatten(),
     'top':f['truth_Pmu'][:][top][:,2].flatten(),
     'bottom':f['truth_Pmu'][:][bottom][:,2].flatten(),
     'W':f['truth_Pmu'][:][W][:,2].flatten(),
     'jet':f['jet_Pmu'][:][:,2].flatten()
+}
+
+# particle pz -- component 3
+pz = {
+    'constituents': f['Pmu'][:,3].flatten(),
+    'top':f['truth_Pmu'][:][top][:,3].flatten(),
+    'bottom':f['truth_Pmu'][:][bottom][:,3].flatten(),
+    'W':f['truth_Pmu'][:][W][:,3].flatten(),
+    'jet':f['jet_Pmu'][:][:,3].flatten()
 }
 
 p_cyl = {key: PxPyPzEToPtEtaPhiM(px[key],py[key],pz[key],E[key]) for key in E.keys()}
