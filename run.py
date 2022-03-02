@@ -4,6 +4,7 @@ import subprocess as sub
 from util.generation import Generate, GenerateSimple, CopyTruth
 from util.delphes import BuildDelphes, HepMC3ToDelphes
 from util.conversion import DelphesWithTruthToHDF5, RemoveFailedFromHDF5, SplitHDF5
+from util.vectorcalcs import BuildVectorCalcs, LoadVectorCalcs
 
 def main(args):
     parser = ap.ArgumentParser()
@@ -32,6 +33,10 @@ def main(args):
     if(outdir is None): outdir = os.getcwd()
     else: os.makedirs(outdir,exist_ok=True)
     h5_file = '{}/{}'.format(outdir,h5_file)
+
+    # Prepare our custom ROOT library, that is used to do coordinate conversions and other 4-vector calcs.
+    BuildVectorCalcs()
+    LoadVectorCalcs()
 
     for i in range(nbins):
 

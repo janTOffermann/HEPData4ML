@@ -17,7 +17,8 @@ def DelphesWithTruthToHDF5(delphes_files, truth_files=None, h5_file=None, nentri
     fastjet_dir = glob.glob('{}/**/site-packages'.format(fastjet_dir),recursive=True)[0]
     if(fastjet_dir not in sys.path): sys.path.append(fastjet_dir)
     import fastjet as fj
-    fj.ClusterSequence.print_banner() # Get the Fastjet banner out of the way
+
+    fj.ClusterSequence.print_banner() # Get the Fastjet banner out of the way. TODO: Can we get rid of the banner? It is annoying.
     jet_config = GetJetConfig()
     jetdef = fj.JetDefinition(fj.antikt_algorithm, jet_config['jet_radius'])
     # ----- END FASTJET SETUP -----
@@ -119,7 +120,7 @@ def DelphesWithTruthToHDF5(delphes_files, truth_files=None, h5_file=None, nentri
             phi = np.concatenate([momenta[x]['phi'][j].to_numpy() for x in types])
             m   = np.zeros(pt.shape)
 
-            vecs = PtEtaPhiMToPxPyPzE(pt,eta,phi,m) # convert 4-vectors to Cartesian for jet clustering
+            vecs = PtEtaPhiMToPxPyPzE(pt,eta,phi,m) # convert 4-vectors to (px, py, pz, e) for jet clustering.
 
             # ----- Begin jet clustering -----
             pj = [fj.PseudoJet(*x) for x in vecs]

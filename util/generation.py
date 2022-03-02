@@ -13,29 +13,29 @@ import util.qol_util as qu
 # and save them to a HepMC file.
 # Note that we do not perform event selection: All generated events are saved.
 def GenerateSimple(nevents, pt_min, pt_max, filename = 'events.hepmc'):
-    
+
     pythia_config = GetPythiaConfig(pt_min = pt_min, pt_max = pt_max)
     pythia = npyth.Pythia(params = pythia_config)
-    
+
     prefix = 'Generating events for pT bin [{},{}]:'.format(pt_min,pt_max)
     suffix = 'Complete'
     i = 0
     qu.printProgressBarColor(i,nevents, prefix=prefix, suffix=suffix, length=50)
-    
+
     for i,event in enumerate(npyth.hepmc_write(filename, pythia(events=nevents))):
         qu.printProgressBarColor(i+1,nevents, prefix=prefix, suffix=suffix, length=50)
     return
 
-def GenerationLoop(pythia, nevents, 
-                   sel1, sel_truth, 
-                   filename, 
-                   prefix, suffix, bl=50, 
+def GenerationLoop(pythia, nevents,
+                   sel1, sel_truth,
+                   filename,
+                   prefix, suffix, bl=50,
                    i_real = 1, nevents_disp=None, fastjet_dir=None,
                    loop_number=0, chunk_size=100,
                    alpha = 2., max_dr = 0.2):
-    
+
     use_delphes = True
-    
+
     if(fastjet_dir not in sys.path): sys.path.append(fastjet_dir)
     import fastjet as fj
     jet_config = GetJetConfig()
@@ -43,12 +43,12 @@ def GenerationLoop(pythia, nevents,
 
     n_fail = 0
     if(nevents_disp is None): nevents_disp = nevents # number of events to display in progress bar
-        
+
     # The way that pyhepmc_ng's WriterAscii works, writing an event will overwrite the whole file.
     # Thus for the time being, we will circumvent this limitation by making a buffer file where each event
     # is written, and then copied to the "main" file before the next event is generated. This I/O might slow
     # down things, so we ultimately want to find some way to do a write with "append" functionality.
-    
+
     buffername = filename.replace('.hepmc','_buffer.hepmc')
 
     for i,event in enumerate(pythia(events=nevents)):
@@ -64,7 +64,7 @@ def GenerationLoop(pythia, nevents,
                 break
 
         if(not success): continue
-            
+
         # Get the truth-level particles.
         # TODO: In some cases of t -> b W, using GenEvent.all() yields two b-quarks (throwing off some later code).
         #       This happens without MPI/ISR/FSR/ and both of them have the same generator status. How?
@@ -72,17 +72,17 @@ def GenerationLoop(pythia, nevents,
 
         # Get the final-state particles, as a numpy array.
         arr = event.all(selection=sel1, return_hepmc=False)
-        
+
         # Do some event filtering using hadronization-level jets.
         # Note that if doing detector-level simulation (i.e. Delphes),
         # an event that has a jet passing cuts here is not guaranteed to
         # have a detector-level jet that also passes cuts, but it is likely.
-        
+
         # ----- JET CLUSTERING -----
         # Perform jet clustering on final-state particles.
         pseudojets = []
         N = len(arr)
-        for j in range(N):    
+        for j in range(N):
             # Create a pseudojet object and add it to the list.
             # Signature is px, py, pz, E.
             vec = [arr[j][x] for x in ['px','py','pz','E']]
@@ -105,7 +105,7 @@ def GenerationLoop(pythia, nevents,
         if(len(jets) == 0): # No jets passing cuts -> We can already toss out this event.
                 n_fail += 1
                 success = False
-                break    
+                break
 
 #         # Now select a particular jet from this event -- we will only keep its constituents.
 #         selected_jet_idx = jet_config['jet_selection'](truth = arr_truth, jets = jets)
@@ -113,13 +113,12 @@ def GenerationLoop(pythia, nevents,
 
 #         # Get the constituents of our selected jet.
 #         jet_constituents = np.array([
-#             [x.px(), x.py(), x.pz(), x.E(), x.python_info().pdg_id, x.python_info().status] 
+#             [x.px(), x.py(), x.pz(), x.E(), x.python_info().pdg_id, x.python_info().status]
 #             for x in jet.constituents()
 #         ])
 #         # ----- END JET CLUSTERING -----
 #         arr = jet_constituents
-        
-        
+
         if(use_delphes):
             # ----- BASIC FINAL-STATE PARTICLE SELECTION -----
             # Now in order to slim down events, we will only keep final-state particles within a certain
@@ -135,7 +134,7 @@ def GenerationLoop(pythia, nevents,
             min_distances = np.min(DeltaR2Vectorized(arr[:,-2:], arr_truth[:,-2:]),axis=1)
             selected = (np.abs(min_distances) < np.abs(dr_limit))
             arr = arr[selected]
-            
+
         else:
             # ----- JET-BASED FINAL-STATE PARTICLE SELECTION -----
             # If we're not using Delphes, then the pre-detector-level jets we used above for filtering
@@ -145,13 +144,13 @@ def GenerationLoop(pythia, nevents,
             if(selected_jet_idx < 0): # No jet passed selection.
                 n_fail += 1
                 success = False
-                break  
-                
+                break
+
             jet = jets[selected_jet_idx]
             jet_constituents = np.array([
                 [x.px(), x.py(), x.pz(), x.E(), x.python_info().pdg_id, x.python_info().status]
-                for x in jet.constituents()
-            ])
+                for x in jet.constituents()]
+                )
             arr = jet_constituents
 
         # Combine the particle arrays.
@@ -165,13 +164,10 @@ def GenerationLoop(pythia, nevents,
         hepev = hep.GenEvent()
         hepev.event_number = i_real
         for j in range(N):
-            momentum = arr[j][:4]
+            momentum = arr[j][:4] # px, py, pz, E.
             pid = int(arr[j][4])
             status = int(arr[j][5])
-            par = hep.GenParticle(momentum = momentum,
-                                  pid      = pid,
-                                  status   = status
-                                 )
+            par = hep.GenParticle(momentum=momentum, pid=pid, status=status)
             hepev.add_particle(par)
 
         # ----- File I/O -----
@@ -186,22 +182,22 @@ def GenerationLoop(pythia, nevents,
         if(loop_number == 0 and i_real == 1): upper_trim = 0
         elif(i == nevents-1 and n_fail == 0): lower_trim = 0
         comm1 = 'tail -n +{} {}'.format(upper_trim, buffername).split(' ')
-                
+
         proc = sub.Popen(comm1,stdout=sub.PIPE,text=True)
         if(lower_trim == 0): proc_out = proc.stdout.read().split('\n')
         else: proc_out = proc.stdout.read().split('\n')[:-lower_trim]
-        
+
         with open(filename,'a') as f:
             f.writelines(line + '\n' for line in proc_out)
         # ----- End File I/O -----
 
         qu.printProgressBarColor(i_real,nevents_disp, prefix=prefix, suffix=suffix, length=bl)
         i_real += 1
-        
+
     # delete the buffer file
     comm = ['rm', buffername]
     sub.check_call(comm)
-      
+
     return i_real-1, n_fail
 
 # Generate a bunch of events in the given pT range,
@@ -210,11 +206,11 @@ def GenerationLoop(pythia, nevents,
 def Generate(nevents, pt_min, pt_max, filename = 'events.hepmc'): # TODO: implement file chunking
     pythia_config = GetPythiaConfig(pt_min = pt_min, pt_max = pt_max)
     pythia = npyth.Pythia(params = pythia_config)
-    
+
     # Get our (Pythonic) Fastjet. # TODO: Make this optional (only need if *not* using Delphes)
     fastjet_dir = BuildFastjet(j=8)
     fastjet_dir = glob.glob('{}/**/site-packages'.format(fastjet_dir),recursive=True)[0]
-    
+
     # Get the Fastjet banner out of the way
     if(fastjet_dir not in sys.path): sys.path.append(fastjet_dir)
     import fastjet as fj
@@ -224,35 +220,28 @@ def Generate(nevents, pt_min, pt_max, filename = 'events.hepmc'): # TODO: implem
     suffix = 'Complete'
     bl = 50
     qu.printProgressBarColor(0,nevents, prefix=prefix, suffix=suffix, length=bl)
-    
+
     sel1 = (npyth.STATUS == 1) & (npyth.ABS_PDG_ID > -1) # Selection for all final-state particles.
     sel_truth = GetTruthSelection()
-    
+
     # Loop in such a way as to guarantee that we get as many events as requested.
     # This logic is required as events could technically fail selections, e.g. not have the
     # requested truth particles (depends on requested truth particles & processes).
     n_success = 0
     n_fail = nevents
     nloops = 0
-    while(n_fail > 0): 
-        n_success, n_fail = GenerationLoop(pythia,
-                                           nevents-n_success,
-                                           sel1, sel_truth,
-                                           filename, 
-                                           prefix, suffix, bl=50, 
-                                           i_real=n_success+1, nevents_disp = nevents,
-                                           fastjet_dir = fastjet_dir,
-                                           loop_number = nloops
-                                          )
+    while(n_fail > 0):
+        n_success, n_fail = GenerationLoop(pythia, nevents-n_success, sel1, sel_truth, filename, prefix, suffix, bl=50,
+                                           i_real=n_success+1, nevents_disp = nevents, fastjet_dir = fastjet_dir, loop_number = nloops)
         nloops = nloops + 1
     return
 
 # Create a copy of a HepMC file containing only truth-level particles (i.e. remove final-state info).
 def CopyTruth(hepfile, outfile=None):
-    
+
     npars = []
     npar = 0
-    
+
     if(outfile is None): outfile = hepfile.replace('.hepmc','_truth.hepmc')
     with open(hepfile,'r') as f, open(outfile,'w') as g:
         for line in f:
@@ -269,13 +258,13 @@ def CopyTruth(hepfile, outfile=None):
                         g.write(' '.join(line) + '\n')
     npars.append(npar)
     npars = npars[1:]
-                        
+
     # Now we need to correct the event headers, to have the right number of particles.
     # While it might not be the most efficient, this is easy to accomplish on a 2nd pass.
     # The file is also likely so small now that it's very easy to store in memory.
     event_counter = 0
     lines = []
-    
+
     with open(outfile,'r') as f:
         for line in f:
             if(':' in line): lines.append(line)
@@ -285,11 +274,9 @@ def CopyTruth(hepfile, outfile=None):
                     line[3] = str(npars[event_counter])
                     event_counter += 1
                 lines.append(' '.join(line) + '\n')
-                
+
     with open(outfile,'w') as f:
         for line in lines:
             f.write(line)
-                    
+
     return outfile
-        
-    
