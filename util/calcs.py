@@ -42,6 +42,7 @@ def PtEtaPhiMToPxPyPzE(pt,eta,phi,m,transpose=True):
     nvecs = len(pt)
     input_vecs = np.vstack((pt,eta,phi,m)).T
     output_vecs = np.array(rt.VectorCalcs.PtEtaPhiM2PxPyPzEflat(input_vecs.flatten())).reshape((nvecs,-1))
+    # print('PtEtaPhiMToPxPyPzE: Done.')
     if(transpose): return output_vecs
     return output_vecs.T
 

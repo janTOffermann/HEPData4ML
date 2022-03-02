@@ -7,10 +7,11 @@ import subprocess as sub
 from util.fastjet import BuildFastjet, ParticleInfo
 from util.config import GetNPars, GetJetConfig
 from util.calcs import PtEtaPhiMToPxPyPzE, PtEtaPhiMToEPxPyPz, DeltaR2, AdjustPhi
+from util.qol_util import printProgressBarColor
 
 # Convert a set of Delphes ROOT files (modified with truth info!) files to a single HDF5 file.
 # This also performs jet clustering of the Delphes output (and associated selections).
-def DelphesWithTruthToHDF5(delphes_files, truth_files=None, h5_file=None, nentries_per_chunk=1e5):
+def DelphesWithTruthToHDF5(delphes_files, truth_files=None, h5_file=None, nentries_per_chunk=1e4, verbosity=0):
 
     # ----- FASTJET SETUP -----
     fastjet_dir = BuildFastjet(j=8)
@@ -91,6 +92,13 @@ def DelphesWithTruthToHDF5(delphes_files, truth_files=None, h5_file=None, nentri
     stop_idxs[-1] = nentries
     ranges = stop_idxs - start_idxs
 
+    # Some setup for (optional printouts).
+    prefix_level1 = '\tClustering jets & preparing data:'
+    suffix = 'Complete'
+    bl = 50
+
+    if(verbosity == 1): printProgressBarColor(0,nchunks, prefix=prefix_level1, suffix=suffix, length=bl)
+
     for i in range(nchunks):
         # Clear the buffer (for safety).
         for key in data.keys(): data[key][:] = 0
@@ -110,6 +118,10 @@ def DelphesWithTruthToHDF5(delphes_files, truth_files=None, h5_file=None, nentri
             ev.particles[:int(np.minimum(len(ev.particles),n_truth))]
             for ev in truth_events[start_idxs[i]:stop_idxs[i]]
         ]
+
+        prefix_nzero = int(np.ceil(np.log10(nchunks))) + 1
+        prefix_level2 = '\tClustering jets & preparing data for chunk {}/{}:'.format(str(i+1).zfill(prefix_nzero),nchunks)
+        if(verbosity==2): printProgressBarColor(0,ranges[i], prefix=prefix_level2, suffix=suffix, length=bl)
 
         # For each event we must combine tracks and neutral hadrons, perform jet clustering on them,
         # select a single jet (based on user criteria), and select that jet's leading constituents.
@@ -186,11 +198,15 @@ def DelphesWithTruthToHDF5(delphes_files, truth_files=None, h5_file=None, nentri
             data['jet_Pmu'][j,:]     = [jet.e(), jet.px(), jet.py(), jet.pz()]
             data['jet_Pmu_cyl'][j,:] = [jet.pt(), jet.eta(), AdjustPhi(jet.phi()), jet.m()]
 
+            if(verbosity==2): printProgressBarColor(j+1,ranges[i], prefix=prefix_level2, suffix=suffix, length=bl)
+
+
         # We have now filled a chunk, time to write it.
         with h5.File(h5_file, 'a') as f:
             for key in dsets.keys():
                 dset = f[key]
                 dset[start_idxs[i]:stop_idxs[i]] = data[key][:ranges[i]]
+        if(verbosity == 1): printProgressBarColor(i+1,nchunks, prefix=prefix_level1, suffix=suffix, length=bl)
     return h5_file
 
 # Remove any "failed events". They will be marked with a negative signal flag.

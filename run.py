@@ -74,7 +74,8 @@ def main(args):
     DelphesWithTruthToHDF5(
         delphes_files=jet_files,
         truth_files=truth_files,
-        h5_file=h5_file
+        h5_file=h5_file,
+        verbosity=2
     )
 
     # Cleanup: Delete the jet files, they can in principle be recreated from the compressed HepMC files.
