@@ -48,27 +48,29 @@ def main(args):
 
         pt_min = pt_bin_edges[i]
         pt_max = pt_bin_edges[i+1]
-        hepfile = '{}/events_{}-{}.hepmc'.format(outdir,pt_min,pt_max)
-        if(do_generation): Generate(nevents_per_bin, pt_min, pt_max, hepfile)
+        hep_file = '{}/events_{}-{}.hepmc'.format(outdir,pt_min,pt_max)
+        if(do_generation): Generate(nevents_per_bin, pt_min, pt_max, hep_file)
 
         if(use_delphes):
             # Pass the HepMC file to Delphes. Will output a ROOT file.
             delphes_dir = BuildDelphes() # build Delphes if it does not yet exist
-            delphesfile = HepMC3ToDelphes(hepmc_file = hepfile, delphes_dir = delphes_dir)
+            delphesfile = HepMC3ToDelphes(hepmc_file = hep_file, delphes_dir = delphes_dir)
             jet_files.append(delphesfile)
 
         # Extract the truth-level particles from the full HepMC file.
-        truthfile = hepfile.replace('.hepmc','_truth.hepmc')
-        truthfile = CopyTruth(hepfile, truthfile)
+        truthfile = hep_file.replace('.hepmc','_truth.hepmc')
+        truthfile = CopyTruth(hep_file, truthfile)
         truth_files.append(truthfile)
 
         # Compress the full HepMC file. Will use tar (shipped with the custom conda env).
         delete_hepmc = True
-        compress_file = hepfile.replace('.hepmc','.tar.bz2')
+        compress_file = hep_file.replace('.hepmc','.tar.bz2')
         cwd = '/'.join(compress_file.split('/')[:-1])
-        comm = ['tar','-cjf',compress_file.split('/')[-1],hepfile.split('/')[-1]]
-        if(delete_hepmc): comm.append('--remove-files')
+        comm = ['tar','-cjf',compress_file.split('/')[-1],hep_file.split('/')[-1]]
+        # if(delete_hepmc): comm.append('--remove-files')
         sub.check_call(comm,shell=False,cwd=cwd)
+        if(delete_hepmc):
+            sub.check_call(['rm',hep_file.split('/')[-1]],shell=False,cwd=cwd)
 
     # Now put everything into an HDF5 file.
     DelphesWithTruthToHDF5(
@@ -87,8 +89,10 @@ def main(args):
         compress_file = truth_file.replace('.hepmc','.tar.bz2')
         cwd = '/'.join(compress_file.split('/')[:-1])
         comm = ['tar','-cjf',compress_file.split('/')[-1],truth_file.split('/')[-1]]
-        if(delete_hepmc): comm.append('--remove-files')
+        # if(delete_hepmc): comm.append('--remove-files') # Works on Linux but not macos, depends on what kind of "tar" is used
         sub.check_call(comm,shell=False,cwd=cwd)
+        if(delete_hepmc):
+            sub.check_call(['rm',truth_file.split('/')[-1]],shell=False,cwd=cwd)
 
     # Remove any failed events (e.g. detector-level events with no jets passing cuts).
     RemoveFailedFromHDF5(h5_file)

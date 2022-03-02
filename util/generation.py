@@ -9,12 +9,46 @@ from util.fastjet import BuildFastjet, ParticleInfo
 from util.calcs import DeltaR2Vectorized
 import util.qol_util as qu
 
+# TODO: This is a compatibility check for the pythia configuration.
+# Numpythia v. 1.2 uses Pythia 8.244, but Numpythia v. 1.1 uses Pythia 8.226.
+# There are some noticeable differences in available process configs, and the latest numpythia
+# may not be available on macOS/arm yet.
+# The check is not very efficient, it will make many nympythia objects.
+def PythiaCompatibilityCheck(pythia_config):
+    pythia_config_safe = {}
+    safe_keys = ['Beam','Random','Stat','Print','PhaseSpace','PartonLevel','HadronLevel']
+    for key,val in pythia_config.items():
+        safe = False
+        for safe_key in safe_keys:
+            if(safe_key in key):
+                safe = True
+                break
+        if(safe):
+            pythia_config_safe[key] = val
+            continue
+
+        tmp_config = {key_safe:val_safe for key_safe,val_safe in pythia_config_safe.items()}
+        tmp_config[key] = val
+
+        with qu.stdout_redirected():
+            try:
+                pythia = npyth.Pythia(params=tmp_config)
+                pythia_config_safe[key] = val
+            except: pass
+    return pythia_config_safe
+
 # Generate a bunch of events in the given pT range,
 # and save them to a HepMC file.
 # Note that we do not perform event selection: All generated events are saved.
 def GenerateSimple(nevents, pt_min, pt_max, filename = 'events.hepmc'):
 
     pythia_config = GetPythiaConfig(pt_min = pt_min, pt_max = pt_max)
+    pythia_config = PythiaCompatibilityCheck(pythia_config)
+    # TODO: We should add a compatibility check for the pythia configuration.
+    # Numpythia v. 1.2 uses Pythia 8.244, but Numpythia v. 1.1 uses Pythia 8.226.
+    # There are some noticeable differences in available process configs, and the latest numpythia
+    # may not be available on macOS/arm yet.
+
     pythia = npyth.Pythia(params = pythia_config)
 
     prefix = 'Generating events for pT bin [{},{}]:'.format(pt_min,pt_max)
@@ -205,6 +239,7 @@ def GenerationLoop(pythia, nevents,
 # We do perform event selection: Only certain particles are saved to the file to begin with.
 def Generate(nevents, pt_min, pt_max, filename = 'events.hepmc'): # TODO: implement file chunking
     pythia_config = GetPythiaConfig(pt_min = pt_min, pt_max = pt_max)
+    pythia_config = PythiaCompatibilityCheck(pythia_config)
     pythia = npyth.Pythia(params = pythia_config)
 
     # Get our (Pythonic) Fastjet. # TODO: Make this optional (only need if *not* using Delphes)
