@@ -35,7 +35,7 @@ def main(args):
     h5_file = '{}/{}'.format(outdir,h5_file)
 
     # Prepare our custom ROOT library, that is used to do coordinate conversions and other 4-vector calcs.
-    BuildVectorCalcs()
+    BuildVectorCalcs(force=True) # make sure we re-build the library
     LoadVectorCalcs()
 
     for i in range(nbins):

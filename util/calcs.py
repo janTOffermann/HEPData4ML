@@ -51,33 +51,3 @@ def PtEtaPhiMToEPxPyPz(pt,eta,phi,m,transpose=True):
     output_vecs = np.array(rt.VectorCalcs.PtEtaPhiM2EPxPyPzflat(input_vecs.flatten())).reshape((nvecs,-1))
     if(transpose): return output_vecs
     return output_vecs.T
-
-# def PxPyPzEToPtEtaPhiM(px,py,pz,e,transpose=True):
-#     n = len(px)
-#     vec = rt.Math.PxPyPzEVector()
-#     result = np.zeros((n,4),dtype=np.dtype('f8'))
-#     for i in range(n):
-#         vec.SetCoordinates(px[i],py[i],pz[i],e[i])
-#         result[i,:] = np.array([vec.Pt(),vec.Eta(),vec.Phi(),vec.M()])
-#     if(transpose): return result
-#     return result.T
-
-# def PtEtaPhiMToPxPyPzE(pt,eta,phi,m,transpose=True):
-#     n = len(pt)
-#     vec = rt.Math.PtEtaPhiMVector()
-#     result = np.zeros((n,4),dtype=np.dtype('f8'))
-#     for i in range(n):
-#         vec.SetCoordinates(pt[i],eta[i],phi[i],m[i])
-#         result[i,:] = np.array([vec.Px(),vec.Py(),vec.Pz(),vec.E()])
-#     if(transpose): return result
-#     return result.T
-
-# def PtEtaPhiMToEPxPyPz(pt,eta,phi,m,transpose=True):
-#     n = len(pt)
-#     vec = rt.Math.PtEtaPhiMVector()
-#     result = np.zeros((n,4),dtype=np.dtype('f8'))
-#     for i in range(n):
-#         vec.SetCoordinates(pt[i],eta[i],phi[i],m[i])
-#         result[i,:] = np.array([vec.E(),vec.Px(),vec.Py(),vec.Pz()])
-#     if(transpose): return result
-#     return result.T
