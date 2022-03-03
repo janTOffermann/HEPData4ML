@@ -39,14 +39,41 @@ def PxPyPzEToPtEtaPhiM(px,py,pz,e,transpose=True):
     return output_vecs.T
 
 def PtEtaPhiMToPxPyPzE(pt,eta,phi,m,transpose=True):
+    return PtEtaPhiMToPxPyPzE_numpy(pt,eta,phi,m,transpose)
+
+def PtEtaPhiMToEPxPyPz(pt,eta,phi,m,transpose=True):
+    return PtEtaPhiMToEPxPyPz_numpy(pt,eta,phi,m,transpose)
+
+# Below are some functions that may get used above -- currently experimenting with purely numpy-based functions,
+# versus using my custom ROOT/C++ library.
+
+# TODO: Temporary definitions below.
+# from numba import jit
+
+def PtEtaPhiMToPxPyPzE_numpy(pt,eta,phi,m,transpose=True):
+    px = pt * np.cos(phi)
+    py = pt * np.sin(phi)
+    pz = pt * np.sinh(eta)
+    e  = np.sqrt(px * px + py * py + pz * pz + m * m)
+    if(transpose): return np.array([px,py,pz,e],dtype=np.dtype('f8')).T
+    else: return np.array([px,py,pz,e],dtype=np.dtype('f8'))
+
+def PtEtaPhiMToPxPyPzE_root(pt,eta,phi,m,transpose=True):
     nvecs = len(pt)
     input_vecs = np.vstack((pt,eta,phi,m)).T
     output_vecs = np.array(rt.VectorCalcs.PtEtaPhiM2PxPyPzEflat(input_vecs.flatten())).reshape((nvecs,-1))
-    # print('PtEtaPhiMToPxPyPzE: Done.')
     if(transpose): return output_vecs
     return output_vecs.T
 
-def PtEtaPhiMToEPxPyPz(pt,eta,phi,m,transpose=True):
+def PtEtaPhiMToEPxPyPz_numpy(pt,eta,phi,m,transpose=True):
+    px = pt * np.cos(phi)
+    py = pt * np.sin(phi)
+    pz = pt * np.sinh(eta)
+    e  = np.sqrt(px * px + py * py + pz * pz + m * m)
+    if(transpose): return np.array([e,px,py,pz],dtype=np.dtype('f8')).T
+    else: return np.array([e,px,py,pz],dtype=np.dtype('f8'))
+
+def PtEtaPhiMToEPxPyPz_root(pt,eta,phi,m,transpose=True):
     nvecs = len(pt)
     input_vecs = np.vstack((pt,eta,phi,m)).T
     output_vecs = np.array(rt.VectorCalcs.PtEtaPhiM2EPxPyPzflat(input_vecs.flatten())).reshape((nvecs,-1))
