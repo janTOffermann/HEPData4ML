@@ -44,11 +44,6 @@ def GenerateSimple(nevents, pt_min, pt_max, filename = 'events.hepmc'):
 
     pythia_config = GetPythiaConfig(pt_min = pt_min, pt_max = pt_max)
     pythia_config = PythiaCompatibilityCheck(pythia_config)
-    # TODO: We should add a compatibility check for the pythia configuration.
-    # Numpythia v. 1.2 uses Pythia 8.244, but Numpythia v. 1.1 uses Pythia 8.226.
-    # There are some noticeable differences in available process configs, and the latest numpythia
-    # may not be available on macOS/arm yet.
-
     pythia = npyth.Pythia(params = pythia_config)
 
     prefix = 'Generating events for pT bin [{},{}]:'.format(pt_min,pt_max)

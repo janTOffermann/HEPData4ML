@@ -6,7 +6,7 @@ import h5py as h5
 import subprocess as sub
 from util.fastjet import BuildFastjet, ParticleInfo
 from util.config import GetNPars, GetJetConfig
-from util.calcs import PtEtaPhiMToPxPyPzE, PtEtaPhiMToEPxPyPz, DeltaR2, AdjustPhi
+from util.calcs import PtEtaPhiMToPxPyPzE, PtEtaPhiMToEPxPyPz, AdjustPhi
 from util.qol_util import printProgressBarColor
 
 # Convert a set of Delphes ROOT files (modified with truth info!) files to a single HDF5 file.
