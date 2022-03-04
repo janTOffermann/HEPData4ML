@@ -76,13 +76,4 @@ def HepMC3ToDelphes(hepmc_file, output_file=None, delphes_card=None, delphes_dir
         sub.check_call([delphes_ex, delphes_card, output_file, hepmc_file],
                        shell=False, stdout=sub.DEVNULL, stderr=sub.DEVNULL)
 
-    #comm = '{ex} {card} {outfile} {infile}'.format(ex=delphes_ex, card=delphes_card, outfile=output_file, infile=hepmc_file)
-    #sub.check_call(comm,shell=True)
-
     return output_file # return the name (esp. useful if none was provided)
-
-
-
-
-
-

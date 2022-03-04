@@ -82,7 +82,7 @@ class PlotStyle:
             self.canv  = rt.kWhite
             self.text  = rt.kBlack
             self.curve = rt.kBlue
-            self.palette = rt.kBird
+            self.palette = rt.kCool
 
             self.text_plt = 'xkcd:black'
             self.canv_plt = 'xkcd:white'

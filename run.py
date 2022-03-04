@@ -22,6 +22,13 @@ def main(args):
     do_generation =args['generation'] > 0 # TODO: Find nicer way to handle Boolean -- argparse is weird.
     nbins = len(pt_bin_edges) - 1
 
+    # Setting the verbosity for the Delphes/ROOT -> HDF5 conversion.
+    # If there are many events it might take a bit, so some printout
+    # is helpful to monitor the progress.
+    delphes_to_h5_verbosity = 0
+    if(nevents_per_bin >= 100): delphes_to_h5_verbosity = 1
+    elif(nevents_per_bin >= 10000): delphes_to_h5_verbosity = 2
+
     # TODO: Make Delphes optional.
     use_delphes = True
 
@@ -39,7 +46,6 @@ def main(args):
     LoadVectorCalcs()
 
     for i in range(nbins):
-
         # Generate a HepMC file containing our events. The generation already performs filtering
         # before writing, so that we just save final-state particles & some selected truth particles.
 
@@ -77,10 +83,10 @@ def main(args):
         delphes_files=jet_files,
         truth_files=truth_files,
         h5_file=h5_file,
-        verbosity=2
+        verbosity=delphes_to_h5_verbosity
     )
 
-    # Cleanup: Delete the jet files, they can in principle be recreated from the compressed HepMC files.
+    # Cleanup: Delete the jet files, since they can always be fetched from the compressed HepMC files.
     comm = ['rm'] + jet_files
     sub.check_call(comm)
 

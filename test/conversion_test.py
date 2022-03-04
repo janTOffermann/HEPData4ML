@@ -17,8 +17,6 @@ def generate_data(nvecs = 100):
     phi = np.random.rand(nvecs) * (2. * np.pi)
     m = np.zeros(nvecs) # zero masses, like in practice
     data = np.vstack((pt,eta,phi,m)).T
-    # print(data[0])
-    # print(pt[0],eta[0],phi[0],m[0])
     return np.vstack((pt,eta,phi,m)).T
 
 def run_test(data, ntests=20):
@@ -27,6 +25,7 @@ def run_test(data, ntests=20):
     phi = data[:,2]
     m = data[:,3]
 
+    # Numpy test
     output = PtEtaPhiMToPxPyPzE_numpy(pt,eta,phi,m) # initial call, not sure if meaningful
     start = time.time()
     for i in range(ntests):
@@ -34,7 +33,7 @@ def run_test(data, ntests=20):
     end = time.time()
     dt2 = (end - start) / ntests
 
-
+    # ROOT test
     output = PtEtaPhiMToPxPyPzE_root(pt,eta,phi,m) # initial call, not sure if meaningful
     start = time.time()
     for i in range(ntests):
@@ -72,7 +71,6 @@ def main(args):
 
         dt1_avg.append(np.mean(dt1_vals))
         dt2_avg.append(np.mean(dt2_vals))
-
         dt1_err.append(sem(np.array(dt1_vals)))
         dt2_err.append(sem(np.array(dt2_vals)))
 

@@ -8,18 +8,20 @@ from util import qol_util as qu
 
 def main(args):
 
-    rt.gStyle.SetOptStat(0)
-    rt.gROOT.SetBatch(True)
-    style = 'dark'
-    ps = qu.PlotStyle(style)
-    ps.SetStyle()
-
     parser = ap.ArgumentParser()
     parser.add_argument('-i', '--input',   nargs='+', help='Input file pattern (or a list of patterns).', required=True)
     parser.add_argument('-o', '--outdir',  type=str,  help='Output directory.', default=None)
     parser.add_argument('-l', '--legend', nargs='+', help='Legend entries for data series. Must be one per input file.', default=None)
     parser.add_argument('-d', '--draw_option', type=str, help="Draw option for 1D histograms.", default='')
+    parser.add_argument('-m', '--mode',type=str,help="Drawing mode. (Try \'light\' or \'dark\').",default='dark')
     args = vars(parser.parse_args())
+
+    # Set some ROOT & drawing options.
+    rt.gStyle.SetOptStat(0)
+    rt.gROOT.SetBatch(True)
+    style = args['mode']
+    ps = qu.PlotStyle(style)
+    ps.SetStyle()
 
     # Determine what are the input files.
     infiles = []
@@ -133,6 +135,7 @@ def main(args):
 
                 if(not d2[i]):
                     h.Draw(draw_option)
+                    h.SetLineWidth(2)
                     # h.SetLineColor(colors[j])
 
                 else:

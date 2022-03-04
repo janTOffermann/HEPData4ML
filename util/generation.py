@@ -105,7 +105,7 @@ def GenerationLoop(pythia, nevents,
         # Do some event filtering using hadronization-level jets.
         # Note that if doing detector-level simulation (i.e. Delphes),
         # an event that has a jet passing cuts here is not guaranteed to
-        # have a detector-level jet that also passes cuts, but it is likely.
+        # have a detector-level jet that also passes cuts, though it is likely.
 
         # ----- JET CLUSTERING -----
         # Perform jet clustering on final-state particles.
