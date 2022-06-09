@@ -111,13 +111,6 @@ def main(args):
         'jet': rt.kViolet
     }
 
-    # names = { # TODO: Need to generalize this.
-    #     'events1':'No MPI, no ISR/FSR',
-    #     'events2':'No MPI, with ISR/FSR',
-    #     'events3':'MPI and ISR/FSR',
-    #     'events4':'test'
-    # }
-
     filename = '{}/{}'.format(indir,infile)
     f = h5.File(filename,'r')
 
@@ -226,7 +219,7 @@ def main(args):
     stacks.append(s)
 
     for i,c in enumerate(canvases): c.Write('c_{}'.format(i))
-    for i,s in enumerate(stacks): s.Write('s_{}'.format(i))
+    for i,s in enumerate(stacks): s.Write('s_{}'.format(i)) # TODO: Remove the histogram stacks, and just save the histograms.
     f.Close()
 
 if __name__ == '__main__':

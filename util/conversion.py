@@ -6,7 +6,7 @@ import h5py as h5
 import subprocess as sub
 from util.fastjet import BuildFastjet, ParticleInfo
 from util.config import GetNPars, GetJetConfig
-from util.calcs import PtEtaPhiMToPxPyPzE, PtEtaPhiMToEPxPyPz, DeltaR2, AdjustPhi
+from util.calcs import PtEtaPhiMToPxPyPzE, PtEtaPhiMToEPxPyPz, AdjustPhi
 from util.qol_util import printProgressBarColor
 
 # Convert a set of Delphes ROOT files (modified with truth info!) files to a single HDF5 file.
@@ -62,18 +62,27 @@ def DelphesWithTruthToHDF5(delphes_files, truth_files=None, h5_file=None, nentri
         elif('Phi' in var): var_map[key]['phi'] = branch
         else: var_map[key]['pt'] = branch
 
-    # Now create our Numpy buffers to hold data.
+    # Now create our Numpy buffers to hold data. This dictates the structure of the HDF5 file we're making,
+    # each key here corresponds to an HDF5 dataset. The shapes of the datasets will be what is shown here,
+    # except with nentries_per_chunk -> nentries.
     nentries_per_chunk = int(nentries_per_chunk)
     data = {
         'Nobj':np.zeros(nentries_per_chunk,dtype=np.dtype('i2')), # number of jet constituents
         'Pmu':np.zeros((nentries_per_chunk,n_constituents,4),dtype=np.dtype('f8')), # 4-momenta of jet constituents (E,px,py,pz)
-        'truth_Nobj':np.zeros(nentries_per_chunk,dtype=np.dtype('i2')), # number of truth-level particles
+        'truth_Nobj':np.zeros(nentries_per_chunk,dtype=np.dtype('i2')), # number of truth-level particles (this is somewhat redundant -- it will typically be constant)
         'truth_Pdg':np.zeros((nentries_per_chunk,n_truth),dtype=np.dtype('i4')), # PDG codes to ID truth particles
         'truth_Pmu':np.zeros((nentries_per_chunk,n_truth,4),dtype=np.dtype('f8')), # truth-level particle 4-momenta
         'is_signal':np.zeros(nentries_per_chunk,dtype=np.dtype('i1')), # signal flag (0 = background, 1 = signal)
-        'jet_Pmu':np.zeros((nentries_per_chunk,4),dtype=np.dtype('f8')), # jet 4-momentum, in Cartesian coordinates (px, py, pz, E)
+        'jet_Pmu':np.zeros((nentries_per_chunk,4),dtype=np.dtype('f8')), # jet 4-momentum, in Cartesian coordinates (E, px, py, pz)
         'jet_Pmu_cyl':np.zeros((nentries_per_chunk,4),dtype=np.dtype('f8')) # jet 4-momentum, in cylindrical coordinates (pt,eta,phi,m)
     }
+
+    # In addition to the above, we will also store the truth-level 4-momenta with each in its own HDF5 dataset.
+    # In practice, this might be a more convenient storage format for things like neural network training.
+    # Note, however, that the number of these keys will depend on n_truth (the number of truth particles saved per event).
+    for i in range(n_truth):
+        key = 'truth_Pmu_{}'.format(i)
+        data[key] = np.zeros((nentries_per_chunk,4),dtype=np.dtype('f8'))
 
     # Prepare the HDF5 file.
     dsets = {}
@@ -191,6 +200,9 @@ def DelphesWithTruthToHDF5(delphes_files, truth_files=None, h5_file=None, nentri
                 [par.momentum.e, par.momentum.px, par.momentum.py, par.momentum.pz]
                 for par in truth_particles[j]
             ]
+            # Also fill our separate buffers for each truth particle.
+            for k in range(n_truth):
+                data['truth_Pmu_{}'.format(k)][j,:] = [truth_particles[j][k].momentum.e,truth_particles[j][k].momentum.px,truth_particles[j][k].momentum.py,truth_particles[j][k].momentum.pz]
 
             # Also store some jet-level information for debugging purposes.
             # We will also store the jet momentum in cylindrical coordinates (pt,eta,phi,m).
@@ -199,7 +211,6 @@ def DelphesWithTruthToHDF5(delphes_files, truth_files=None, h5_file=None, nentri
             data['jet_Pmu_cyl'][j,:] = [jet.pt(), jet.eta(), AdjustPhi(jet.phi()), jet.m()]
 
             if(verbosity==2): printProgressBarColor(j+1,ranges[i], prefix=prefix_level2, suffix=suffix, length=bl)
-
 
         # We have now filled a chunk, time to write it.
         with h5.File(h5_file, 'a') as f:
@@ -278,8 +289,8 @@ def SplitHDF5(h5_file, split_ratio = (7,2,1), train_name=None, val_name=None, te
     for i in range(len(names)):
         g = h5.File(names[i],'w')
         for j,key in enumerate(keys):
-                # put data from f into memory (numpy array)
-                # since h5py doesn't like non-ordered indices
+                # Putting the data from f into memory (numpy array)
+                # since h5py doesn't like non-ordered indices.
                 g.create_dataset(key, data=f[key][:][indices[i]],compression='gzip')
         g.close()
     f.close()

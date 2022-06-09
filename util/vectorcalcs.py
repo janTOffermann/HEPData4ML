@@ -20,6 +20,7 @@ def BuildVectorCalcs(force=False):
     script = 'build.sh'
     comm = ['.',script]
     env = os.environ.copy()
+    print('Building VectorCalcs library.')
     sub.check_call(comm,shell=False,cwd=script_dir,env=os.environ.copy(),executable=executable,stderr=sub.DEVNULL,stdout=sub.DEVNULL)
 
 def LoadVectorCalcs():
@@ -34,7 +35,6 @@ def LoadVectorCalcs():
     # TODO: Is there a more elegant workaround for this?
     lib_extensions = ['so','dylib']
     custom_lib_paths = [os.path.realpath(os.path.dirname(os.path.realpath(__file__)) + '/root/vectorcalcs/build/lib/libVectorCalcs.{}'.format(x)) for x in lib_extensions]
-    # custom_lib_path = os.path.realpath(os.path.dirname(os.path.realpath(__file__)) + '/root/vectorcalcs/build/lib/libVectorCalcs.so')
     custom_inc_paths = os.path.realpath(os.path.dirname(os.path.realpath(__file__)) + '/root/vectorcalcs/build/include/vectorcalcs')
     custom_inc_paths = glob.glob(custom_inc_paths + '/**/*.h',recursive=True)
 

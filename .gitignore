@@ -27,3 +27,10 @@ pip-delete-this-directory.txt
 util/root/vectorcalcs/build
 delphes
 fastjet
+
+# Ignore ROOT files, images, etc.
+*.root
+*.h5
+*.png
+*.hepmc
+*.tar.bz2

@@ -3,9 +3,7 @@
 
 // ROOT includes
 #if !defined(__CINT__) || defined(__MAKECINT__)
-// #include "TString.h"
 #include "Rtypes.h"
-// #include "Math/LorentzVector.h"
 #include "Math/Vector4D.h"
 #include "Math/VectorUtil.h"
 #endif
@@ -15,9 +13,9 @@
 
 using namespace std;
 namespace VectorCalcs{
-  vector<Double_t> PtEtaPhiM2PxPyPzEsingle(vector<Double_t> input_coords);
-  vector<Double_t> PtEtaPhiM2EPxPyPzsingle(vector<Double_t> input_coords);
-  vector<Double_t> PxPyPzE2PtEtaPhiMsingle(vector<Double_t> input_coords);
+  vector<Double_t> PtEtaPhiM2PxPyPzEsingle(vector<Double_t> input_coords, ROOT::Math::PtEtaPhiMVector* vec);
+  vector<Double_t> PtEtaPhiM2EPxPyPzsingle(vector<Double_t> input_coords, ROOT::Math::PtEtaPhiMVector* vec);
+  vector<Double_t> PxPyPzE2PtEtaPhiMsingle(vector<Double_t> input_coords, ROOT::Math::PxPyPzEVector* vec);
 
   vector<vector<Double_t>> PtEtaPhiM2PxPyPzE(vector<vector<Double_t>> input_vecs);
   vector<vector<Double_t>> PtEtaPhiM2EPxPyPz(vector<vector<Double_t>> input_vecs);

@@ -2,75 +2,83 @@
 using namespace std;
 
 // -- Functions for converting a single vector --
-vector<Double_t> VectorCalcs::PtEtaPhiM2PxPyPzEsingle(vector<Double_t> input_coords){
-  ROOT::Math::PtEtaPhiMVector vec (0.,0.,0.,0.);
-  vec.SetCoordinates(input_coords.at(0),input_coords.at(1),input_coords.at(2),input_coords.at(3));
-  vector<Double_t> result{vec.Px(),vec.Py(),vec.Pz(),vec.E()};
+vector<Double_t> VectorCalcs::PtEtaPhiM2PxPyPzEsingle(vector<Double_t> input_coords, ROOT::Math::PtEtaPhiMVector* vec){
+  vec->SetCoordinates(input_coords.at(0),input_coords.at(1),input_coords.at(2),input_coords.at(3));
+  vector<Double_t> result{vec->Px(),vec->Py(),vec->Pz(),vec->E()};
   return result;
 }
 
-vector<Double_t> VectorCalcs::PtEtaPhiM2EPxPyPzsingle(vector<Double_t> input_coords){
-  ROOT::Math::PtEtaPhiMVector vec (0.,0.,0.,0.);
-  vec.SetCoordinates(input_coords.at(0),input_coords.at(1),input_coords.at(2),input_coords.at(3));
-  vector<Double_t> result{vec.E(),vec.Px(),vec.Py(),vec.Pz()};
+vector<Double_t> VectorCalcs::PtEtaPhiM2EPxPyPzsingle(vector<Double_t> input_coords, ROOT::Math::PtEtaPhiMVector* vec){
+  vec->SetCoordinates(input_coords.at(0),input_coords.at(1),input_coords.at(2),input_coords.at(3));
+  vector<Double_t> result{vec->E(),vec->Px(),vec->Py(),vec->Pz()};
   return result;
 }
 
-vector<Double_t> VectorCalcs::PxPyPzE2PtEtaPhiMsingle(vector<Double_t> input_coords){
-  ROOT::Math::PxPyPzEVector vec (0.,0.,0.,0.);
-  vec.SetCoordinates(input_coords.at(0),input_coords.at(1),input_coords.at(2),input_coords.at(3));
-  vector<Double_t> result{vec.Pt(),vec.Eta(),vec.Phi(),vec.M()};
+vector<Double_t> VectorCalcs::PxPyPzE2PtEtaPhiMsingle(vector<Double_t> input_coords, ROOT::Math::PxPyPzEVector* vec){
+  vec->SetCoordinates(input_coords.at(0),input_coords.at(1),input_coords.at(2),input_coords.at(3));
+  vector<Double_t> result{vec->Pt(),vec->Eta(),vec->Phi(),vec->M()};
   return result;
 }
 
 // -- Functions for converting multiple vectors, returned as vector of vectors (a bit cumbersome) --
-
 vector<vector<Double_t>> VectorCalcs::PtEtaPhiM2PxPyPzE(vector<vector<Double_t>> input_vecs){
   vector<vector<Double_t>> result;
-  for(auto vec : input_vecs) result.push_back(PtEtaPhiM2PxPyPzEsingle(vec));
+  ROOT::Math::PtEtaPhiMVector* vec = new ROOT::Math::PtEtaPhiMVector();
+  for(auto input_vec : input_vecs) result.push_back(PtEtaPhiM2PxPyPzEsingle(input_vec,vec));
+  delete vec;
   return result;
 }
 
 vector<vector<Double_t>> VectorCalcs::PtEtaPhiM2EPxPyPz(vector<vector<Double_t>> input_vecs){
   vector<vector<Double_t>> result;
-  for(auto vec : input_vecs) result.push_back(PtEtaPhiM2EPxPyPzsingle(vec));
+  ROOT::Math::PtEtaPhiMVector* vec = new ROOT::Math::PtEtaPhiMVector();
+  for(auto input_vec : input_vecs) result.push_back(PtEtaPhiM2EPxPyPzsingle(input_vec,vec));
+  delete vec;
   return result;
 }
 
 vector<vector<Double_t>> VectorCalcs::PxPyPzE2PtEtaPhiM(vector<vector<Double_t>> input_vecs){
   vector<vector<Double_t>> result;
-  for(auto vec : input_vecs) result.push_back(PxPyPzE2PtEtaPhiMsingle(vec));
+  ROOT::Math::PxPyPzEVector* vec = new ROOT::Math::PxPyPzEVector();
+  for(auto input_vec : input_vecs) result.push_back(PxPyPzE2PtEtaPhiMsingle(input_vec,vec));
+  delete vec;
   return result;
 }
 
 // -- Functions for converting multiple vectors, returns (flattened) 1D vector.
 vector<Double_t> VectorCalcs::PtEtaPhiM2PxPyPzEflat(vector<Double_t> input_vecs){
   vector<Double_t> result;
+  ROOT::Math::PtEtaPhiMVector* vec = new ROOT::Math::PtEtaPhiMVector();
   Int_t nvecs = Int_t(input_vecs.size()) / 4;
   for(Int_t i = 0; i < nvecs; i++){
     vector<Double_t> input_vec{input_vecs.at(4*i),input_vecs.at(4*i + 1),input_vecs.at(4*i + 2),input_vecs.at(4*i + 3)};
-    for(Double_t val : PtEtaPhiM2PxPyPzEsingle(input_vec)) result.push_back(val);
+    for(Double_t val : PtEtaPhiM2PxPyPzEsingle(input_vec,vec)) result.push_back(val);
   }
+  delete vec;
   return result;
 }
 
 vector<Double_t> VectorCalcs::PtEtaPhiM2EPxPyPzflat(vector<Double_t> input_vecs){
   vector<Double_t> result;
+  ROOT::Math::PtEtaPhiMVector* vec = new ROOT::Math::PtEtaPhiMVector();
   Int_t nvecs = Int_t(input_vecs.size()) / 4;
   for(Int_t i = 0; i < nvecs; i++){
     vector<Double_t> input_vec{input_vecs.at(4*i),input_vecs.at(4*i + 1),input_vecs.at(4*i + 2),input_vecs.at(4*i + 3)};
-    for(Double_t val : PtEtaPhiM2EPxPyPzsingle(input_vec)) result.push_back(val);
+    for(Double_t val : PtEtaPhiM2EPxPyPzsingle(input_vec,vec)) result.push_back(val);
   }
+  delete vec;
   return result;
 }
 
 vector<Double_t> VectorCalcs::PxPyPzE2PtEtaPhiMflat(vector<Double_t> input_vecs){
   vector<Double_t> result;
+  ROOT::Math::PxPyPzEVector* vec = new ROOT::Math::PxPyPzEVector();
   Int_t nvecs = Int_t(input_vecs.size()) / 4;
   for(Int_t i = 0; i < nvecs; i++){
     vector<Double_t> input_vec{input_vecs.at(4*i),input_vecs.at(4*i + 1),input_vecs.at(4*i + 2),input_vecs.at(4*i + 3)};
-    for(Double_t val : PxPyPzE2PtEtaPhiMsingle(input_vec)) result.push_back(val);
+    for(Double_t val : PxPyPzE2PtEtaPhiMsingle(input_vec,vec)) result.push_back(val);
   }
+  delete vec;
   return result;
 }
 
