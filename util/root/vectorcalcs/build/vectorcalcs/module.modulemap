@@ -1,7 +1,0 @@
-module "VectorCalcs" {
-  requires cplusplus
-  module "vectorcalcs/VectorCalcs.h" { header "vectorcalcs/VectorCalcs.h" export * }
-  link "libVectorCalcs.so"
-  export *
-}
-
