@@ -124,7 +124,7 @@ def DelphesWithTruthToHDF5(delphes_files, truth_files=None, h5_file=None, nentri
 
         # Get the truth particles.
         truth_particles = [
-            ev.particles[:int(np.minimum(len(ev.particles,n_truth)))]
+            ev.particles[:int(np.minimum(len(ev.particles),n_truth))]
             for ev in truth_events[start_idxs[i]:stop_idxs[i]]
         ]
 
@@ -144,9 +144,9 @@ def DelphesWithTruthToHDF5(delphes_files, truth_files=None, h5_file=None, nentri
             vecs = PtEtaPhiMToPxPyPzE(pt,eta,phi,m) # convert 4-vectors to (px, py, pz, e) for jet clustering.
 
 
-            ## We already have the px, py, pz, e, and we do not need to adjust it, just extract the information directly from the hempc file.  
-            
-            
+            ## We already have the px, py, pz, e, and we do not need to adjust it, just extract the information directly from the hempc file.
+
+
             # ----- Begin jet clustering -----
             pj = [fj.PseudoJet(*x) for x in vecs]
             jets = jetdef(pj)
@@ -224,12 +224,9 @@ def DelphesWithTruthToHDF5(delphes_files, truth_files=None, h5_file=None, nentri
         if(verbosity == 1): printProgressBarColor(i+1,nchunks, prefix=prefix_level1, suffix=suffix, length=bl)
     return h5_file
 
-
-
-
 # Convert a set of Delphes ROOT files (modified with truth info!) files to a single HDF5 file.
 # This also performs jet clustering of the Delphes output (and associated selections).
-def DelphesWithTruthToHDF5(delphes_files, f_truth_files=None, truth_files=None, h5_file=None, nentries_per_chunk=1e4, verbosity=0):
+def HepMCWithTruthToHDF5(final_state_files, truth_files=None, h5_file=None, nentries_per_chunk=1e4, verbosity=0):
 
     # ----- FASTJET SETUP -----
     fastjet_dir = BuildFastjet(j=8)
@@ -243,27 +240,19 @@ def DelphesWithTruthToHDF5(delphes_files, f_truth_files=None, truth_files=None, 
     # ----- END FASTJET SETUP -----
 
     if(h5_file is None):
-        if(type(delphes_files) == list): h5_file = delphes_files[0]
-        else: h5_file = delphes_files
-        h5_file =  h5_file.replace('*','').replace('.root','.h5')
+        if(type(final_state_files) == list): h5_file = final_state_files[0]
+        else: h5_file = final_state_files
+        h5_file =  h5_file.replace('*','').replace('.hepmc','.h5')
     npars = GetNPars()
     n_constituents = npars['jet_n_par']
     n_truth = npars['n_truth']
 
     # Note: It's important that the Delphes files and truth HepMC files line up!
     #       The way we usually do this, it will be guaranteed.
-    if(type(delphes_files) == str): delphes_files = glob.glob(delphes_files,recursive=True)
-    if(truth_files is None): truth_files = [x.replace('.root','_truth.hepmc') for x in delphes_files]
+    if(type(final_state_files) == str): final_state_files = glob.glob(final_state_files,recursive=True)
+    if(truth_files is None): truth_files = [x.replace('.hepmc','_truth.hepmc') for x in final_state_files]
 
-    # We are interested in extracting information on particles in the Delphes files.
-    types = ['EFlowTrack','EFlowNeutralHadron']
-    components = ['PT','Eta','Phi','ET'] # not all types have all components, this is OK
-    delphes_keys = ['{x}.{y}'.format(x=x,y=y) for x in types for y in components]
-    delphes_tree = 'Delphes'
-    delphes_trees = ['{}:{}'.format(x,delphes_tree) for x in delphes_files]
-    delphes_arr = ur.lazy(delphes_trees, full_paths=False, filter_branch=lambda b: b.name in delphes_keys)
-    delphes_keys = delphes_arr.fields # only keep branches that actually exist
-    nentries = len(delphes_arr)
+    # nentries = len(delphes_arr)
 
     # Also extract truth particle info from the HepMC files.
     truth_events = []
@@ -273,22 +262,13 @@ def DelphesWithTruthToHDF5(delphes_files, f_truth_files=None, truth_files=None, 
                 truth_events.append(evt)
 
     ## Extract final-state truth particle info from the HepMC files.
-    f_truth_events = []
-    for f_truth_file in f_truth_files:
-        with hep.ReaderAscii(f_truth_file) as f:
+    nentries = 0
+    final_state_events = []
+    for fs_file in final_state_files:
+        with hep.ReaderAscii(fs_file) as f:
             for evt in f:
-                f_truth_events.append(evt)
-
-
-
-
-    # Some convenient "mapping" between branch names and variable names we'll use.
-    var_map = {key:{} for key in types}
-    for branch in delphes_keys:
-        key,var = branch.split('.')
-        if('Eta' in var): var_map[key]['eta'] = branch
-        elif('Phi' in var): var_map[key]['phi'] = branch
-        else: var_map[key]['pt'] = branch
+                final_state_events.append(evt)
+                nentries += 1
 
     # Now create our Numpy buffers to hold data. This dictates the structure of the HDF5 file we're making,
     # each key here corresponds to an HDF5 dataset. The shapes of the datasets will be what is shown here,
@@ -340,26 +320,16 @@ def DelphesWithTruthToHDF5(delphes_files, f_truth_files=None, truth_files=None, 
         # Clear the buffer (for safety).
         for key in data.keys(): data[key][:] = 0
 
-        # Get the momenta of the final-state particles, first in cylindrical coordinates.
-        # We will be setting m=0 for all these particles.
-        momenta = {}
-
-        for delphes_type in types:
-            momenta[delphes_type] = {
-                x:delphes_arr[var_map[delphes_type][x]][start_idxs[i]:stop_idxs[i]]
-                for x in ['pt','eta','phi']
-            }
-
         # Get the truth particles.
         truth_particles = [
             ev.particles[:int(np.minimum(len(ev.particles),n_truth))]
             for ev in truth_events[start_idxs[i]:stop_idxs[i]]
         ]
 
-        ## Get final-state truth particles
-        f_truth_particles = [
+        ## Get final-state particles.
+        final_state_particles = [
             ev.particles[:int(np.minimum(len(ev.particles), 1e4))]
-            for ev in f_truth_events[start_idxs[i]:stop_idxs[i]]
+            for ev in final_state_events[start_idxs[i]:stop_idxs[i]]
         ]
 
         prefix_nzero = int(np.ceil(np.log10(nchunks))) + 1
@@ -370,22 +340,14 @@ def DelphesWithTruthToHDF5(delphes_files, f_truth_files=None, truth_files=None, 
         # select a single jet (based on user criteria), and select that jet's leading constituents.
         for j in range(ranges[i]):
             data['is_signal'][j] = 1 # TODO: redundant for now
-            pt  = np.concatenate([momenta[x]['pt'][j].to_numpy() for x in types])
-            eta = np.concatenate([momenta[x]['eta'][j].to_numpy() for x in types])
-            phi = np.concatenate([momenta[x]['phi'][j].to_numpy() for x in types])
-            m   = np.zeros(pt.shape)
 
-            #vecs = PtEtaPhiMToPxPyPzE(pt,eta,phi,m) # convert 4-vectors to (px, py, pz, e) for jet clustering.
+            vecs = np.concatenate([[[final_state_particles[j][k].momentum.px,
+                                       final_state_particles[j][k].momentum.py,final_state_particles[j][k].momentum.pz,
+                                       final_state_particles[j][k].momentum.e]] for k in range(len(final_state_particles[j]))])
 
-            
-            vecs = np.concatenate([[[f_truth_particles[j][k].momentum.px,
-                                       f_truth_particles[j][k].momentum.py,f_truth_particles[j][k].momentum.pz,
-                                       f_truth_particles[j][k].momentum.e]] for k in range(len(f_truth_particles[j]))])
+            # print(vecs)
+            ## We already have the px, py, pz, e, and we do not need to adjust it, just extract the information directly from the hempc file.
 
-            print(vecs)
-            ## We already have the px, py, pz, e, and we do not need to adjust it, just extract the information directly from the hempc file.  
-            
-            
             # ----- Begin jet clustering -----
             pj = [fj.PseudoJet(*x) for x in vecs]
             jets = jetdef(pj)
@@ -463,8 +425,6 @@ def DelphesWithTruthToHDF5(delphes_files, f_truth_files=None, truth_files=None, 
                 dset[start_idxs[i]:stop_idxs[i]] = data[key][:ranges[i]]
         if(verbosity == 1): printProgressBarColor(i+1,nchunks, prefix=prefix_level1, suffix=suffix, length=bl)
     return h5_file
-
-
 
 
 # Remove any "failed events". They will be marked with a negative signal flag.
