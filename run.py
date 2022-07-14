@@ -1,10 +1,22 @@
 import sys,os
 import argparse as ap
 import subprocess as sub
-from util.generation import Generate, GenerateSimple, CopyTruth
+from util.generation import Generate, CopyTruth
 from util.delphes import BuildDelphes, HepMC3ToDelphes
-from util.conversion import DelphesWithTruthToHDF5, RemoveFailedFromHDF5, SplitHDF5
+from util.conversion import *
 from util.vectorcalcs import BuildVectorCalcs, LoadVectorCalcs
+from util.config import GetDelphesConfig
+
+def CompressHepMC(files, delete=True):
+    for file in files:
+        compress_file = file.replace('.hepmc','.tar.bz2')
+        cwd = '/'.join(compress_file.split('/')[:-1])
+        comm = ['tar','-cjf',compress_file.split('/')[-1],file.split('/')[-1]]
+        # if(delete_hepmc): comm.append('--remove-files')
+        sub.check_call(comm,shell=False,cwd=cwd)
+        if(delete):
+            sub.check_call(['rm',file.split('/')[-1]],shell=False,cwd=cwd)
+    return
 
 def main(args):
     parser = ap.ArgumentParser()
@@ -25,15 +37,14 @@ def main(args):
     separate_truth_particles = args['sep_truth'] > 0
     nbins = len(pt_bin_edges) - 1
 
-    # Setting the verbosity for the Delphes/ROOT -> HDF5 conversion.
+    # Setting the verbosity for the HDF5 conversion.
     # If there are many events it might take a bit, so some printout
     # is helpful to monitor the progress.
-    delphes_to_h5_verbosity = 0
-    if(nevents_per_bin >= 100): delphes_to_h5_verbosity = 1
-    elif(nevents_per_bin >= 10000): delphes_to_h5_verbosity = 2
+    h5_conversion_verbosity = 0
+    if(nevents_per_bin >= 100): h5_conversion_verbosity = 1
+    elif(nevents_per_bin >= 10000): h5_conversion_verbosity = 2
 
-    # TODO: Make Delphes optional.
-    use_delphes = True
+    use_delphes = GetDelphesConfig()
 
     # Keep track of some files we create.
     jet_files = []
@@ -44,9 +55,9 @@ def main(args):
     else: os.makedirs(outdir,exist_ok=True)
     h5_file = '{}/{}'.format(outdir,h5_file)
 
-    # Prepare our custom ROOT library, that is used to do coordinate conversions and other 4-vector calcs.
-    BuildVectorCalcs(force=True) # make sure we re-build the library
-    LoadVectorCalcs()
+    # # Prepare our custom ROOT library, that is used to do coordinate conversions and other 4-vector calcs.
+    # BuildVectorCalcs(force=True) # make sure we re-build the library
+    # LoadVectorCalcs()
 
     for i in range(nbins):
         # Generate a HepMC file containing our events. The generation already performs filtering
@@ -60,49 +71,58 @@ def main(args):
         hep_file = '{}/events_{}-{}.hepmc'.format(outdir,pt_min,pt_max)
         if(do_generation): Generate(nevents_per_bin, pt_min, pt_max, hep_file)
 
-        if(use_delphes):
-            # Pass the HepMC file to Delphes. Will output a ROOT file.
-            delphes_dir = BuildDelphes() # build Delphes if it does not yet exist
-            delphesfile = HepMC3ToDelphes(hepmc_file = hep_file, delphes_dir = delphes_dir)
-            jet_files.append(delphesfile)
-
         # Extract the truth-level particles from the full HepMC file.
         truthfile = hep_file.replace('.hepmc','_truth.hepmc')
         truthfile = CopyTruth(hep_file, truthfile)
         truth_files.append(truthfile)
 
-        # Compress the full HepMC file. Will use tar (shipped with the custom conda env).
-        delete_hepmc = True
-        compress_file = hep_file.replace('.hepmc','.tar.bz2')
-        cwd = '/'.join(compress_file.split('/')[:-1])
-        comm = ['tar','-cjf',compress_file.split('/')[-1],hep_file.split('/')[-1]]
-        # if(delete_hepmc): comm.append('--remove-files')
-        sub.check_call(comm,shell=False,cwd=cwd)
-        if(delete_hepmc):
-            sub.check_call(['rm',hep_file.split('/')[-1]],shell=False,cwd=cwd)
+        if(use_delphes): # Case 1: Using Delphes
+            # Pass the HepMC file to Delphes. Will output a ROOT file.
+            delphes_dir = BuildDelphes() # build Delphes if it does not yet exist
+            delphesfile = HepMC3ToDelphes(hepmc_file = hep_file, delphes_dir = delphes_dir)
+            jet_files.append(delphesfile)
+
+            # We can now compress the HepMC file. Once it's compressed, we delete the original file to recover space.
+            CompressHepMC([hep_file],True)
+
+        else: # Case 2: No Delphes
+            jet_files.append(hep_file)
 
     # Now put everything into an HDF5 file.
-    DelphesWithTruthToHDF5(
-        delphes_files=jet_files,
-        truth_files=truth_files,
-        h5_file=h5_file,
-        verbosity=delphes_to_h5_verbosity,
-        separate_truth_particles=separate_truth_particles
-    )
 
-    # Cleanup: Delete the jet files, since they can always be fetched from the compressed HepMC files.
-    comm = ['rm'] + jet_files
-    sub.check_call(comm)
+    if(use_delphes):
+        DelphesWithTruthToHDF5(
+            jet_files,
+            truth_files=truth_files,
+            h5_file=h5_file,
+            verbosity=h5_conversion_verbosity,
+            separate_truth_particles=separate_truth_particles
+        )
 
+        # Cleanup: Delete the jet files, since they can always be fetched from the compressed HepMC files.
+        comm = ['rm'] + jet_files
+        sub.check_call(comm)
+
+    else:
+        HepMCWithTruthToHDF5(
+            jet_files,
+            truth_files=truth_files,
+            h5_file=h5_file,
+            verbosity=h5_conversion_verbosity,
+            separate_truth_particles=separate_truth_particles
+        )
+
+        #Cleanup: Compress the HepMC files.
+        CompressHepMC(jet_files,True)
+
+    # Cleanup.
     # Now also compress the truth files.
     for truth_file in truth_files:
         compress_file = truth_file.replace('.hepmc','.tar.bz2')
         cwd = '/'.join(compress_file.split('/')[:-1])
         comm = ['tar','-cjf',compress_file.split('/')[-1],truth_file.split('/')[-1]]
-        # if(delete_hepmc): comm.append('--remove-files') # Works on Linux but not macos, depends on what kind of "tar" is used
         sub.check_call(comm,shell=False,cwd=cwd)
-        if(delete_hepmc):
-            sub.check_call(['rm',truth_file.split('/')[-1]],shell=False,cwd=cwd)
+        sub.check_call(['rm',truth_file.split('/')[-1]],shell=False,cwd=cwd)
 
     # Remove any failed events (e.g. detector-level events with no jets passing cuts).
     RemoveFailedFromHDF5(h5_file)
@@ -112,11 +132,10 @@ def main(args):
     SplitHDF5(h5_file, split_ratio)
 
     # Optionally delete the full HDF5 file.
-    delete_h5 = False
+    delete_h5 = False # TODO: Make this configurable
     if(delete_h5):
         comm = ['rm',h5_file]
         sub.check_call(comm)
 
 if __name__ == '__main__':
     main(sys.argv)
-

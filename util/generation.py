@@ -310,3 +310,71 @@ def CopyTruth(hepfile, outfile=None):
             f.write(line)
 
     return outfile
+
+# Create a copy of a HepMC file containing only truth-level particles (i.e. remove final-state info).
+def CopyTruth_f(hepfile, outfile=None):
+
+    npars = []
+    npar = 0
+
+    if(outfile is None): outfile = hepfile.replace('.hepmc','_truth_f.hepmc')
+    with open(hepfile,'r') as f, open(outfile,'w') as g:
+        for line in f:
+            if(':') in line: g.write(line)
+            else:
+                line = line.replace('\n','').split(' ')
+                if(line[-1] == '1' or line[0] == 'E'):
+                    if(line[0] == 'E'):
+                        npars.append(npar)
+                        npar = 0
+                        g.write(' '.join(line) + '\n')
+                    elif(line[0] == 'P'):
+                        npar += 1
+                        g.write(' '.join(line) + '\n')
+
+    npars.append(npar)
+    npars = npars[1:]
+
+    # Now we need to correct the event headers, to have the right number of particles.
+    # While it might not be the most efficient, this is easy to accomplish on a 2nd pass.
+    # The file is also likely so small now that it's very easy to store in memory.
+    event_counter = 0
+    lines = []
+
+    with open(outfile,'r') as f:
+        for line in f:
+            if(':' in line): lines.append(line)
+            else:
+                line = line.replace('\n','').split(' ')
+                if(line[0] == 'E'):
+                    line[3] = str(npars[event_counter])
+                    event_counter += 1
+                lines.append(' '.join(line) + '\n')
+
+    num_ind = 3
+    new_ind = 1
+    with open(outfile,'w') as f:
+        for line in lines:
+            if(line[0] == 'P'):
+                #while (line[num_ind] != ' '):
+                    #num_ind = num_ind + 1
+                    #print(line[num_ind])
+                #line[2: num_ind] = str(new_ind)
+                if new_ind == 7:
+                     num_ind = 4
+                if new_ind == 97:
+                     num_ind = 5
+                if new_ind == 997:
+                     num_ind = 6
+                if new_ind == 9997:
+                     num_ind = 7
+                line = line.replace(line[2:num_ind], str(new_ind))
+                new_ind = new_ind + 1
+            if(line[0] == 'E'):
+                num_ind = 3
+                new_ind = 1
+            f.write(line)
+
+  
+
+    return outfile
