@@ -4,7 +4,7 @@ This package is meant to provide a relatively easy way to generate Monte Carlo d
 
 ## Requirements/setup
 
-The code is primarily written in Python3, along with some C++/ROOT code for fast calculations involving four-vectors.
+The code is primarily written in Python3, along with some C++/ROOT code for fast calculations involving four-vectors. It is compatible with both Linux and macOS operating systems.
 
 HEPData4ML makes use of a number of different software packages, including:
 
@@ -27,10 +27,11 @@ The majority of the settings for event generation are set within `util/config.py
 - `mpi`: Whether or not to enable multi-parton interactions in Pythia8.
 - `isr`: Whether or not to enable initial state radiation in Pythia8.
 - `fsr`: Whether or not to enable final state radiation in Pythia8.
+- `delphes`: Whether or not to enable DELPHES (fast detector simulation). If off, we don't perform any detector simulation (we just use Pythia8 output).
 - `rng`: The random number generator seed used by Pythia8.
-- `jet_radius`: The jet radius to be used by fastjet (using the anti-kt algorithm).
-- `jet_pt_min`: A minimum pT cut to apply to jets.
-- `jet_max_eta`: A maximum abs(eta) cut to apply to jets.
+- `jet_radius`: The jet radius to be used by FastJet (using the anti-kt algorithm).
+- `jet_pt_min`: A minimum pT cut selection to apply to jets.
+- `jet_max_eta`: A maximum abs(eta) cut selection to apply to jets.
 - `jet_n_par`: The maximum number of jet constituents to save for each jet (the list of constituents will be zero-padded).
 - `n_truth`: The number of truth-level particles to save for each jet. *This will be further explained below.*
 - `truth_selection`: An algorithm for selecting which truth-level particles to save for each jet.
@@ -63,7 +64,7 @@ optional arguments:
   -s SEP_TRUTH, --sep_truth SEP_TRUTH
                         Whether or not to store truth-level particles in
                         separate arrays.
-```    
+```
 Here are a few notes on the arguments passed to `run.py`:
 
 - As noted above, `NEVENTS` indicates the number of events to generate *per pT bin*. Note that generating an event does not necessarily mean that it will have any jets that pass the pT and eta cuts, or the `jet_selection` algorithm, so the final number of jets per bin may be smaller than `NEVENTS`.
