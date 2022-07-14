@@ -11,7 +11,7 @@ from util.qol_util import printProgressBarColor
 
 # Convert a set of Delphes ROOT files (modified with truth info!) files to a single HDF5 file.
 # This also performs jet clustering of the Delphes output (and associated selections).
-def DelphesWithTruthToHDF5(delphes_files, truth_files=None, h5_file=None, nentries_per_chunk=1e4, verbosity=0):
+def DelphesWithTruthToHDF5(delphes_files, truth_files=None, h5_file=None, nentries_per_chunk=1e4, verbosity=0, separate_truth_particles=True):
 
     # ----- FASTJET SETUP -----
     fastjet_dir = BuildFastjet(j=8)
@@ -80,9 +80,12 @@ def DelphesWithTruthToHDF5(delphes_files, truth_files=None, h5_file=None, nentri
     # In addition to the above, we will also store the truth-level 4-momenta with each in its own HDF5 dataset.
     # In practice, this might be a more convenient storage format for things like neural network training.
     # Note, however, that the number of these keys will depend on n_truth (the number of truth particles saved per event).
-    for i in range(n_truth):
-        key = 'truth_Pmu_{}'.format(i)
-        data[key] = np.zeros((nentries_per_chunk,4),dtype=np.dtype('f8'))
+    # TODO: Would be nice to accomplish this with references if possible, see: https://docs.h5py.org/en/stable/refs.html#refs .
+    #       Not clear if that is actually feasible.
+    if(separate_truth_particles):
+        for i in range(n_truth):
+            key = 'truth_Pmu_{}'.format(i)
+            data[key] = np.zeros((nentries_per_chunk,4),dtype=np.dtype('f8'))
 
     # Prepare the HDF5 file.
     dsets = {}
@@ -204,9 +207,10 @@ def DelphesWithTruthToHDF5(delphes_files, truth_files=None, h5_file=None, nentri
                 [par.momentum.e, par.momentum.px, par.momentum.py, par.momentum.pz]
                 for par in truth_particles[j]
             ]
-            # Also fill our separate buffers for each truth particle.
-            for k in range(n_truth):
-                data['truth_Pmu_{}'.format(k)][j,:] = [truth_particles[j][k].momentum.e,truth_particles[j][k].momentum.px,truth_particles[j][k].momentum.py,truth_particles[j][k].momentum.pz]
+            # Also fill our separate buffers for each truth particle, if requested.
+            if(separate_truth_particles):
+                for k in range(n_truth):
+                    data['truth_Pmu_{}'.format(k)][j,:] = [truth_particles[j][k].momentum.e,truth_particles[j][k].momentum.px,truth_particles[j][k].momentum.py,truth_particles[j][k].momentum.pz]
 
             # Also store some jet-level information for debugging purposes.
             # We will also store the jet momentum in cylindrical coordinates (pt,eta,phi,m).
@@ -226,7 +230,7 @@ def DelphesWithTruthToHDF5(delphes_files, truth_files=None, h5_file=None, nentri
 
 # Convert a set of Delphes ROOT files (modified with truth info!) files to a single HDF5 file.
 # This also performs jet clustering of the Delphes output (and associated selections).
-def HepMCWithTruthToHDF5(final_state_files, truth_files=None, h5_file=None, nentries_per_chunk=1e4, verbosity=0):
+def HepMCWithTruthToHDF5(final_state_files, truth_files=None, h5_file=None, nentries_per_chunk=1e4, verbosity=0, separate_truth_particles=True):
 
     # ----- FASTJET SETUP -----
     fastjet_dir = BuildFastjet(j=8)
@@ -288,9 +292,10 @@ def HepMCWithTruthToHDF5(final_state_files, truth_files=None, h5_file=None, nent
     # In addition to the above, we will also store the truth-level 4-momenta with each in its own HDF5 dataset.
     # In practice, this might be a more convenient storage format for things like neural network training.
     # Note, however, that the number of these keys will depend on n_truth (the number of truth particles saved per event).
-    for i in range(n_truth):
-        key = 'truth_Pmu_{}'.format(i)
-        data[key] = np.zeros((nentries_per_chunk,4),dtype=np.dtype('f8'))
+    if(separate_truth_particles):
+        for i in range(n_truth):
+            key = 'truth_Pmu_{}'.format(i)
+            data[key] = np.zeros((nentries_per_chunk,4),dtype=np.dtype('f8'))
 
     # Prepare the HDF5 file.
     dsets = {}
@@ -406,9 +411,10 @@ def HepMCWithTruthToHDF5(final_state_files, truth_files=None, h5_file=None, nent
                 [par.momentum.e, par.momentum.px, par.momentum.py, par.momentum.pz]
                 for par in truth_particles[j]
             ]
-            # Also fill our separate buffers for each truth particle.
-            for k in range(n_truth):
-                data['truth_Pmu_{}'.format(k)][j,:] = [truth_particles[j][k].momentum.e,truth_particles[j][k].momentum.px,truth_particles[j][k].momentum.py,truth_particles[j][k].momentum.pz]
+            # Also fill our separate buffers for each truth particle, if requested.
+            if(separate_truth_particles):
+                for k in range(n_truth):
+                    data['truth_Pmu_{}'.format(k)][j,:] = [truth_particles[j][k].momentum.e,truth_particles[j][k].momentum.px,truth_particles[j][k].momentum.py,truth_particles[j][k].momentum.pz]
 
             # Also store some jet-level information for debugging purposes.
             # We will also store the jet momentum in cylindrical coordinates (pt,eta,phi,m).
