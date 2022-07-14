@@ -25,6 +25,8 @@ def main(args):
     parser.add_argument('-o', '--outfile', type=str, help='Output HDF5 file name.', default='events.h5')
     parser.add_argument('-O', '--outdir', type=str, help='Output directory.', default=None)
     parser.add_argument('-g', '--generation',type=int, help='Whether or not to do event generation.', default=True)
+    parser.add_argument('-s', '--sep_truth',type=int, help='Whether or not to store truth-level particles in separate arrays.', default=True)
+
     args = vars(parser.parse_args())
 
     nevents_per_bin = args['nevents']
@@ -32,6 +34,7 @@ def main(args):
     h5_file = args['outfile']
     outdir = args['outdir']
     do_generation =args['generation'] > 0 # TODO: Find nicer way to handle Boolean -- argparse is weird.
+    separate_truth_particles = args['sep_truth'] > 0
     nbins = len(pt_bin_edges) - 1
 
     # Setting the verbosity for the HDF5 conversion.
@@ -92,7 +95,8 @@ def main(args):
             jet_files,
             truth_files=truth_files,
             h5_file=h5_file,
-            verbosity=h5_conversion_verbosity
+            verbosity=h5_conversion_verbosity,
+            separate_truth_particles=separate_truth_particles
         )
 
         # Cleanup: Delete the jet files, since they can always be fetched from the compressed HepMC files.
@@ -104,7 +108,8 @@ def main(args):
             jet_files,
             truth_files=truth_files,
             h5_file=h5_file,
-            verbosity=h5_conversion_verbosity
+            verbosity=h5_conversion_verbosity,
+            separate_truth_particles=separate_truth_particles
         )
 
         #Cleanup: Compress the HepMC files.

@@ -1,4 +1,4 @@
-# event_dir = 'events1'
+# For plotting kinematics of the dataset.
 
 import sys, os
 import numpy as np
@@ -9,81 +9,8 @@ import argparse as ap
 path_prefix = os.getcwd() + '/../'
 if(path_prefix not in sys.path): sys.path.append(path_prefix)
 from util import qol_util as qu
-from util.calcs import PxPyPzEToPtEtaPhiM, DeltaR2
-
-def GetJagged(pmu, nobj):
-    nentries_final = np.sum(nobj)
-    result = np.zeros((nentries_final,pmu.shape[-1]))
-    nentries = pmu.shape[0]
-
-    counter = 0
-    for i in range(nentries):
-        result[counter:counter+nobj[i],:] = pmu[i,:nobj[i],:]
-        counter += nobj[i]
-    return result
-
-# vecs are of form (eta, phi), one entry per event
-def DeltaR(vec1, vec2):
-    result = np.zeros(vec1.shape[0])
-    for i in range(len(result)):
-        result[i] = np.sqrt(DeltaR2(*vec1[i], *vec2[i]))
-    return result
-
-def KinematicDraw(keys, data, bin_info, title, logx=True, logy=True, colors=None):
-    c = rt.TCanvas(qu.RN(),'c0',800,600)
-    legend = rt.TLegend(0.8,0.8,0.95,0.95)
-    hstack = rt.THStack(qu.RN(),title)
-    hlist = []
-    nbins, xmin, xmax = bin_info
-
-    dummy = {'a':'a'}
-
-    if(type(keys) not in (list, type(dummy.keys()))):
-        keys = [keys]
-        data = {keys[0]:data}
-
-    for key in keys:
-
-        h = rt.TH1F(qu.RN(),'',nbins,xmin,xmax)
-        for elem in data[key]: h.Fill(elem)
-        if(colors is not None): h.SetLineColor(colors[key])
-        integral = np.maximum(h.Integral(),1.)
-        h.Scale(1./integral)
-        hstack.Add(h)
-        legend.AddEntry(h,key,'l')
-        hlist.append(h)
-
-    draw_option = "NOSTACK HIST"
-    if(colors is None): draw_option += " PLC PMC"
-    hstack.Draw(draw_option)
-    legend.Draw()
-    if(logx): c.SetLogx()
-    if(logy): c.SetLogy()
-    c.Draw()
-    return c, legend, hlist, hstack
-
-def KinematicDraw2D(data_x, data_y, bin_info, title, logx=True, logy=True):
-    c = rt.TCanvas(qu.RN(),'c0',800,600)
-    legend = rt.TLegend(0.8,0.8,0.95,0.95)
-
-    nx, xmin, xmax, ny, ymin, ymax = bin_info
-
-    dummy = {'a':'a'}
-
-    h = rt.TH2F(qu.RN(),title,nx, xmin, xmax, ny, ymin, ymax)
-
-    for i in range(len(data_x)):
-        h.Fill(data_x[i], data_y[i])
-
-    integral = np.maximum(h.Integral(),1.)
-    h.Scale(1./integral)
-    h.Draw('COLZ')
-    if(logx): c.SetLogx()
-    if(logy): c.SetLogy()
-    c.SetLogz()
-    c.SetRightMargin(0.15)
-    c.Draw()
-    return c, h
+from util.calcs import PxPyPzEToPtEtaPhiM
+from plot_util.plot_util import *
 
 def main(args):
 
@@ -160,6 +87,7 @@ def main(args):
         'jet':f['jet_Pmu'][:][:,3].flatten()
     }
 
+    # We can also get particles' momenta in (pt,eta,phi,m)
     p_cyl = {key: PxPyPzEToPtEtaPhiM(px[key],py[key],pz[key],E[key]) for key in E.keys()}
     pt = {key: p_cyl[key][:,0] for key in E.keys()}
     eta = {key: p_cyl[key][:,1] for key in E.keys()}
