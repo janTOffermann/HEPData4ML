@@ -84,10 +84,6 @@ def DelphesWithTruthToHDF5(delphes_files, truth_files=None, h5_file=None, nentri
             m   = np.zeros(pt.shape)
 
             vecs = PtEtaPhiMToPxPyPzE(pt,eta,phi,m) # convert 4-vectors to (px, py, pz, e) for jet clustering.
-
-            ## We already have the px, py, pz, e, and we do not need to adjust it, just extract the information directly from the hempc file.
-
-            # ----- Begin jet clustering -----
             jets = ClusterJets(vecs,jetdef,jet_config)
 
             # Check if there are any jets left. We may have executed a "jet check" before Delphes,
@@ -106,8 +102,8 @@ def DelphesWithTruthToHDF5(delphes_files, truth_files=None, h5_file=None, nentri
             jet = jets[selected_jet_idx]
 
             # Get the constituents of our selected jet. Assuming they are massless -> don't need to fetch the mass.
-            vec = FetchJetConstituents(jet,n_constituents,zero_mass=True)
-            FillDataBuffer(data,j,vec,jet,truth_particles,separate_truth_particles)
+            vecs = FetchJetConstituents(jet,n_constituents,zero_mass=True)
+            FillDataBuffer(data,j,vecs,jet,truth_particles,separate_truth_particles)
 
             if(verbosity==2): printProgressBarColor(j+1,ranges[i], prefix=prefix_level2, suffix=suffix, length=bl)
 
@@ -193,11 +189,6 @@ def HepMCWithTruthToHDF5(final_state_files, truth_files=None, h5_file=None, nent
             vecs = np.concatenate([[[final_state_particles[j][k].momentum.px,
                                        final_state_particles[j][k].momentum.py,final_state_particles[j][k].momentum.pz,
                                        final_state_particles[j][k].momentum.e]] for k in range(len(final_state_particles[j]))])
-
-            # print(vecs)
-            ## We already have the px, py, pz, e, and we do not need to adjust it, just extract the information directly from the hempc file.
-
-            # ----- Begin jet clustering -----
             jets = ClusterJets(vecs,jetdef,jet_config)
 
             # Check if there are any jets left. We may have executed a "jet check" before Delphes,
@@ -218,9 +209,8 @@ def HepMCWithTruthToHDF5(final_state_files, truth_files=None, h5_file=None, nent
             jet = jets[selected_jet_idx]
 
             # Get the constituents of our selected jet. Assuming they are massless -> don't need to fetch the mass.
-            vec = FetchJetConstituents(jet,n_constituents)
-
-            FillDataBuffer(data,j,vec,jet,truth_particles,separate_truth_particles)
+            vecs = FetchJetConstituents(jet,n_constituents)
+            FillDataBuffer(data,j,vecs,jet,truth_particles,separate_truth_particles)
 
             if(verbosity==2): printProgressBarColor(j+1,ranges[i], prefix=prefix_level2, suffix=suffix, length=bl)
 

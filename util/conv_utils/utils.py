@@ -95,9 +95,6 @@ def PrepDataBuffer(nentries_per_chunk,separate_truth_particles=False):
         for i in range(n_truth):
             key = 'truth_Pmu_{}'.format(i)
             data[key] = np.zeros((nentries_per_chunk,4),dtype=np.dtype('f8'))
-
-
-
     return data
 
 def PrepH5File(filename,nentries,data_buffer):
