@@ -121,8 +121,6 @@ def HepMCWithTruthToHDF5(final_state_files, truth_files=None, h5_file=None, nent
 
     jet_config,jetdef = InitFastJet()
 
-    # print('h5_file (start) = ',h5_file)
-
     if(h5_file is None):
         if(type(final_state_files) == list): h5_file = final_state_files[0]
         else: h5_file = final_state_files
@@ -130,8 +128,6 @@ def HepMCWithTruthToHDF5(final_state_files, truth_files=None, h5_file=None, nent
     npars = GetNPars()
     n_constituents = npars['jet_n_par']
     n_truth = npars['n_truth']
-
-    # print('h5_file = ',h5_file)
 
     # Note: It's important that the Delphes files and truth HepMC files line up!
     #       The way we usually do this, it will be guaranteed.
