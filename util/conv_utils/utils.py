@@ -8,15 +8,23 @@ from util.config import GetNPars, GetJetConfig
 from util.calcs import PtEtaPhiMToPxPyPzE, PtEtaPhiMToEPxPyPz, AdjustPhi
 from util.qol_util import printProgressBarColor
 
-def PrepFastJetImport():
-    fastjet_dir = BuildFastjet(j=8)
-    fastjet_dir = glob.glob('{}/**/site-packages'.format(fastjet_dir),recursive=True)[0]
-    if(fastjet_dir not in sys.path): sys.path.append(fastjet_dir)
-    return
+# --- FASTJET IMPORT ---
+# TODO: Can this be done more nicely?
+fastjet_dir = BuildFastjet(j=8)
+fastjet_dir = glob.glob('{}/**/site-packages'.format(fastjet_dir),recursive=True)[0]
+if(fastjet_dir not in sys.path): sys.path.append(fastjet_dir)
+import fastjet as fj
+# ----------------------
+
+# def PrepFastJetImport():
+#     fastjet_dir = BuildFastjet(j=8)
+#     fastjet_dir = glob.glob('{}/**/site-packages'.format(fastjet_dir),recursive=True)[0]
+#     if(fastjet_dir not in sys.path): sys.path.append(fastjet_dir)
+#     return
 
 def InitFastJet():
-    PrepFastJetImport()
-    import fastjet as fj
+    # PrepFastJetImport()
+    # import fastjet as fj
     fj.ClusterSequence.print_banner() # Get the Fastjet banner out of the way. TODO: Can we get rid of the banner? It is annoying.
     jet_config = GetJetConfig()
     jetdef = fj.JetDefinition(fj.antikt_algorithm, jet_config['jet_radius'])
@@ -58,7 +66,7 @@ def PrepDelphesArrays(delphes_files):
         else: var_map[key]['pt'] = branch
     return delphes_arr,var_map
 
-def PrepDataBuffer(nentries_per_chunk):
+def PrepDataBuffer(nentries_per_chunk,separate_truth_particles=False):
     nentries_per_chunk = int(nentries_per_chunk)
     npars = GetNPars()
     n_constituents = npars['jet_n_par']
@@ -77,6 +85,19 @@ def PrepDataBuffer(nentries_per_chunk):
         'jet_Pmu':np.zeros((nentries_per_chunk,4),dtype=np.dtype('f8')), # jet 4-momentum, in Cartesian coordinates (E, px, py, pz)
         'jet_Pmu_cyl':np.zeros((nentries_per_chunk,4),dtype=np.dtype('f8')) # jet 4-momentum, in cylindrical coordinates (pt,eta,phi,m)
     }
+
+    # In addition to the above, we will also store the truth-level 4-momenta with each in its own HDF5 dataset.
+    # In practice, this might be a more convenient storage format for things like neural network training.
+    # Note, however, that the number of these keys will depend on n_truth (the number of truth particles saved per event).
+    # TODO: Would be nice to accomplish this with references if possible, see: https://docs.h5py.org/en/stable/refs.html#refs .
+    #       Not clear if that is actually feasible.
+    if(separate_truth_particles):
+        for i in range(n_truth):
+            key = 'truth_Pmu_{}'.format(i)
+            data[key] = np.zeros((nentries_per_chunk,4),dtype=np.dtype('f8'))
+
+
+
     return data
 
 def PrepH5File(filename,nentries,data_buffer):
@@ -99,8 +120,8 @@ def PrepIndexRanges(nentries,nentries_per_chunk):
     return start_idxs,stop_idxs,ranges
 
 def ClusterJets(vecs, jetdef, jet_config):
-    PrepFastJetImport()
-    import fastjet as fj
+    # PrepFastJetImport()
+    # import fastjet as fj
 
     pj = [fj.PseudoJet(*x) for x in vecs]
     jets = jetdef(pj)
