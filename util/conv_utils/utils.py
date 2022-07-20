@@ -1,12 +1,11 @@
-import sys, os, glob, importlib
+import sys, glob
 import h5py as h5
 import numpy as np
 import uproot as ur
 import pyhepmc_ng as hep
-from util.fastjet import BuildFastjet, ParticleInfo
+from util.fastjet import BuildFastjet
 from util.config import GetNPars, GetJetConfig
-from util.calcs import PtEtaPhiMToPxPyPzE, PtEtaPhiMToEPxPyPz, AdjustPhi
-from util.qol_util import printProgressBarColor
+from util.calcs import PtEtaPhiMToEPxPyPz, AdjustPhi
 
 # --- FASTJET IMPORT ---
 # TODO: Can this be done more nicely?
@@ -16,15 +15,7 @@ if(fastjet_dir not in sys.path): sys.path.append(fastjet_dir)
 import fastjet as fj
 # ----------------------
 
-# def PrepFastJetImport():
-#     fastjet_dir = BuildFastjet(j=8)
-#     fastjet_dir = glob.glob('{}/**/site-packages'.format(fastjet_dir),recursive=True)[0]
-#     if(fastjet_dir not in sys.path): sys.path.append(fastjet_dir)
-#     return
-
 def InitFastJet():
-    # PrepFastJetImport()
-    # import fastjet as fj
     fj.ClusterSequence.print_banner() # Get the Fastjet banner out of the way. TODO: Can we get rid of the banner? It is annoying.
     jet_config = GetJetConfig()
     jetdef = fj.JetDefinition(fj.antikt_algorithm, jet_config['jet_radius'])
@@ -117,9 +108,6 @@ def PrepIndexRanges(nentries,nentries_per_chunk):
     return start_idxs,stop_idxs,ranges
 
 def ClusterJets(vecs, jetdef, jet_config):
-    # PrepFastJetImport()
-    # import fastjet as fj
-
     pj = [fj.PseudoJet(*x) for x in vecs]
     jets = jetdef(pj)
 

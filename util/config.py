@@ -7,10 +7,10 @@ import util.truth_selection as truthsel
 config = {
     'proc': 'Top_Wqq',
     'hadronization':True,
-    'mpi':True,
-    'isr':True,
-    'fsr':True,
-    'delphes':True,
+    'mpi':False,
+    'isr':False,
+    'fsr':False,
+    'delphes':False,
     'rng':1,
     'jet_radius':0.8,
     'jet_min_pt':15., #GeV
@@ -21,40 +21,34 @@ config = {
     'jet_selection':jetsel.GetTopJet
 }
 
-# Get the Pythia configuration (for a single pT bin).
-def GetPythiaConfig(pt_min, pt_max):
+def GetPythiaConfigFile():
     global config
-
     path_to_this = os.path.dirname(os.path.realpath(__file__))
     proc = config['proc']
     template_file = '{}/pythia_templates/{}.txt'.format(path_to_this,proc)
-
     if(not pathlib.Path(template_file).exists()):
         print('Error: Template file {} not found.'.format(template_file))
         assert(False)
+    return template_file
+
+def Bool2String(bool):
+    if(bool): return 'on'
+    return 'off'
+
+# Get the Pythia configuration, for a single pT bin, as a dictionary.
+# This dictionary will only control a few settings (MPI, ISR/FSR etc.),
+# while the process settings from the 'proc' entry of config will be
+# passed separately.
+def GetPythiaConfig(pt_min, pt_max):
+    global config
 
     pythia_config = {}
-    with open(template_file,'r') as f:
-        lines = f.readlines()
-        for line in lines:
-            line = line.replace('\n','')
-            if('=' in line):
-                s = line.split('=')
-                pythia_config[s[0].strip()] = s[1].strip()
 
-    # tack on a few more things to the pythia configuration
-    if(config['hadronization']): pythia_config['HadronLevel:all'] = 'on'
-    else: pythia_config['HadronLevel:all'] = 'off'
-
-    if(config['mpi']): pythia_config['PartonLevel:MPI'] = 'on'
-    else: pythia_config['PartonLevel:MPI'] = 'off'
-
-    if(config['isr']): pythia_config['PartonLevel:ISR'] = 'on'
-    else: pythia_config['PartonLevel:ISR'] = 'off'
-
-    if(config['fsr']): pythia_config['PartonLevel:FSR'] = 'on'
-    else:  pythia_config['PartonLevel:FSR'] = 'off'
-
+    # Tack on a few more things to the pythia configuration
+    pythia_config['HadronLevel:all'] = Bool2String(config['hadronization'])
+    pythia_config['PartonLevel:MPI'] = Bool2String(config['mpi'])
+    pythia_config['PartonLevel:ISR'] = Bool2String(config['isr'])
+    pythia_config['PartonLevel:FSR'] = Bool2String(config['fsr'])
     pythia_config['Random:setSeed'] = 'on'
     pythia_config['Random:seed'] = config['rng']
 
@@ -68,7 +62,6 @@ def GetPythiaConfig(pt_min, pt_max):
     pythia_config['Stat:showErrors'] = 'off'
 #     pythia_config['Next:numberShowProcess'] = '2'
 #     pythia_config['Next:numberShowEvent'] = '2'
-
     return pythia_config
 
 def GetTruthSelection():

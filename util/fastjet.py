@@ -73,7 +73,7 @@ def BuildFastjet(fastjet_dir=None, j=4, force=False, verbose=False):
     return install_dir
 
 class ParticleInfo(object):
-    """illustrative class for use in assigning pythonic user information
+    """Illustrative class for use in assigning pythonic user information
     to a PseudoJet.
     """
     def __init__(self, particle_index, status, pdg_id=0):
