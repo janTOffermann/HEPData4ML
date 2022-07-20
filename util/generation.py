@@ -1,13 +1,10 @@
-import sys, os, glob
+import glob
 import subprocess as sub
 import numpy as np
-import pyhepmc_ng as hep
-import awkward as ak
 import numpythia as npyth # Pythia, hepmc_write
 from util.config import GetPythiaConfig, GetPythiaConfigFile, GetTruthSelection, GetJetConfig
-from util.fastjet import BuildFastjet, ParticleInfo
-from util.calcs import DeltaR2Vectorized
-from util.gen_utils.utils import ApplyJetCuts, HepMCOutput, CreateHepMCEvent, ClusterJets, JetConstituentSelection, TruthDistanceSelection
+from util.fastjet import BuildFastjet
+from util.gen_utils.utils import HepMCOutput, CreateHepMCEvent, JetConstituentSelection, TruthDistanceSelection
 from util.conv_utils.utils import InitFastJet
 from util.particle_selection import SelectFinalState, SelectSimplestHadronic
 import util.qol_util as qu
@@ -37,6 +34,7 @@ def PythiaCompatibilityCheck(pythia_config):
             try:
                 pythia = npyth.Pythia(params=tmp_config)
                 pythia_config_safe[key] = val
+                del pythia # TODO: Is this helpful?
             except: pass
     return pythia_config_safe
 
@@ -59,7 +57,7 @@ def PythiaCompatibilityCheck(pythia_config):
 #     return
 
 def GenerationLoop(pythia, nevents,
-                   sel1, sel_truth,
+                   sel_truth,
                    filename,
                    prefix, suffix, bl=50,
                    i_real = 1, nevents_disp=None,
@@ -106,11 +104,12 @@ def GenerationLoop(pythia, nevents,
         # Get the final-state particles, as a numpy array.
         arr = SelectFinalState(event)
 
-        # # TODO: Some debugging.
+        # # # TODO: Some debugging.
         # blah = SelectSimplestHadronic(event, sel_truth)
         # print('Particles:')
         # for par in blah:
         #     print('\t',par)
+        # print()
 
         if(use_delphes):  status, arr, arr_truth = TruthDistanceSelection(arr,arr_truth,alpha)
         else: status, arr, arr_truth = JetConstituentSelection(arr,arr_truth,jetdef)
@@ -164,7 +163,7 @@ def Generate(nevents, pt_min, pt_max, filename = 'events.hepmc'): # TODO: implem
     bl = 50
     qu.printProgressBarColor(0,nevents, prefix=prefix, suffix=suffix, length=bl)
 
-    sel1 = (npyth.STATUS == 1) & (npyth.ABS_PDG_ID > -1) # Selection for all final-state particles. # TODO: This can be adjusted?
+    # TODO: Final-state selection is chosen within GenerationLoop. Should we do the same for truth selection?
     sel_truth = GetTruthSelection()
 
     # Loop in such a way as to guarantee that we get as many events as requested.
@@ -174,7 +173,7 @@ def Generate(nevents, pt_min, pt_max, filename = 'events.hepmc'): # TODO: implem
     n_fail = nevents
     nloops = 0
     while(n_fail > 0):
-        n_success, n_fail = GenerationLoop(pythia, nevents-n_success, sel1, sel_truth, filename, prefix, suffix, bl=50,
+        n_success, n_fail = GenerationLoop(pythia, nevents-n_success, sel_truth, filename, prefix, suffix, bl=50,
                                            i_real=n_success+1, nevents_disp = nevents, loop_number = nloops)
         nloops = nloops + 1
     return
