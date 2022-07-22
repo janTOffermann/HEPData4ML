@@ -143,6 +143,32 @@ def FetchJetConstituents(jet,n_constituents,zero_mass=False):
                             )
     return vec
 
+def SelectFinalStateParticles(px,py,pz,e, jetdef, truth_particles, data, j, separate_truth_particles):
+    jet_config = GetJetConfig()
+    n_constituents = GetNPars()['jet_n_par']
+    jet_sel = jet_config['jet_selection']
+    vecs = np.vstack((px,py,pz,e)).T
+
+    if(jet_sel is None):
+        FillDataBuffer(data,j,vecs,None,truth_particles,separate_truth_particles)
+    else:
+        jets = ClusterJets(vecs,jetdef,jet_config)
+
+        njets = len(jets)
+        if(njets == 0):
+            data['is_signal'][j] = -1 # Using -1 to mark as "no event". (To be discarded.)
+            return
+
+        selected_jet_idx = jet_config['jet_selection'](truth=truth_particles[j], jets=jets, use_hepmc=True)
+        if(selected_jet_idx < 0):
+            data['is_signal'][j] = -1 # Using -1 to mark as "no event". (To be discarded.)
+            return
+        jet = jets[selected_jet_idx]
+        # Get the constituents of our selected jet. Assuming they are massless -> don't need to fetch the mass.
+        vecs = FetchJetConstituents(jet,n_constituents)
+        FillDataBuffer(data,j,vecs,jet,truth_particles,separate_truth_particles)
+    return
+
 def FillDataBuffer(data_buffer,j,vecs,jet,truth_particles,separate_truth_particles=False):
     npars = GetNPars()
     n_truth = npars['n_truth']
@@ -156,8 +182,12 @@ def FillDataBuffer(data_buffer,j,vecs,jet,truth_particles,separate_truth_particl
         for par in truth_particles[j]
     ]
 
-    data_buffer['jet_Pmu'][j,:]     = [jet.e(), jet.px(), jet.py(), jet.pz()]
-    data_buffer['jet_Pmu_cyl'][j,:] = [jet.pt(), jet.eta(), AdjustPhi(jet.phi()), jet.m()]
+    if(jet is None):
+        data_buffer['jet_Pmu'][j,:] = 0.
+        data_buffer['jet_Pmu_cyl'][j,:] = 0.
+    else:
+        data_buffer['jet_Pmu'][j,:]     = [jet.e(), jet.px(), jet.py(), jet.pz()]
+        data_buffer['jet_Pmu_cyl'][j,:] = [jet.pt(), jet.eta(), AdjustPhi(jet.phi()), jet.m()]
 
     if(separate_truth_particles):
         for k in range(n_truth):

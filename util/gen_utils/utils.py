@@ -2,9 +2,11 @@ import sys, glob
 import numpy as np
 import subprocess as sub
 import pyhepmc_ng as hep
+import time
 from util.fastjet import BuildFastjet, ParticleInfo
 from util.config import GetJetConfig
 from util.calcs import DeltaR2Vectorized
+from util.hepmc import RestructureParticleArray
 
 # --- FASTJET IMPORT ---
 # TODO: Can this be done more nicely?
@@ -76,14 +78,9 @@ def CopyHepMCBuffer2File(buffername,filename,loop_number,i,i_real,nevents,n_fail
         f.writelines(line + '\n' for line in proc_out)
 
 def HepMCOutput(hepev,buffername,filename,loop_number,i,i_real,nevents,n_fail):
-    Write2HepMCBuffer(buffername,hepev)
-    CopyHepMCBuffer2File(buffername,filename,loop_number,i,i_real,nevents,n_fail)
+    Write2HepMCBuffer(buffername,hepev) # write the given event to a buffer f ile
+    CopyHepMCBuffer2File(buffername,filename,loop_number,i,i_real,nevents,n_fail) # copy buffer file into the full file
     return
-
-def RestructureParticleArray(arr):
-    fields = ['px','py','pz','E','pdgid','status','eta','phi']
-    arr = np.array([[x[y] for y in fields] for x in arr])
-    return arr
 
 # Note: This also modifies the structure of arr and arr_truth.
 def TruthDistanceSelection(arr, arr_truth, alpha):
