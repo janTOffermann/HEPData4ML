@@ -2,7 +2,7 @@ import glob
 import subprocess as sub
 import numpy as np
 import numpythia as npyth # Pythia, hepmc_write
-from util.config import GetPythiaConfig, GetPythiaConfigFile, GetTruthSelection, GetJetConfig
+from util.config import GetFinalStateSelection, GetPythiaConfig, GetPythiaConfigFile, GetTruthSelection, GetJetConfig
 from util.fastjet import BuildFastjet
 from util.gen_utils.utils import HepMCOutput, CreateHepMCEvent, JetConstituentSelection, TruthDistanceSelection
 from util.conv_utils.utils import InitFastJet
@@ -62,9 +62,7 @@ def GenerationLoop(pythia, nevents,
                    prefix, suffix, bl=50,
                    i_real = 1, nevents_disp=None,
                    loop_number=0, chunk_size=100,
-                   alpha = 2., max_dr = 0.2):
-
-    use_delphes = True
+                   alpha = 2.5, max_dr = 0.2):
 
     jet_config, jetdef = InitFastJet()
     # if(fastjet_dir not in sys.path): sys.path.append(fastjet_dir)
@@ -80,10 +78,14 @@ def GenerationLoop(pythia, nevents,
     # is written, and then copied to the "main" file before the next event is generated. This I/O might slow
     # down things, so we ultimately want to find some way to do a write with "append" functionality.
 
+    filename_truth = filename.replace('.hepmc','_truth.hepmc')
     buffername = filename.replace('.hepmc','_buffer.hepmc')
+    buffername_truth = buffername.replace('.hepmc','_truth.hepmc')
 
     for i,event in enumerate(pythia(events=nevents)):
         success = True
+        # for par in event.all(return_hepmc=False):
+        #     print('\t',par)
 
         # Get the selected truth particles.
         arr_truth = [event.all(selection=x, return_hepmc=False) for x in sel_truth]
@@ -102,43 +104,40 @@ def GenerationLoop(pythia, nevents,
         arr_truth = np.concatenate([event.first(selection=x, return_hepmc=False) for x in sel_truth],axis=0)
 
         # Get the final-state particles, as a numpy array.
-        arr = SelectFinalState(event)
+        arr = GetFinalStateSelection()(event=event)
 
-        # # # TODO: Some debugging.
-        # blah = SelectSimplestHadronic(event, sel_truth)
-        # print('Particles:')
-        # for par in blah:
-        #     print('\t',par)
-        # print()
-
-        if(use_delphes):  status, arr, arr_truth = TruthDistanceSelection(arr,arr_truth,alpha)
-        else: status, arr, arr_truth = JetConstituentSelection(arr,arr_truth,jetdef)
+        # Select which final-state particles to save -- this will slim down the HepMC file,
+        # it is entirely a practical concern of file size.
+        # Actual final-state selections will be carried out in conversion.py, this is just some
+        # rudimentary pre-selection.
+        status, arr, arr_truth = TruthDistanceSelection(arr,arr_truth,alpha)
 
         if(not status):
             n_fail += 1
             success = False
             continue
 
-        # Combine the particle arrays.
-        arr = np.row_stack((arr_truth, arr))
-        del arr_truth
-
         # Create a GenEvent (pyhepmc_ng) containing these selected particles.
         # Note that the event comes from pyhepmc_ng, *not* numpythia.
         # Thus we cannot just use GenParticles from numpythia (e.g. using return_hepmc=True above).
         hepev = CreateHepMCEvent(arr,i_real)
+        hepev_truth = CreateHepMCEvent(arr_truth,i_real)
 
         # ----- File I/O -----
         # Write this event to the HepMC buffer file, then copy the buffer contents to the full HepMC file.
         HepMCOutput(hepev,buffername,filename,loop_number,i,i_real,nevents,n_fail)
+        HepMCOutput(hepev_truth,buffername_truth,filename_truth,loop_number,i,i_real,nevents,n_fail)
         # ----- End File I/O -----
 
         qu.printProgressBarColor(i_real,nevents_disp, prefix=prefix, suffix=suffix, length=bl)
         i_real += 1
 
-    # delete the buffer file
-    comm = ['rm', buffername]
-    sub.check_call(comm)
+    # Delete the buffer files.
+    for fname in [buffername,buffername_truth]:
+        comm = ['rm', fname]
+        try: sub.check_call(comm,stderr=sub.DEVNULL)
+        except: pass
+
     return i_real-1, n_fail
 
 # Generate a bunch of events in the given pT range,

@@ -3,10 +3,11 @@ import pathlib
 #import numpythia as npyth # for defining selections
 import util.jet_selection as jetsel
 import util.truth_selection as truthsel
+import util.particle_selection as parsel
 
 config = {
     'proc': 'Top_Wqq',
-    'hadronization':True,
+    'hadronization':False,
     'mpi':False,
     'isr':False,
     'fsr':False,
@@ -17,8 +18,11 @@ config = {
     'jet_max_eta':2.,
     'jet_n_par': 200,
     'n_truth':3,
-    'truth_selection': truthsel.selections['t->Wb'],
-    'jet_selection':jetsel.GetTopJet
+    'truth_selection': truthsel.selections['t->Wb_nohad'],
+    # 'final_state_selection': parsel.SelectFinalState,
+    'final_state_selection': parsel.SelectSimplestHadronic(truthsel.selections['Wb_nohad']),
+    # 'jet_selection':jetsel.GetTopJet
+    'jet_selection':None
 }
 
 def GetPythiaConfigFile():
@@ -66,6 +70,9 @@ def GetPythiaConfig(pt_min, pt_max):
 
 def GetTruthSelection():
     return config['truth_selection']
+
+def GetFinalStateSelection():
+    return config['final_state_selection']
 
 def GetJetConfig():
     return_dict = {}

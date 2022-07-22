@@ -72,8 +72,8 @@ def main(args):
         if(do_generation): Generate(nevents_per_bin, pt_min, pt_max, hep_file)
 
         # Extract the truth-level particles from the full HepMC file.
-        truthfile = hep_file.replace('.hepmc','_truth.hepmc')
-        truthfile = CopyTruth(hep_file, truthfile)
+        truthfile = hep_file.replace('.hepmc','_truth.hepmc') # TODO: Should be returned by Generate()
+        # truthfile = CopyTruth(hep_file, truthfile)
         truth_files.append(truthfile)
 
         if(use_delphes): # Case 1: Using Delphes
