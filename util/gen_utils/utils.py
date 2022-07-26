@@ -2,7 +2,6 @@ import sys, glob
 import numpy as np
 import subprocess as sub
 import pyhepmc_ng as hep
-import time
 from util.fastjet import BuildFastjet, ParticleInfo
 from util.config import GetJetConfig
 from util.calcs import DeltaR2Vectorized
