@@ -2,7 +2,7 @@ import glob
 import subprocess as sub
 import numpy as np
 import numpythia as npyth # Pythia, hepmc_write
-from util.config import GetFinalStateSelection, GetPythiaConfig, GetPythiaConfigFile, GetTruthSelection, GetJetConfig
+from util.config import GetFinalStateSelection, GetPythiaConfig, GetPythiaConfigFile, GetTruthSelection, GetJetConfig, GetAlpha
 from util.fastjet import BuildFastjet
 from util.gen_utils.utils import HepMCOutput, CreateHepMCEvent, JetConstituentSelection, TruthDistanceSelection
 from util.conv_utils.utils import InitFastJet
@@ -57,12 +57,11 @@ def PythiaCompatibilityCheck(pythia_config):
 #     return
 
 def GenerationLoop(pythia, nevents,
-                   sel_truth,
                    filename,
                    prefix, suffix, bl=50,
                    i_real = 1, nevents_disp=None,
                    loop_number=0, chunk_size=100,
-                   alpha = 2.5, max_dr = 0.2):
+                   max_dr = 0.2):
 
     jet_config, jetdef = InitFastJet()
     # if(fastjet_dir not in sys.path): sys.path.append(fastjet_dir)
@@ -84,13 +83,16 @@ def GenerationLoop(pythia, nevents,
 
     for i,event in enumerate(pythia(events=nevents)):
         success = True
-        # for par in event.all(return_hepmc=False):
-        #     print('\t',par)
 
-        # Get the selected truth particles.
-        arr_truth = [event.all(selection=x, return_hepmc=False) for x in sel_truth]
+        # Get the truth-level particles.
+        # TODO: In some cases of t -> b W, using GenEvent.all() yields two b-quarks (throwing off some later code).
+        #       This happens without MPI/ISR/FSR/ and both of them have the same generator status. How?
+        # arr_truth = np.concatenate([event.first(selection=x, return_hepmc=False) for x in sel_truth],axis=0)
+
+        arr_truth = GetTruthSelection()(event=event)
 
         for truth in arr_truth:
+            # print(truth)
             if(len(truth) == 0): # missing some truth particle -> potential trouble?
                 n_fail += 1
                 success = False
@@ -98,18 +100,20 @@ def GenerationLoop(pythia, nevents,
 
         if(not success): continue
 
-        # Get the truth-level particles.
-        # TODO: In some cases of t -> b W, using GenEvent.all() yields two b-quarks (throwing off some later code).
-        #       This happens without MPI/ISR/FSR/ and both of them have the same generator status. How?
-        arr_truth = np.concatenate([event.first(selection=x, return_hepmc=False) for x in sel_truth],axis=0)
-
         # Get the final-state particles, as a numpy array.
-        arr = GetFinalStateSelection()(event=event)
+        status, arr = GetFinalStateSelection()(event=event)
+
+        # If we didn't pick up any final-state particles, discard this event.
+        if(not status):
+            n_fail += 1
+            success = False
+            continue
 
         # Select which final-state particles to save -- this will slim down the HepMC file,
         # it is entirely a practical concern of file size.
         # Actual final-state selections will be carried out in conversion.py, this is just some
         # rudimentary pre-selection.
+        alpha = GetAlpha()
         status, arr, arr_truth = TruthDistanceSelection(arr,arr_truth,alpha)
 
         if(not status):
@@ -163,7 +167,7 @@ def Generate(nevents, pt_min, pt_max, filename = 'events.hepmc'): # TODO: implem
     qu.printProgressBarColor(0,nevents, prefix=prefix, suffix=suffix, length=bl)
 
     # TODO: Final-state selection is chosen within GenerationLoop. Should we do the same for truth selection?
-    sel_truth = GetTruthSelection()
+    # sel_truth = GetTruthSelection()
 
     # Loop in such a way as to guarantee that we get as many events as requested.
     # This logic is required as events could technically fail selections, e.g. not have the
@@ -172,7 +176,7 @@ def Generate(nevents, pt_min, pt_max, filename = 'events.hepmc'): # TODO: implem
     n_fail = nevents
     nloops = 0
     while(n_fail > 0):
-        n_success, n_fail = GenerationLoop(pythia, nevents-n_success, sel_truth, filename, prefix, suffix, bl=50,
+        n_success, n_fail = GenerationLoop(pythia, nevents-n_success, filename, prefix, suffix, bl=50,
                                            i_real=n_success+1, nevents_disp = nevents, loop_number = nloops)
         nloops = nloops + 1
     return

@@ -40,7 +40,8 @@ def ExtractHepMCParticles(events,n_par):
     return particles
 
 def PrepDelphesArrays(delphes_files):
-    types = ['EFlowTrack','EFlowNeutralHadron']
+    # types = ['EFlowTrack','EFlowNeutralHadron','EFlowPhoton']
+    types = ['Tower'] # TODO: Is there a better way to prepare Delphes jet constituents? We want PFlow/EFlow?
     components = ['PT','Eta','Phi','ET'] # not all types have all components, this is OK
     delphes_keys = ['{x}.{y}'.format(x=x,y=y) for x in types for y in components]
     delphes_tree = 'Delphes'
@@ -147,11 +148,12 @@ def SelectFinalStateParticles(px,py,pz,e, jetdef, truth_particles, data, j, sepa
     jet_config = GetJetConfig()
     n_constituents = GetNPars()['jet_n_par']
     jet_sel = jet_config['jet_selection']
-    vecs = np.vstack((px,py,pz,e)).T
 
     if(jet_sel is None):
+        vecs = np.vstack((e,px,py,pz)).T # note energy is given as 0th component
         FillDataBuffer(data,j,vecs,None,truth_particles,separate_truth_particles)
     else:
+        vecs = np.vstack((px,py,pz,e)).T # note energy is given as last component, needed for fastjet
         jets = ClusterJets(vecs,jetdef,jet_config)
 
         njets = len(jets)

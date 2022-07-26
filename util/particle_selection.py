@@ -1,7 +1,6 @@
 import numpythia as npyth # for defining selections
 import numpy as np
-from util.hepmc import HepMCArrayToNumpy, RestructureParticleArray
-# from util.truth_selection import selections as truth_sel
+from util.hepmc import HepMCArrayToNumpy
 
 def IsQuark(particle):
     pid = np.abs(particle.pid)
@@ -33,7 +32,8 @@ def SelectFinalState(**kwargs):
     event = kwargs['event']
     selection = (npyth.STATUS == 1) & (npyth.ABS_PDG_ID > -1)
     particles = event.all(selection=selection, return_hepmc=False)
-    return particles
+    status = len(particles) != 0
+    return status, particles
 
 # Select the "simplest" all-quark final state -- this recursively searches the Feynman diagram starting with
 # the particles given by "truth_sel", and selects the earliest quark found along each branch.
@@ -43,8 +43,9 @@ class SelectSimplestHadronic:
         self.truth_sel = truth_sel
 
     def __call__(self, event):
-        truth_arr = [event.first(selection=x, return_hepmc=True) for x in self.truth_sel]
+        truth_arr = self.truth_sel(event,return_hepmc=True)
         particles = []
         for par in truth_arr:
+            if(par is None): return False, np.zeros(0) # part of truth_sel returned no particle -> this is bad, return status=False (failure)
             particles += GatherQuarks(par)
-        return HepMCArrayToNumpy(particles)
+        return True, HepMCArrayToNumpy(particles)
