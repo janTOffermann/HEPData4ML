@@ -1,8 +1,7 @@
 import glob
 import subprocess as sub
-import numpy as np
 import numpythia as npyth # Pythia, hepmc_write
-from util.config import GetFinalStateSelection, GetPythiaConfig, GetPythiaConfigFile, GetTruthSelection, GetJetConfig, GetAlpha
+from util.config import GetEventSelection, GetFinalStateSelection, GetPythiaConfig, GetPythiaConfigFile, GetTruthSelection
 from util.fastjet import BuildFastjet
 from util.gen_utils.utils import HepMCOutput, CreateHepMCEvent, JetConstituentSelection, TruthDistanceSelection
 from util.conv_utils.utils import InitFastJet
@@ -109,12 +108,15 @@ def GenerationLoop(pythia, nevents,
             success = False
             continue
 
-        # Select which final-state particles to save -- this will slim down the HepMC file,
-        # it is entirely a practical concern of file size.
-        # Actual final-state selections will be carried out in conversion.py, this is just some
-        # rudimentary pre-selection.
-        alpha = GetAlpha()
-        status, arr, arr_truth = TruthDistanceSelection(arr,arr_truth,alpha)
+        # print('\n',len(arr),arr)
+
+        # Optionally filter down events (e.g. throw out particles too far from selected truth particles).
+        # This is typically some sort of filtering done just to reduce the HepMC file size (which can be rather large).
+        event_selection = GetEventSelection()
+        if(event_selection is not None):
+            status, arr, arr_truth = event_selection(arr,arr_truth)
+
+        # print()
 
         if(not status):
             n_fail += 1
@@ -180,48 +182,3 @@ def Generate(nevents, pt_min, pt_max, filename = 'events.hepmc'): # TODO: implem
                                            i_real=n_success+1, nevents_disp = nevents, loop_number = nloops)
         nloops = nloops + 1
     return
-
-# Create a copy of a HepMC file containing only truth-level particles (i.e. remove final-state info).
-def CopyTruth(hepfile, outfile=None):
-
-    npars = []
-    npar = 0
-
-    if(outfile is None): outfile = hepfile.replace('.hepmc','_truth.hepmc')
-    with open(hepfile,'r') as f, open(outfile,'w') as g:
-        for line in f:
-            if(':') in line: g.write(line)
-            else:
-                line = line.replace('\n','').split(' ')
-                if(line[-1] != '1'):
-                    if(line[0] == 'E'):
-                        npars.append(npar)
-                        npar = 0
-                        g.write(' '.join(line) + '\n')
-                    elif(line[0] == 'P'):
-                        npar +=1
-                        g.write(' '.join(line) + '\n')
-    npars.append(npar)
-    npars = npars[1:]
-
-    # Now we need to correct the event headers, to have the right number of particles.
-    # While it might not be the most efficient, this is easy to accomplish on a 2nd pass.
-    # The file is also likely so small now that it's very easy to store in memory.
-    event_counter = 0
-    lines = []
-
-    with open(outfile,'r') as f:
-        for line in f:
-            if(':' in line): lines.append(line)
-            else:
-                line = line.replace('\n','').split(' ')
-                if(line[0] == 'E'):
-                    line[3] = str(npars[event_counter])
-                    event_counter += 1
-                lines.append(' '.join(line) + '\n')
-
-    with open(outfile,'w') as f:
-        for line in lines:
-            f.write(line)
-
-    return outfile
