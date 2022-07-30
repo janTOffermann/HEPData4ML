@@ -1,6 +1,6 @@
 import sys, os, glob
 import subprocess as sub
-import util.qol_util as qu
+import util.qol_utils.qol_util as qu
 
 def BuildDelphes(delphes_dir=None, j=4, force=False, verbose=False):
     if(delphes_dir is None):

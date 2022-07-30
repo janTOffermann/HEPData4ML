@@ -5,7 +5,6 @@ import uproot as ur
 import pyhepmc_ng as hep
 from util.fastjet import BuildFastjet
 from util.config import GetNPars, GetJetConfig
-from util.calcs import PtEtaPhiMToEPxPyPz, AdjustPhi
 
 # --- FASTJET IMPORT ---
 # TODO: Can this be done more nicely?
@@ -107,92 +106,3 @@ def PrepIndexRanges(nentries,nentries_per_chunk):
     stop_idxs[-1] = nentries
     ranges = stop_idxs - start_idxs
     return start_idxs,stop_idxs,ranges
-
-def ClusterJets(vecs, jetdef, jet_config):
-    pj = [fj.PseudoJet(*x) for x in vecs]
-    jets = jetdef(pj)
-
-    # Apply optional minimum jet pT cut.
-    jet_pt = np.array([jet.pt() for jet in jets])
-    jet_indices = np.linspace(0,len(jets)-1,len(jets),dtype=np.dtype('i8'))[jet_pt >= jet_config['jet_min_pt']]
-    jets = [jets[i] for i in jet_indices]
-
-    # Apply optional maximum |eta| cut.
-    jet_eta = np.array([jet.eta() for jet in jets])
-    jet_indices = np.linspace(0,len(jets)-1,len(jets),dtype=np.dtype('i8'))[np.abs(jet_eta) <= jet_config['jet_max_eta']]
-    jets = [jets[i] for i in jet_indices]
-    return jets
-
-def FetchJetConstituents(jet,n_constituents,zero_mass=False):
-    if(zero_mass):
-        pt,eta,phi,m = np.hsplit(np.array([[x.pt(), x.eta(), x.phi(), 0.] for x in jet.constituents()]),4)
-    else:
-        pt,eta,phi,m = np.hsplit(np.array([[x.pt(), x.eta(), x.phi(), x.m()] for x in jet.constituents()]),4)
-
-    pt = pt.flatten()
-    eta = eta.flatten()
-    phi = phi.flatten()
-    m = m.flatten()
-
-    # Sort by decreasing pt, and only keep leading constituents.
-    sorting = np.argsort(-pt)
-    l = int(np.minimum(n_constituents,len(pt)))
-    vec = PtEtaPhiMToEPxPyPz(pt=pt[sorting][:l], # Vector will be of format (E, px, py, pz)
-                                eta=eta[sorting][:l],
-                                phi=phi[sorting][:l],
-                                m=m[sorting][:1]
-                            )
-    return vec
-
-def SelectFinalStateParticles(px,py,pz,e, jetdef, truth_particles, data, j, separate_truth_particles):
-    jet_config = GetJetConfig()
-    n_constituents = GetNPars()['jet_n_par']
-    jet_sel = jet_config['jet_selection']
-
-    if(jet_sel is None):
-        vecs = np.vstack((e,px,py,pz)).T # note energy is given as 0th component
-        FillDataBuffer(data,j,vecs,None,truth_particles,separate_truth_particles)
-    else:
-        vecs = np.vstack((px,py,pz,e)).T # note energy is given as last component, needed for fastjet
-        jets = ClusterJets(vecs,jetdef,jet_config)
-
-        njets = len(jets)
-        if(njets == 0):
-            data['is_signal'][j] = -1 # Using -1 to mark as "no event". (To be discarded.)
-            return
-
-        # selected_jet_idx = jet_config['jet_selection'](truth=truth_particles[j], jets=jets, use_hepmc=True)
-        selected_jet_idx = jet_sel(truth=truth_particles[j], jets=jets)
-        if(selected_jet_idx < 0):
-            data['is_signal'][j] = -1 # Using -1 to mark as "no event". (To be discarded.)
-            return
-        jet = jets[selected_jet_idx]
-        # Get the constituents of our selected jet. Assuming they are massless -> don't need to fetch the mass.
-        vecs = FetchJetConstituents(jet,n_constituents)
-        FillDataBuffer(data,j,vecs,jet,truth_particles,separate_truth_particles)
-    return
-
-def FillDataBuffer(data_buffer,j,vecs,jet,truth_particles,separate_truth_particles=False):
-    npars = GetNPars()
-    n_truth = npars['n_truth']
-    l = vecs.shape[0]
-    data_buffer['Nobj'][j] = l
-    data_buffer['Pmu'][j,:l,:] = vecs
-    data_buffer['truth_Nobj'][j] = len(truth_particles[j])
-    data_buffer['truth_Pdg'][j,:] = [par.pid for par in truth_particles[j]]
-    data_buffer['truth_Pmu'][j,:,:] = [
-        [par.momentum.e, par.momentum.px, par.momentum.py, par.momentum.pz]
-        for par in truth_particles[j]
-    ]
-
-    if(jet is None):
-        data_buffer['jet_Pmu'][j,:] = 0.
-        data_buffer['jet_Pmu_cyl'][j,:] = 0.
-    else:
-        data_buffer['jet_Pmu'][j,:]     = [jet.e(), jet.px(), jet.py(), jet.pz()]
-        data_buffer['jet_Pmu_cyl'][j,:] = [jet.pt(), jet.eta(), AdjustPhi(jet.phi()), jet.m()]
-
-    if(separate_truth_particles):
-        for k in range(n_truth):
-            data_buffer['truth_Pmu_{}'.format(k)][j,:] = [truth_particles[j][k].momentum.e,truth_particles[j][k].momentum.px,truth_particles[j][k].momentum.py,truth_particles[j][k].momentum.pz]
-    return

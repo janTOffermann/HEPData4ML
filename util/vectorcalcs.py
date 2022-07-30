@@ -2,7 +2,7 @@
 import ROOT as rt
 import sys,os,glob,pathlib
 import subprocess as sub
-import util.qol_util as qu
+import util.qol_utils.qol_util as qu
 
 def BuildVectorCalcs(force=False):
 

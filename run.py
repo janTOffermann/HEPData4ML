@@ -1,10 +1,9 @@
 import sys,os
 import argparse as ap
 import subprocess as sub
-from util.generation import Generate
+from util.generation import Generator
 from util.delphes import BuildDelphes, HepMC3ToDelphes
-from util.conversion import *
-from util.vectorcalcs import BuildVectorCalcs, LoadVectorCalcs
+from util.conversion import Processor, RemoveFailedFromHDF5, SplitHDF5
 from util.config import GetDelphesConfig
 
 def CompressHepMC(files, delete=True):
@@ -69,7 +68,12 @@ def main(args):
         pt_min = pt_bin_edges[i]
         pt_max = pt_bin_edges[i+1]
         hep_file = '{}/events_{}-{}.hepmc'.format(outdir,pt_min,pt_max)
-        if(do_generation): Generate(nevents_per_bin, pt_min, pt_max, hep_file)
+        if(do_generation):
+            generator = Generator(pt_min,pt_max)
+            generator.SetOutputDirectory(outdir) # TODO: Currently only used for histograms, should implement so it is tacked onto hep_file etc.
+            generator.Generate(nevents_per_bin,hep_file)
+
+            # Generate(nevents_per_bin, pt_min, pt_max, hep_file)
 
         # Extract the truth-level particles from the full HepMC file.
         truthfile = hep_file.replace('.hepmc','_truth.hepmc') # TODO: Should be returned by Generate()
@@ -88,29 +92,15 @@ def main(args):
             jet_files.append(hep_file)
 
     # Now put everything into an HDF5 file.
+    processor = Processor(use_delphes)
+    processor.Process(jet_files,truth_files,h5_file,verbosity=h5_conversion_verbosity,separate_truth_particles=separate_truth_particles)
 
     if(use_delphes):
-        DelphesWithTruthToHDF5(
-            jet_files,
-            truth_files=truth_files,
-            h5_file=h5_file,
-            verbosity=h5_conversion_verbosity,
-            separate_truth_particles=separate_truth_particles
-        )
-
-        # Cleanup: Delete the jet files, since they can always be fetched from the compressed HepMC files.
+        # Cleanup: Delete the jet files, since they can always be recreated from the compressed HepMC files.
         comm = ['rm'] + jet_files
         sub.check_call(comm)
 
     else:
-        HepMCWithTruthToHDF5(
-            jet_files,
-            truth_files=truth_files,
-            h5_file=h5_file,
-            verbosity=h5_conversion_verbosity,
-            separate_truth_particles=separate_truth_particles
-        )
-
         #Cleanup: Compress the HepMC files.
         CompressHepMC(jet_files,True)
 
