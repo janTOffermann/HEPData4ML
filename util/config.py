@@ -62,8 +62,8 @@ def GetNPars():
     for key in ['jet_n_par','n_truth']: return_dict[key] = config[key]
     return return_dict
 
-# def GetAlpha():
-#     return config['alpha']
+def GetInvisiblesFlag():
+    return config['invisibles']
 
 def GetEventSelection():
     return config['event_selection']

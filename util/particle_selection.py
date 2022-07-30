@@ -14,6 +14,10 @@ def IsGluon(particle):
     pid = np.abs(particle.pid)
     return (pid in [9,21])
 
+def IsNeutrino(particle):
+    pid = np.abs(particle.pid)
+    return (pid in [12, 14, 16, 18])
+
 def GatherQuarks(particle,ignore=False):
     particle_list = []
     if(IsQuark(particle) and not ignore):
