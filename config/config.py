@@ -24,6 +24,7 @@ config = {
     'jet_selection':jetsel.GetNearestJet(truth_code=6,max_dr=0.8),
     # 'jet_selection' : None,
     # 'event_selection' : None
+    'signal_flag' : 1 # What to provide as the "signal_flag" for these events. (relevant if combining datasets). Must be >= 0.
 }
 
 # Don't need to adjust the lines below.
