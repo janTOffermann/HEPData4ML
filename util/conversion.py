@@ -22,7 +22,6 @@ def DelphesWithTruthToHDF5(delphes_files, truth_files=None, h5_file=None, nentri
         else: h5_file = delphes_files
         h5_file =  h5_file.replace('*','').replace('.root','.h5')
     npars = GetNPars()
-    n_constituents = npars['jet_n_par']
     n_truth = npars['n_truth']
 
     # Note: It's important that the Delphes files and truth HepMC files line up!
@@ -84,30 +83,12 @@ def DelphesWithTruthToHDF5(delphes_files, truth_files=None, h5_file=None, nentri
             m   = np.zeros(pt.shape)
 
             vecs = PtEtaPhiMToPxPyPzE(pt,eta,phi,m) # convert 4-vectors to (px, py, pz, e) for jet clustering.
+            px = vecs[:,0]
+            py = vecs[:,1]
+            pz = vecs[:,2]
+            e  = vecs[:,3]
 
-            # TODO: Use the below
-            # SelectFinalStateParticles(px,py,pz,e, jetdef, truth_particles, data, j, separate_truth_particles)
-
-            jets = ClusterJets(vecs,jetdef,jet_config)
-
-            # Check if there are any jets left. We may have executed a "jet check" before Delphes,
-            # but after passing things through Delphes we may no longer have jets that meet our cuts.
-            njets = len(jets)
-            if(njets == 0):
-                data['is_signal'][j] = -1 # Using -1 to mark as "no event". (To be discarded.)
-                continue
-
-            # Now select a jet.
-            selected_jet_idx = jet_config['jet_selection'](truth = truth_particles[j], jets = jets, use_hepmc=True)
-            if(selected_jet_idx < 0):
-                # TODO: Determine what's best to do here.
-                data['is_signal'][j] = -1 # Using -1 to mark as "no event". (To be discarded.)
-                continue
-            jet = jets[selected_jet_idx]
-
-            # Get the constituents of our selected jet. Assuming they are massless -> don't need to fetch the mass.
-            vecs = FetchJetConstituents(jet,n_constituents,zero_mass=True)
-            FillDataBuffer(data,j,vecs,jet,truth_particles,separate_truth_particles)
+            SelectFinalStateParticles(px,py,pz,e, jetdef, truth_particles, data, j, separate_truth_particles)
 
             if(verbosity==2): printProgressBarColor(j+1,ranges[i], prefix=prefix_level2, suffix=suffix, length=bl)
 
@@ -130,7 +111,6 @@ def HepMCWithTruthToHDF5(final_state_files, truth_files=None, h5_file=None, nent
         else: h5_file = final_state_files
         h5_file =  h5_file.replace('*','').replace('.hepmc','.h5')
     npars = GetNPars()
-    n_constituents = npars['jet_n_par']
     n_truth = npars['n_truth']
 
     # Note: It's important that the Delphes files and truth HepMC files line up!
