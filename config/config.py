@@ -19,7 +19,7 @@ config = {
     'truth_selection' : truthsel.TruthSelection('t->Wb'),
     'final_state_selection': parsel.SelectFinalState,
     # 'final_state_selection' : parsel.SelectSimplestHadronic(truthsel.TruthSelection('Wb_nohad')),
-    'jet_selection':jetsel.GetTopJet,
+    'jet_selection':jetsel.GetNearestJet(truth_code=6,max_dr=0.8),
     # 'jet_selection' : None,
     'event_selection' : eventsel.TruthDistanceSelection(distance=2.4),
     # 'event_selection' : None

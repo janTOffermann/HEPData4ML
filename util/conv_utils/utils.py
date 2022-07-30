@@ -161,7 +161,8 @@ def SelectFinalStateParticles(px,py,pz,e, jetdef, truth_particles, data, j, sepa
             data['is_signal'][j] = -1 # Using -1 to mark as "no event". (To be discarded.)
             return
 
-        selected_jet_idx = jet_config['jet_selection'](truth=truth_particles[j], jets=jets, use_hepmc=True)
+        # selected_jet_idx = jet_config['jet_selection'](truth=truth_particles[j], jets=jets, use_hepmc=True)
+        selected_jet_idx = jet_sel(truth=truth_particles[j], jets=jets)
         if(selected_jet_idx < 0):
             data['is_signal'][j] = -1 # Using -1 to mark as "no event". (To be discarded.)
             return
