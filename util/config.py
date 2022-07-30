@@ -67,3 +67,6 @@ def GetInvisiblesFlag():
 
 def GetEventSelection():
     return config['event_selection']
+
+def GetSignalFlag():
+    return config['signal_flag']

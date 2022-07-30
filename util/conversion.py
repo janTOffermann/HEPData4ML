@@ -2,7 +2,7 @@ import sys, glob, uuid
 import numpy as np
 import h5py as h5
 import subprocess as sub
-from util.config import GetNPars, GetJetConfig, GetInvisiblesFlag
+from util.config import GetNPars, GetJetConfig, GetInvisiblesFlag, GetSignalFlag
 from util.calcs import PtEtaPhiMToPxPyPzE, PtEtaPhiMToEPxPyPz, AdjustPhi
 from util.fastjet import BuildFastjet
 from util.qol_utils.qol_util import printProgressBarColor
@@ -95,7 +95,7 @@ class Processor:
             # For each event we must combine tracks and neutral hadrons, perform jet clustering on them,
             # select a single jet (based on user criteria), and select that jet's leading constituents.
             for j in range(ranges[i]):
-                data['is_signal'][j] = 1 # TODO: redundant for now
+                data['is_signal'][j] = GetSignalFlag()
 
                 if(self.delphes):
                     pt  = np.concatenate([momenta[x]['pt'][j].to_numpy() for x in types])
@@ -112,8 +112,7 @@ class Processor:
                 else:
                     l = len(final_state_particles[j])
 
-                    # Exclude invisibles (neutrinos).
-                    # TODO: We might want to make the use of invisibles toggleable.
+                    # Optionally exclude invisibles (neutrinos). If using Delphes, this should be handled by Delphes internally.
                     if(GetInvisiblesFlag):
                         visibles = np.arange(l)
                     else:
@@ -121,10 +120,6 @@ class Processor:
                         visibles = np.where(invisibles == 0)[0]
                         del invisibles
 
-                    # px = np.array([final_state_particles[j][k].momentum.px for k in range(l)])
-                    # py = np.array([final_state_particles[j][k].momentum.py for k in range(l)])
-                    # pz = np.array([final_state_particles[j][k].momentum.pz for k in range(l)])
-                    # e  = np.array([final_state_particles[j][k].momentum.e  for k in range(l)])
                     px = np.array([final_state_particles[j][k].momentum.px for k in visibles])
                     py = np.array([final_state_particles[j][k].momentum.py for k in visibles])
                     pz = np.array([final_state_particles[j][k].momentum.pz for k in visibles])
