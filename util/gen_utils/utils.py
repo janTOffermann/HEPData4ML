@@ -1,10 +1,12 @@
-import sys, glob
+import sys, glob, uuid
+import ROOT as rt
 import numpy as np
 import subprocess as sub
 import pyhepmc_ng as hep
 from util.fastjet import BuildFastjet, ParticleInfo
 from util.config import GetJetConfig
 from util.calcs import DeltaR2Vectorized
+from util.hepmc import RestructureParticleArray
 
 # --- FASTJET IMPORT ---
 # TODO: Can this be done more nicely?
@@ -44,6 +46,7 @@ def ApplyJetCuts(jets):
     return jets
 
 def CreateHepMCEvent(particle_array,event_number):
+    particle_array = RestructureParticleArray(particle_array)
     N = len(particle_array)
     hepev = hep.GenEvent()
     hepev.event_number = event_number
@@ -76,16 +79,11 @@ def CopyHepMCBuffer2File(buffername,filename,loop_number,i,i_real,nevents,n_fail
         f.writelines(line + '\n' for line in proc_out)
 
 def HepMCOutput(hepev,buffername,filename,loop_number,i,i_real,nevents,n_fail):
-    Write2HepMCBuffer(buffername,hepev)
-    CopyHepMCBuffer2File(buffername,filename,loop_number,i,i_real,nevents,n_fail)
+    Write2HepMCBuffer(buffername,hepev) # write the given event to a buffer f ile
+    CopyHepMCBuffer2File(buffername,filename,loop_number,i,i_real,nevents,n_fail) # copy buffer file into the full file
     return
 
-def RestructureParticleArray(arr):
-    fields = ['px','py','pz','E','pdgid','status','eta','phi']
-    arr = np.array([[x[y] for y in fields] for x in arr])
-    return arr
-
-# Note: This also modifies the structure of arr and arr_truth.
+# TODO: Make this a callable
 def TruthDistanceSelection(arr, arr_truth, alpha):
     # Keep final-state particles within a certain distance of the selected truth particles.
     # We should be generous with our selection to avoid throwing out things that
@@ -95,10 +93,11 @@ def TruthDistanceSelection(arr, arr_truth, alpha):
 
     arr_truth = RestructureParticleArray(arr_truth)
     arr = RestructureParticleArray(arr)
-    dr_limit = alpha * jet_config['jet_radius']
+    dr2_limit = np.square(alpha * jet_config['jet_radius'])
 
-    min_distances = np.min(DeltaR2Vectorized(arr[:,-2:], arr_truth[:,-2:]),axis=1)
-    selected = (np.abs(min_distances) < np.abs(dr_limit))
+    distances = DeltaR2Vectorized(arr[:,-2:], arr_truth[:,-2:])
+    min_distances = np.min(distances,axis=1)
+    selected = (np.abs(min_distances) < np.abs(dr2_limit))
     arr = arr[selected]
 
     status = len(arr) > 0
