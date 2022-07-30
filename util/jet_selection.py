@@ -1,42 +1,55 @@
 import numpy as np
 from util.calcs import DeltaR2
 
-# Select the jet nearest to a truth-level top quark.
-def GetTopJet(**kwargs):
-    truth_particles = kwargs['truth']
-    jets = kwargs['jets']
-    top_code = 6
+class GetNearestJet:
+    def __init__(self,truth_code=6, max_dr=0.8, use_hepmc=True):
+        self.SetTruthCode(truth_code)
+        self.SetMaxDeltaR(max_dr)
+        self.SetUseHepMC(use_hepmc)
 
-    # Determine the format of truth_particles.
-    use_hepmc = False
-    if('use_hepmc' in kwargs.keys()): use_hepmc = kwargs['use_hepmc']
+    def SetTruthCode(self,code):
+        self.truth_code = code
 
-    # Maximum distance allowed.
-    max_dr = 0.8
-    if('max_dr' in kwargs.keys()): max_dr = kwargs['max_dr']
+    def SetMaxDeltaR(self,dr):
+        self.max_dr = dr
 
-    # Get the truth top.
-    if(use_hepmc): pdg_codes = np.array([x.pid for x in truth_particles])
-    else: pdg_codes = truth_particles[:]['pdgid']
-    if(top_code not in pdg_codes):
-        print('Error: No truth top found.')
-        assert(False)
+    def SetUseHepMC(self,flag):
+        self.use_hepmc = flag
 
-    top_idx = np.where(pdg_codes == top_code)[0][0]
-    top = truth_particles[top_idx]
+    def __call__(self,**kwargs):
+        truth_particles = kwargs['truth']
+        jets = kwargs['jets']
 
-    # Now find distance between the top and each of the jets, and pick the closest jet.
-    if(use_hepmc): dr2 = np.array([DeltaR2(top.momentum.eta(),top.momentum.phi(),x.eta(),x.phi()) for x in jets]).flatten()
-    else: dr2 = np.array([DeltaR2(top['eta'],top['phi'],x.eta(),x.phi()) for x in jets]).flatten()
+        # Get the truth-level particle for which we want to match a jet.
+        if(self.use_hepmc): pdg_codes = np.array([x.pid for x in truth_particles])
+        else: pdg_codes = truth_particles[:]['pdgid']
+        if(self.truth_code not in pdg_codes):
+            print('Error: No truth-level particle found with code {}.'.format(self.truth_code))
+            return -1 # assert False
 
-    # Optional check on the distance of the nearest jet.
-    if(max_dr > 0.):
-        min_dr2 = np.min(dr2)
-        if(min_dr2 > max_dr * max_dr): return -1 # no jet within requested radius
-    return np.argmax(-dr2)
+        truth_idx = np.where(pdg_codes == self.truth_code)[0][0]
+        truth = truth_particles[truth_idx]
 
-# Select the leading (highest pT) jet.
-def GetLeadingJet(**kwargs):
-    jets = kwargs['jets']
-    pt = np.array([x.pt() for x in jets])
-    return np.argmax(pt)
+        if(self.use_hepmc):
+            truth_eta = truth.momentum.eta()
+            truth_phi = truth.momentum.phi()
+        else:
+            truth_eta = truth['eta']
+            truth_phi = truth['phi']
+
+        # Now find distance between the truth particle and each of the jets, and pick the closest jet.
+        dr2 = np.array([DeltaR2(truth_eta,truth_phi,x.eta(),x.phi()) for x in jets]).flatten()
+
+        # Optional check on the distance of the nearest jet.
+        if(self.max_dr > 0.):
+            min_dr2 = np.min(dr2)
+            if(min_dr2 > self.max_dr * self.max_dr): return -1 # no jet within requested radius
+        return np.argmax(-dr2)
+
+class GetLeadingJet:
+    def __init__(self):
+        pass
+    def __call__(self,**kwargs):
+        jets = kwargs['jets']
+        pt = np.array([x.pt() for x in jets])
+        return np.argmax(pt)

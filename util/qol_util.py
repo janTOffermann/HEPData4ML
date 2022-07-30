@@ -173,4 +173,3 @@ class PlotStyle:
 
         # grid color
         ax.grid()
-

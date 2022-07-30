@@ -1,28 +1,8 @@
 import sys,os
 import pathlib
-#import numpythia as npyth # for defining selections
-import util.jet_selection as jetsel
-import util.truth_selection as truthsel
-
-config = {
-    'proc': 'Top_Wqq',
-    'hadronization':True,
-    'mpi':False,
-    'isr':False,
-    'fsr':False,
-    'delphes':False,
-    'rng':1,
-    'jet_radius':0.8,
-    'jet_min_pt':15., #GeV
-    'jet_max_eta':2.,
-    'jet_n_par': 200,
-    'n_truth':3,
-    'truth_selection': truthsel.selections['t->Wb'],
-    'jet_selection':jetsel.GetTopJet
-}
+from config.config import config
 
 def GetPythiaConfigFile():
-    global config
     path_to_this = os.path.dirname(os.path.realpath(__file__))
     proc = config['proc']
     template_file = '{}/pythia_templates/{}.txt'.format(path_to_this,proc)
@@ -40,7 +20,6 @@ def Bool2String(bool):
 # while the process settings from the 'proc' entry of config will be
 # passed separately.
 def GetPythiaConfig(pt_min, pt_max):
-    global config
 
     pythia_config = {}
 
@@ -67,6 +46,9 @@ def GetPythiaConfig(pt_min, pt_max):
 def GetTruthSelection():
     return config['truth_selection']
 
+def GetFinalStateSelection():
+    return config['final_state_selection']
+
 def GetJetConfig():
     return_dict = {}
     for key in ['jet_radius','jet_min_pt','jet_max_eta','jet_n_par','jet_selection']: return_dict[key] = config[key]
@@ -79,3 +61,9 @@ def GetNPars():
     return_dict = {}
     for key in ['jet_n_par','n_truth']: return_dict[key] = config[key]
     return return_dict
+
+# def GetAlpha():
+#     return config['alpha']
+
+def GetEventSelection():
+    return config['event_selection']

@@ -1,8 +1,7 @@
 import glob
 import subprocess as sub
-import numpy as np
 import numpythia as npyth # Pythia, hepmc_write
-from util.config import GetPythiaConfig, GetPythiaConfigFile, GetTruthSelection, GetJetConfig
+from util.config import GetEventSelection, GetFinalStateSelection, GetPythiaConfig, GetPythiaConfigFile, GetTruthSelection
 from util.fastjet import BuildFastjet
 from util.gen_utils.utils import HepMCOutput, CreateHepMCEvent, JetConstituentSelection, TruthDistanceSelection
 from util.conv_utils.utils import InitFastJet
@@ -57,14 +56,11 @@ def PythiaCompatibilityCheck(pythia_config):
 #     return
 
 def GenerationLoop(pythia, nevents,
-                   sel_truth,
                    filename,
                    prefix, suffix, bl=50,
                    i_real = 1, nevents_disp=None,
                    loop_number=0, chunk_size=100,
-                   alpha = 2., max_dr = 0.2):
-
-    use_delphes = True
+                   max_dr = 0.2):
 
     jet_config, jetdef = InitFastJet()
     # if(fastjet_dir not in sys.path): sys.path.append(fastjet_dir)
@@ -80,15 +76,22 @@ def GenerationLoop(pythia, nevents,
     # is written, and then copied to the "main" file before the next event is generated. This I/O might slow
     # down things, so we ultimately want to find some way to do a write with "append" functionality.
 
+    filename_truth = filename.replace('.hepmc','_truth.hepmc')
     buffername = filename.replace('.hepmc','_buffer.hepmc')
+    buffername_truth = buffername.replace('.hepmc','_truth.hepmc')
 
     for i,event in enumerate(pythia(events=nevents)):
         success = True
 
-        # Get the selected truth particles.
-        arr_truth = [event.all(selection=x, return_hepmc=False) for x in sel_truth]
+        # Get the truth-level particles.
+        # TODO: In some cases of t -> b W, using GenEvent.all() yields two b-quarks (throwing off some later code).
+        #       This happens without MPI/ISR/FSR/ and both of them have the same generator status. How?
+        # arr_truth = np.concatenate([event.first(selection=x, return_hepmc=False) for x in sel_truth],axis=0)
+
+        arr_truth = GetTruthSelection()(event=event)
 
         for truth in arr_truth:
+            # print(truth)
             if(len(truth) == 0): # missing some truth particle -> potential trouble?
                 n_fail += 1
                 success = False
@@ -96,49 +99,51 @@ def GenerationLoop(pythia, nevents,
 
         if(not success): continue
 
-        # Get the truth-level particles.
-        # TODO: In some cases of t -> b W, using GenEvent.all() yields two b-quarks (throwing off some later code).
-        #       This happens without MPI/ISR/FSR/ and both of them have the same generator status. How?
-        arr_truth = np.concatenate([event.first(selection=x, return_hepmc=False) for x in sel_truth],axis=0)
-
         # Get the final-state particles, as a numpy array.
-        arr = SelectFinalState(event)
+        status, arr = GetFinalStateSelection()(event=event)
 
-        # # # TODO: Some debugging.
-        # blah = SelectSimplestHadronic(event, sel_truth)
-        # print('Particles:')
-        # for par in blah:
-        #     print('\t',par)
+        # If we didn't pick up any final-state particles, discard this event.
+        if(not status):
+            n_fail += 1
+            success = False
+            continue
+
+        # print('\n',len(arr),arr)
+
+        # Optionally filter down events (e.g. throw out particles too far from selected truth particles).
+        # This is typically some sort of filtering done just to reduce the HepMC file size (which can be rather large).
+        event_selection = GetEventSelection()
+        if(event_selection is not None):
+            status, arr, arr_truth = event_selection(arr,arr_truth)
+
         # print()
-
-        if(use_delphes):  status, arr, arr_truth = TruthDistanceSelection(arr,arr_truth,alpha)
-        else: status, arr, arr_truth = JetConstituentSelection(arr,arr_truth,jetdef)
 
         if(not status):
             n_fail += 1
             success = False
             continue
 
-        # Combine the particle arrays.
-        arr = np.row_stack((arr_truth, arr))
-        del arr_truth
-
         # Create a GenEvent (pyhepmc_ng) containing these selected particles.
         # Note that the event comes from pyhepmc_ng, *not* numpythia.
         # Thus we cannot just use GenParticles from numpythia (e.g. using return_hepmc=True above).
         hepev = CreateHepMCEvent(arr,i_real)
+        hepev_truth = CreateHepMCEvent(arr_truth,i_real)
 
         # ----- File I/O -----
         # Write this event to the HepMC buffer file, then copy the buffer contents to the full HepMC file.
         HepMCOutput(hepev,buffername,filename,loop_number,i,i_real,nevents,n_fail)
+        HepMCOutput(hepev_truth,buffername_truth,filename_truth,loop_number,i,i_real,nevents,n_fail)
         # ----- End File I/O -----
 
         qu.printProgressBarColor(i_real,nevents_disp, prefix=prefix, suffix=suffix, length=bl)
         i_real += 1
 
-    # delete the buffer file
-    comm = ['rm', buffername]
-    sub.check_call(comm)
+    # Delete the buffer files.
+    for fname in [buffername,buffername_truth]:
+        comm = ['rm', fname]
+        try: sub.check_call(comm,stderr=sub.DEVNULL)
+        except: pass
+
     return i_real-1, n_fail
 
 # Generate a bunch of events in the given pT range,
@@ -164,7 +169,7 @@ def Generate(nevents, pt_min, pt_max, filename = 'events.hepmc'): # TODO: implem
     qu.printProgressBarColor(0,nevents, prefix=prefix, suffix=suffix, length=bl)
 
     # TODO: Final-state selection is chosen within GenerationLoop. Should we do the same for truth selection?
-    sel_truth = GetTruthSelection()
+    # sel_truth = GetTruthSelection()
 
     # Loop in such a way as to guarantee that we get as many events as requested.
     # This logic is required as events could technically fail selections, e.g. not have the
@@ -173,52 +178,7 @@ def Generate(nevents, pt_min, pt_max, filename = 'events.hepmc'): # TODO: implem
     n_fail = nevents
     nloops = 0
     while(n_fail > 0):
-        n_success, n_fail = GenerationLoop(pythia, nevents-n_success, sel_truth, filename, prefix, suffix, bl=50,
+        n_success, n_fail = GenerationLoop(pythia, nevents-n_success, filename, prefix, suffix, bl=50,
                                            i_real=n_success+1, nevents_disp = nevents, loop_number = nloops)
         nloops = nloops + 1
     return
-
-# Create a copy of a HepMC file containing only truth-level particles (i.e. remove final-state info).
-def CopyTruth(hepfile, outfile=None):
-
-    npars = []
-    npar = 0
-
-    if(outfile is None): outfile = hepfile.replace('.hepmc','_truth.hepmc')
-    with open(hepfile,'r') as f, open(outfile,'w') as g:
-        for line in f:
-            if(':') in line: g.write(line)
-            else:
-                line = line.replace('\n','').split(' ')
-                if(line[-1] != '1'):
-                    if(line[0] == 'E'):
-                        npars.append(npar)
-                        npar = 0
-                        g.write(' '.join(line) + '\n')
-                    elif(line[0] == 'P'):
-                        npar +=1
-                        g.write(' '.join(line) + '\n')
-    npars.append(npar)
-    npars = npars[1:]
-
-    # Now we need to correct the event headers, to have the right number of particles.
-    # While it might not be the most efficient, this is easy to accomplish on a 2nd pass.
-    # The file is also likely so small now that it's very easy to store in memory.
-    event_counter = 0
-    lines = []
-
-    with open(outfile,'r') as f:
-        for line in f:
-            if(':' in line): lines.append(line)
-            else:
-                line = line.replace('\n','').split(' ')
-                if(line[0] == 'E'):
-                    line[3] = str(npars[event_counter])
-                    event_counter += 1
-                lines.append(' '.join(line) + '\n')
-
-    with open(outfile,'w') as f:
-        for line in lines:
-            f.write(line)
-
-    return outfile

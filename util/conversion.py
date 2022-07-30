@@ -9,7 +9,7 @@ from util.fastjet import BuildFastjet, ParticleInfo
 from util.config import GetNPars, GetJetConfig
 from util.calcs import PtEtaPhiMToPxPyPzE, PtEtaPhiMToEPxPyPz, AdjustPhi
 from util.qol_util import printProgressBarColor
-from util.conv_utils.utils import ClusterJets, ExtractHepMCParticles, FetchJetConstituents, FillDataBuffer, InitFastJet, PrepDataBuffer, ExtractHepMCEvents,PrepDelphesArrays, PrepH5File, PrepIndexRanges
+from util.conv_utils.utils import ClusterJets, ExtractHepMCParticles, FetchJetConstituents, FillDataBuffer, InitFastJet, PrepDataBuffer, ExtractHepMCEvents,PrepDelphesArrays, PrepH5File, PrepIndexRanges, SelectFinalStateParticles
 
 # Convert a set of Delphes ROOT files (modified with truth info!) files to a single HDF5 file.
 # This also performs jet clustering of the Delphes output (and associated selections).
@@ -84,6 +84,10 @@ def DelphesWithTruthToHDF5(delphes_files, truth_files=None, h5_file=None, nentri
             m   = np.zeros(pt.shape)
 
             vecs = PtEtaPhiMToPxPyPzE(pt,eta,phi,m) # convert 4-vectors to (px, py, pz, e) for jet clustering.
+
+            # TODO: Use the below
+            # SelectFinalStateParticles(px,py,pz,e, jetdef, truth_particles, data, j, separate_truth_particles)
+
             jets = ClusterJets(vecs,jetdef,jet_config)
 
             # Check if there are any jets left. We may have executed a "jet check" before Delphes,
@@ -134,10 +138,8 @@ def HepMCWithTruthToHDF5(final_state_files, truth_files=None, h5_file=None, nent
     if(type(final_state_files) == str): final_state_files = glob.glob(final_state_files,recursive=True)
     if(truth_files is None): truth_files = [x.replace('.hepmc','_truth.hepmc') for x in final_state_files]
 
-    # nentries = len(delphes_arr)
-
-    # Also extract truth particle info from the HepMC files.
-    truth_events = ExtractHepMCEvents(truth_files)
+    # Extract truth particle info from the HepMC files.
+    truth_events = ExtractHepMCEvents(truth_files,get_nevents=False)
 
     ## Extract final-state truth particle info from the HepMC files.
     final_state_events, nentries = ExtractHepMCEvents(final_state_files,get_nevents=True)
@@ -163,6 +165,7 @@ def HepMCWithTruthToHDF5(final_state_files, truth_files=None, h5_file=None, nent
     if(verbosity == 1): printProgressBarColor(0,nchunks, prefix=prefix_level1, suffix=suffix, length=bl)
 
     for i in range(nchunks):
+
         # Clear the buffer (for safety).
         for key in data.keys(): data[key][:] = 0
 
@@ -177,36 +180,15 @@ def HepMCWithTruthToHDF5(final_state_files, truth_files=None, h5_file=None, nent
         prefix_level2 = '\tClustering jets & preparing data for chunk {}/{}:'.format(str(i+1).zfill(prefix_nzero),nchunks)
         if(verbosity==2): printProgressBarColor(0,ranges[i], prefix=prefix_level2, suffix=suffix, length=bl)
 
-        # For each event we must combine tracks and neutral hadrons, perform jet clustering on them,
-        # select a single jet (based on user criteria), and select that jet's leading constituents.
+        # For each event we must select some final-state particles, typically via jet clustering.
         for j in range(ranges[i]):
-            data['is_signal'][j] = 1 # TODO: redundant for now
 
-            vecs = np.concatenate([[[final_state_particles[j][k].momentum.px,
-                                       final_state_particles[j][k].momentum.py,final_state_particles[j][k].momentum.pz,
-                                       final_state_particles[j][k].momentum.e]] for k in range(len(final_state_particles[j]))])
-            jets = ClusterJets(vecs,jetdef,jet_config)
-
-            # Check if there are any jets left. We may have executed a "jet check" before Delphes,
-            # but after passing things through Delphes we may no longer have jets that meet our cuts.
-
-            njets = len(jets)
-            if(njets == 0):
-                #TODO: Determine what's best to do here.
-                data['is_signal'][j] = -1 # Using -1 to mark as "no event". (To be discarded.)
-                continue
-
-            # Now select a jet.
-            selected_jet_idx = jet_config['jet_selection'](truth = truth_particles[j], jets = jets, use_hepmc=True)
-            if(selected_jet_idx < 0):
-                # TODO: Determine what's best to do here.
-                data['is_signal'][j] = -1 # Using -1 to mark as "no event". (To be discarded.)
-                continue
-            jet = jets[selected_jet_idx]
-
-            # Get the constituents of our selected jet. Assuming they are massless -> don't need to fetch the mass.
-            vecs = FetchJetConstituents(jet,n_constituents)
-            FillDataBuffer(data,j,vecs,jet,truth_particles,separate_truth_particles)
+            l = len(final_state_particles[j])
+            px = np.array([final_state_particles[j][k].momentum.px for k in range(l)])
+            py = np.array([final_state_particles[j][k].momentum.py for k in range(l)])
+            pz = np.array([final_state_particles[j][k].momentum.pz for k in range(l)])
+            e  = np.array([final_state_particles[j][k].momentum.e  for k in range(l)])
+            SelectFinalStateParticles(px,py,pz,e, jetdef, truth_particles, data, j, separate_truth_particles)
 
             if(verbosity==2): printProgressBarColor(j+1,ranges[i], prefix=prefix_level2, suffix=suffix, length=bl)
 
