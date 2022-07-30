@@ -3,9 +3,8 @@ import subprocess as sub
 import numpythia as npyth # Pythia, hepmc_write
 from util.config import GetEventSelection, GetFinalStateSelection, GetPythiaConfig, GetPythiaConfigFile, GetTruthSelection
 from util.fastjet import BuildFastjet
-from util.gen_utils.utils import HepMCOutput, CreateHepMCEvent, JetConstituentSelection, TruthDistanceSelection
+from util.gen_utils.utils import HepMCOutput, CreateHepMCEvent
 from util.conv_utils.utils import InitFastJet
-from util.particle_selection import SelectFinalState, SelectSimplestHadronic
 import util.qol_util as qu
 
 # TODO: This is a compatibility check for the pythia configuration.
