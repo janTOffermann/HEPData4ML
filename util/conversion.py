@@ -27,13 +27,25 @@ class Processor:
 
         self.jet_config, self.jetdef = InitFastJet()
 
+        self.outdir = ''
+
+    def SetOutputDirectory(self,outdir):
+        self.outdir = outdir
+
     def Process(self, final_state_files, truth_files=None, h5_file=None, nentries_per_chunk=1e4, verbosity=0, separate_truth_particles=True):
+
+        if(type(final_state_files) == list):
+            final_state_files = ['{}/{}'.format(self.outdir,x) for x in final_state_files]
+        else:
+            final_state_files = '{}/{}'.format(self.outdir,final_state_files)
 
         if(h5_file is None):
             if(type(final_state_files) == list): h5_file = final_state_files[0]
             else: h5_file = final_state_files
             if(self.delphes): h5_file =  h5_file.replace('*','').replace('.root','.h5')
             else: h5_file =  h5_file.replace('*','').replace('.root','.h5')
+        else:
+            h5_file = '{}/{}'.format(self.outdir,h5_file)
         npars = GetNPars()
         n_truth = npars['n_truth']
 
@@ -43,6 +55,8 @@ class Processor:
         if(truth_files is None):
             if(self.delphes): truth_files = [x.replace('.root','_truth.hepmc') for x in final_state_files]
             else: truth_files = [x.replace('.hepmc','_truth.hepmc') for x in final_state_files]
+        else:
+            truth_files = ['{}/{}'.format(self.outdir,x) for x in truth_files]
 
         if(self.delphes):
             delphes_arr,var_map = PrepDelphesArrays(final_state_files)
@@ -235,7 +249,9 @@ class Processor:
         return
 
 # Remove any "failed events". They will be marked with a negative signal flag.
-def RemoveFailedFromHDF5(h5_file):
+def RemoveFailedFromHDF5(h5_file, cwd=None):
+    if(cwd is not None): h5_file = '{}/{}'.format(cwd,h5_file)
+
     fname_tmp = h5_file.replace('.h5','_{}.h5'.format(str(uuid.uuid4())))
 
     f = h5.File(h5_file,'r')
@@ -259,8 +275,8 @@ def RemoveFailedFromHDF5(h5_file):
     return
 
 # Split an HDF5 file into training, testing and validation samples.
-def SplitHDF5(h5_file, split_ratio = (7,2,1), train_name=None, val_name=None, test_name=None):
-
+def SplitHDF5(h5_file, split_ratio = (7,2,1), train_name=None, val_name=None, test_name=None, cwd=None):
+    if(cwd is not None): h5_file = '{}/{}'.format(cwd,h5_file)
     file_dir = '/'.join(h5_file.split('/')[:-1])
 
     if(train_name is None):

@@ -38,7 +38,7 @@ class Generator:
 
         self.outdir = None # TODO: Use this with filenames.
 
-        # TODO: Add some histograms.
+        self.hist_filename = 'hists.root'
         self.InitializeHistograms()
 
     def SetOutputDirectory(self,dir):
@@ -83,14 +83,20 @@ class Generator:
         self.hist_fs_pdgid = rt.TH1D(qu.RN(),'PDG codes (all final-state particles);PDG code;Count',1000,-500,500)
         self.hists.append(self.hist_fs_pdgid)
 
-    def OutputHistograms(self,filetype='root'):
+    def OutputHistograms(self):
+        hist_filename = '{}/{}'.format(self.outdir,self.hist_filename)
+        f = rt.TFile(hist_filename,'RECREATE')
         for i,h in enumerate(self.hists):
-            c = rt.TCanvas(qu.RN(),'',800,600)
+            canvas_name = 'c_{}'.format(i)
+            hist_name = 'h_{}'.format(i)
+            c = rt.TCanvas(canvas_name,'',800,600)
             h.Draw('HIST')
             rt.gPad.SetLogy()
             c.Draw()
-            c.SaveAs('{}/hist_{}.{}'.format(self.outdir,str(i).zfill(2),filetype))
-            del c
+            f.cd() # unnecessary
+            c.Write(canvas_name)
+            h.Write(hist_name)
+        f.Close()
         return
 
     def GenerationLoop(self,pythia, nevents,filename,i_real = 1, nevents_disp=None,loop_number=0):
@@ -139,7 +145,7 @@ class Generator:
                 success = False
                 continue
 
-            # self.HistogramFinalStateCodes(arr)
+            self.HistogramFinalStateCodes(arr)
 
             # Create a GenEvent (pyhepmc_ng) containing these selected particles.
             # Note that the event comes from pyhepmc_ng, *not* numpythia.
@@ -170,6 +176,7 @@ class Generator:
     def Generate(self,nevents, filename = 'events.hepmc'): # TODO: implement file chunking
         pythia = npyth.Pythia(config=self.pythia_config_file,params=self.pythia_config)
 
+        filename = '{}/{}'.format(self.outdir,filename)
         # # Get our (Pythonic) Fastjet. # TODO: Make this optional (only need if *not* using Delphes)
         # fastjet_dir = BuildFastjet(j=8)
         # fastjet_dir = glob.glob('{}/**/site-packages'.format(fastjet_dir),recursive=True)[0]
@@ -191,7 +198,7 @@ class Generator:
                                             i_real=n_success+1, nevents_disp = nevents, loop_number = nloops)
             nloops = nloops + 1
 
-        # self.OutputHistograms()
+        self.OutputHistograms()
         return
 
     def HistogramFinalStateCodes(self,arr):

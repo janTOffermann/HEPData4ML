@@ -47,7 +47,11 @@ def BuildDelphes(delphes_dir=None, j=4, force=False, verbose=False):
                        shell=False, cwd = '{}/{}'.format(delphes_dir,delphes_file.replace('.tar.gz','')), stdout=f, stderr=g)
     return delphes_dir
 
-def HepMC3ToDelphes(hepmc_file, output_file=None, delphes_card=None, delphes_dir=None, logfile=None):
+def HepMC3ToDelphes(hepmc_file, output_file=None, delphes_card=None, delphes_dir=None, logfile=None, cwd=None):
+    hepmc_file_nodir = hepmc_file
+    if(cwd is not None):
+        hepmc_file = '{}/{}'.format(cwd,hepmc_file)
+
     if(delphes_dir is None):
         delphes_dir = os.path.dirname(os.path.abspath(__file__)) + '/../delphes'
 
@@ -61,9 +65,11 @@ def HepMC3ToDelphes(hepmc_file, output_file=None, delphes_card=None, delphes_dir
     if(delphes_card is None): delphes_card = glob.glob('{}/**/delphes_card_ATLAS.tcl'.format(delphes_dir),recursive=True)[0]
 
     # default to using HepMC filename for ROOT output
-    if(output_file is None): output_file = hepmc_file.replace('.hepmc','.root')
+    if(output_file is None):
+        output_file = hepmc_file.replace('.hepmc','.root')
+        if(cwd is not None): output_file_nodir = hepmc_file_nodir.replace('.hepmc','.root')
 
-    # Delphes will crash if output file already exists, so we need to remove it (TODO: careful about overwriting things).
+    # Delphes will crash if output file already exists, so we need to remove it.
     try: os.remove(output_file)
     except: pass
 
@@ -76,4 +82,5 @@ def HepMC3ToDelphes(hepmc_file, output_file=None, delphes_card=None, delphes_dir
         sub.check_call([delphes_ex, delphes_card, output_file, hepmc_file],
                        shell=False, stdout=sub.DEVNULL, stderr=sub.DEVNULL)
 
+    if(cwd is not None): return output_file_nodir
     return output_file # return the name (esp. useful if none was provided)
