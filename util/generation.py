@@ -4,7 +4,7 @@ import ROOT as rt
 import subprocess as sub
 import pyhepmc_ng as hep
 import numpythia as npyth # Pythia, hepmc_write
-from util.config import GetEventSelection, GetTruthSelection, GetFinalStateSelection, GetPythiaConfig, GetPythiaConfigFile, GetJetConfig
+from util.config import GetEventSelection, GetTruthSelection, GetFinalStateSelection, GetPythiaConfig, GetPythiaConfigFile, GetJetConfig, GetNPars
 # from util.fastjet import BuildFastjet
 from util.gen_utils.utils import CreateHepMCEvent, HepMCOutput
 from util.conv_utils.utils import InitFastJet
@@ -29,6 +29,7 @@ class Generator:
         self.truth_selection = GetTruthSelection()
         self.final_state_selection = GetFinalStateSelection()
         self.jet_config = GetJetConfig()
+        self.n_truth = GetNPars()['n_truth']
 
         # Things for the progress bar.
         self.prefix = 'Generating events for pT bin [{},{}]:'.format(self.pt_min,self.pt_max)
@@ -112,11 +113,10 @@ class Generator:
             # Get the truth-level particles.
             arr_truth = self.truth_selection(event=event)
 
-            for truth in arr_truth:
-                if(len(truth) == 0): # missing some truth particle -> potential trouble?
-                    n_fail += 1
-                    success = False
-                    break
+            if(len(arr_truth) != self.n_truth): # missing some desired truth particle -> potential trouble, discard this event.
+                n_fail += 1
+                success = False
+                break
 
             if(not success): continue
 
