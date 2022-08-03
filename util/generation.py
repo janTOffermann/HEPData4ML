@@ -5,19 +5,11 @@ import subprocess as sub
 import pyhepmc_ng as hep
 import numpythia as npyth # Pythia, hepmc_write
 from util.config import GetEventSelection, GetTruthSelection, GetFinalStateSelection, GetPythiaConfig, GetPythiaConfigFile, GetJetConfig, GetNPars
-# from util.fastjet import BuildFastjet
+from util.qol_utils.pdg import pdg_names, pdg_plotcodes, FillPdgHist
 from util.gen_utils.utils import CreateHepMCEvent, HepMCOutput
 from util.conv_utils.utils import InitFastJet
 from util.hepmc import RestructureParticleArray
 import util.qol_utils.qol_util as qu
-
-# # --- FASTJET IMPORT ---
-# # TODO: Can this be done more nicely?
-# fastjet_dir = BuildFastjet(j=8)
-# fastjet_dir = glob.glob('{}/**/site-packages'.format(fastjet_dir),recursive=True)[0]
-# if(fastjet_dir not in sys.path): sys.path.append(fastjet_dir)
-# import fastjet as fj
-# # ----------------------
 
 class Generator:
     def __init__(self, pt_min, pt_max):
@@ -43,6 +35,9 @@ class Generator:
 
     def SetOutputDirectory(self,dir):
         self.outdir = dir
+
+    def SetHistFilename(self,name):
+        self.hist_filename = name
 
     def ConfigPythia(self):
         self.pythia_config = GetPythiaConfig(self.pt_min,self.pt_max)
@@ -80,21 +75,41 @@ class Generator:
 
     def InitializeHistograms(self):
         self.hists = []
-        self.hist_fs_pdgid = rt.TH1D(qu.RN(),'PDG codes (all final-state particles);PDG code;Count',1000,-500,500)
+        self.hist_fs_pdgid = rt.TH1D(qu.RN(),'Final-state particles;Particle;Count',47,0.,47)
         self.hists.append(self.hist_fs_pdgid)
 
     def OutputHistograms(self):
         hist_filename = '{}/{}'.format(self.outdir,self.hist_filename)
-        f = rt.TFile(hist_filename,'RECREATE')
+        f = rt.TFile(hist_filename,'UPDATE')
         for i,h in enumerate(self.hists):
             canvas_name = 'c_{}'.format(i)
             hist_name = 'h_{}'.format(i)
             c = rt.TCanvas(canvas_name,'',800,600)
+
+            if(i == 0): # pdg_hist
+                pdg_names_inv = {}
+                for key,val in pdg_plotcodes.items():
+                    code = val
+                    name = pdg_names[key]
+                    pdg_names_inv[code] = name
+
+                n = h.GetNbinsX()
+                xaxis = h.GetXaxis()
+                for j in range(n):
+                    if(j == 0): name = ''
+                    else:
+                        try: name = pdg_names_inv[j]
+                        except: name = ''
+                    xaxis.SetBinLabel(j+1,name)
+                xaxis.SetLabelSize(2.0e-2)
+                rt.gPad.SetGrid(1,0)
+            else: rt.gPad.SetGrid()
+
             h.Draw('HIST')
             rt.gPad.SetLogy()
             c.Draw()
             f.cd() # unnecessary
-            c.Write(canvas_name)
+            # c.Write(canvas_name)
             h.Write(hist_name)
         f.Close()
         return
@@ -177,9 +192,6 @@ class Generator:
         pythia = npyth.Pythia(config=self.pythia_config_file,params=self.pythia_config)
 
         filename = '{}/{}'.format(self.outdir,filename)
-        # # Get our (Pythonic) Fastjet. # TODO: Make this optional (only need if *not* using Delphes)
-        # fastjet_dir = BuildFastjet(j=8)
-        # fastjet_dir = glob.glob('{}/**/site-packages'.format(fastjet_dir),recursive=True)[0]
 
         # Get the Fastjet banner out of the way
         tmp = InitFastJet()
@@ -202,7 +214,8 @@ class Generator:
         return
 
     def HistogramFinalStateCodes(self,arr):
+        codes = []
         for entry in arr:
-            pdgid = entry[-2]
-            self.hist_fs_pdgid.Fill(pdgid)
+            codes.append(entry[-2])
+        FillPdgHist(self.hist_fs_pdgid,codes)
         return
