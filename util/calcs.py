@@ -10,7 +10,7 @@ BuildVectorCalcs()
 LoadVectorCalcs()
 
 def DeltaR2(eta1,phi1,eta2,phi2):
-    return rt.VectorCalcs.DeltaR2(eta1,phi2,eta2,phi2)
+    return rt.VectorCalcs.DeltaR2(eta1,phi1,eta2,phi2)
 
 # vec1 and vec2 are lists of (eta,phi) coordinates.
 # If len(vec1) = n and len(vec2) = m, returns an array

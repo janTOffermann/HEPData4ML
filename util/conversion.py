@@ -1,11 +1,13 @@
 import sys, glob, uuid
 import numpy as np
 import h5py as h5
+import ROOT as rt
 import subprocess as sub
 from util.config import GetNPars, GetJetConfig, GetInvisiblesFlag, GetSignalFlag
-from util.calcs import PtEtaPhiMToPxPyPzE, PtEtaPhiMToEPxPyPz, AdjustPhi
+from util.calcs import DeltaR2, PtEtaPhiMToPxPyPzE, PtEtaPhiMToEPxPyPz, AdjustPhi
 from util.fastjet import BuildFastjet
-from util.qol_utils.qol_util import printProgressBarColor
+from util.qol_utils.qol_util import printProgressBarColor, RN
+from util.qol_utils.pdg import pdg_plotcodes, pdg_names, FillPdgHist
 from util.conv_utils.utils import ExtractHepMCParticles, InitFastJet, PrepDataBuffer, ExtractHepMCEvents,PrepDelphesArrays, PrepH5File, PrepIndexRanges
 from util.particle_selection import IsNeutrino
 # --- FASTJET IMPORT ---
@@ -29,15 +31,69 @@ class Processor:
 
         self.outdir = ''
 
+        self.hist_filename = 'hists.root'
+        self.InitializeHists()
+
     def SetOutputDirectory(self,outdir):
         self.outdir = outdir
 
-    def Process(self, final_state_files, truth_files=None, h5_file=None, nentries_per_chunk=1e4, verbosity=0, separate_truth_particles=True):
+    def SetHistFilename(self,name):
+        self.hist_filename = name
 
-        if(type(final_state_files) == list):
-            final_state_files = ['{}/{}'.format(self.outdir,x) for x in final_state_files]
-        else:
-            final_state_files = '{}/{}'.format(self.outdir,final_state_files)
+    def InitializeHists(self):
+        self.hists = []
+        self.pdg_hist = rt.TH1F(RN(),'Selected final-state particles;Particle;Count',47,0.,47.)
+        self.hists.append(self.pdg_hist)
+        self.jet_truth_dr_hists = {} # Entries get initialized and filled in FillDataBuffer
+
+    def OutputHistograms(self):
+        for key,h in self.jet_truth_dr_hists.items():
+            self.hists.append(h)
+
+        rt.gStyle.SetOptStat(0)
+        offset = 1 # TODO: This is a bit hacky
+        hist_filename = '{}/{}'.format(self.outdir,self.hist_filename)
+        f = rt.TFile(hist_filename,'UPDATE')
+
+        # We separately handle the pdg_hist (first in list), since it requires
+        # modifying the axis labels after drawing.
+        for i,h in enumerate(self.hists):
+            canvas_name = 'c_{}'.format(offset + i)
+            hist_name = 'h_{}'.format(offset + i)
+            c = rt.TCanvas(canvas_name,'',800,600)
+
+            if(i == 0): # pdg_hist
+
+                pdg_names_inv = {}
+                for key,val in pdg_plotcodes.items():
+                    code = val
+                    name = pdg_names[key]
+                    pdg_names_inv[code] = name
+
+                n = h.GetNbinsX()
+                xaxis = h.GetXaxis()
+                for j in range(n):
+                    if(j == 0): name = ''
+                    else:
+                        try: name = pdg_names_inv[j]
+                        except: name = ''
+                    xaxis.SetBinLabel(j+1,name)
+                xaxis.SetLabelSize(2.0e-2)
+                rt.gPad.SetGrid(1,0)
+            else: rt.gPad.SetGrid()
+
+            h.Draw('HIST')
+            rt.gPad.SetLogy()
+            c.Draw()
+            f.cd() # unnecessary
+            # c.Write(canvas_name)
+            h.Write(hist_name)
+        f.Close()
+        return
+
+    def Process(self, final_state_files, truth_files=None, h5_file=None, nentries_per_chunk=1e4, verbosity=0, separate_truth_particles=True):
+        if(type(final_state_files) == list): final_state_files = ['{}/{}'.format(self.outdir,x) for x in final_state_files]
+        else: final_state_files = '{}/{}'.format(self.outdir,final_state_files)
 
         if(h5_file is None):
             if(type(final_state_files) == list): h5_file = final_state_files[0]
@@ -122,12 +178,13 @@ class Processor:
                     py = vecs[:,1]
                     pz = vecs[:,2]
                     e  = vecs[:,3]
+                    pdg = None # No meaning to PDG codes if we're looking at detector-level reconstruction
 
                 else:
                     l = len(final_state_particles[j])
 
                     # Optionally exclude invisibles (neutrinos). If using Delphes, this should be handled by Delphes internally.
-                    if(GetInvisiblesFlag):
+                    if(GetInvisiblesFlag()):
                         visibles = np.arange(l)
                     else:
                         invisibles = np.array([IsNeutrino(final_state_particles[j][k]) for k in range(l)])
@@ -138,8 +195,9 @@ class Processor:
                     py = np.array([final_state_particles[j][k].momentum.py for k in visibles])
                     pz = np.array([final_state_particles[j][k].momentum.pz for k in visibles])
                     e  = np.array([final_state_particles[j][k].momentum.e  for k in visibles])
+                    pdg  = np.array([final_state_particles[j][k].pid  for k in visibles])
 
-                self.SelectFinalStateParticles(px,py,pz,e, self.jetdef, truth_particles, data, j, separate_truth_particles)
+                self.SelectFinalStateParticles(px,py,pz,e, pdg, self.jetdef, truth_particles, data, j, separate_truth_particles)
 
                 if(verbosity==2): printProgressBarColor(j+1,ranges[i], prefix=prefix_level2, suffix=self.suffix, length=self.bl)
 
@@ -149,8 +207,9 @@ class Processor:
                     dset = f[key]
                     dset[start_idxs[i]:stop_idxs[i]] = data[key][:ranges[i]]
             if(verbosity == 1): printProgressBarColor(i+1,nchunks, prefix=self.prefix_level1, suffix=self.suffix, length=self.bl)
-        return h5_file
 
+        self.OutputHistograms()
+        return h5_file
 
     # --- Utility functions for the class ---
     def InitFastJet(self):
@@ -174,11 +233,8 @@ class Processor:
         jets = [jets[i] for i in jet_indices]
         return jets
 
-    def FetchJetConstituents(self,jet,n_constituents,zero_mass=False):
-        if(zero_mass):
-            pt,eta,phi,m = np.hsplit(np.array([[x.pt(), x.eta(), x.phi(), 0.] for x in jet.constituents()]),4)
-        else:
-            pt,eta,phi,m = np.hsplit(np.array([[x.pt(), x.eta(), x.phi(), x.m()] for x in jet.constituents()]),4)
+    def FetchJetConstituents(self,jet,n_constituents):
+        pt,eta,phi,m = np.hsplit(np.array([[x.pt(), x.eta(), x.phi(), x.m()] for x in jet.constituents()]),4)
 
         pt = pt.flatten()
         eta = eta.flatten()
@@ -195,7 +251,7 @@ class Processor:
                                 )
         return vec
 
-    def SelectFinalStateParticles(self,px,py,pz,e, jetdef, truth_particles, data, j, separate_truth_particles):
+    def SelectFinalStateParticles(self,px,py,pz,e, pdg, jetdef, truth_particles, data, j, separate_truth_particles):
         jet_config = GetJetConfig()
         n_constituents = GetNPars()['jet_n_par']
         jet_sel = jet_config['jet_selection']
@@ -221,6 +277,22 @@ class Processor:
             # Get the constituents of our selected jet. Assuming they are massless -> don't need to fetch the mass.
             vecs = self.FetchJetConstituents(jet,n_constituents)
             self.FillDataBuffer(data,j,vecs,jet,truth_particles,separate_truth_particles)
+
+        # If PDG code information was provided, let's determine the codes of the selected particles.
+        # TODO: This will involve looping -> will be intensive. Is there a better way?
+        if(pdg is not None):
+            pdg_matching_tolerance = 1.0e-4
+            selected_pdgs = np.zeros(pdg.shape,dtype=bool)
+            candidate_particles = np.vstack((e,px,py,pz)).T
+            for i,particle in enumerate(vecs):
+                for j,candidate_particle in enumerate(candidate_particles):
+                    if(selected_pdgs[j] == 1): continue
+                    match_value = np.dot(candidate_particle-particle,candidate_particle-particle)
+                    if match_value < pdg_matching_tolerance:
+                        selected_pdgs[j] = 1
+                        break
+            selected_pdgs = pdg[selected_pdgs]
+            FillPdgHist(self.pdg_hist,selected_pdgs)
         return
 
     def FillDataBuffer(self,data_buffer,j,vecs,jet,truth_particles,separate_truth_particles=False):
@@ -242,6 +314,18 @@ class Processor:
         else:
             data_buffer['jet_Pmu'][j,:]     = [jet.e(), jet.px(), jet.py(), jet.pz()]
             data_buffer['jet_Pmu_cyl'][j,:] = [jet.pt(), jet.eta(), AdjustPhi(jet.phi()), jet.m()]
+
+            # Histogram the dR between the jet and each of the truth-level particles.
+            for i, pid in enumerate(data_buffer['truth_Pdg'][j,:]):
+                if(pid not in self.jet_truth_dr_hists.keys()):
+                    self.jet_truth_dr_hists[pid] = rt.TH1D('jet_truth_dr_{}'.format(pid),'',200,0.,2.)
+                    title = '#Delta R #left( jet, {}_{} #right)'.format(pdg_names[pid],'{truth}')
+                    self.jet_truth_dr_hists[pid].SetTitle(title)
+                    self.jet_truth_dr_hists[pid].GetXaxis().SetTitle('#Delta R')
+                    self.jet_truth_dr_hists[pid].GetYaxis().SetTitle('Count')
+                h = self.jet_truth_dr_hists[pid]
+                dr = np.sqrt(DeltaR2(truth_particles[j][i].momentum.eta(),truth_particles[j][i].momentum.phi(), data_buffer['jet_Pmu_cyl'][j,1],data_buffer['jet_Pmu_cyl'][j,2]))
+                h.Fill(dr)
 
         if(separate_truth_particles):
             for k in range(n_truth):

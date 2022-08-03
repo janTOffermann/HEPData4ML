@@ -49,6 +49,7 @@ def main(args):
     # Keep track of some files we create.
     jet_files = []
     truth_files = []
+    hist_files = []
 
     # Prepare the output directory.
     if(outdir is None): outdir = os.getcwd()
@@ -72,7 +73,10 @@ def main(args):
         hep_file = 'events_{}-{}.hepmc'.format(pt_min,pt_max)
         if(do_generation):
             generator = Generator(pt_min,pt_max)
-            generator.SetOutputDirectory(outdir) # TODO: Currently only used for histograms, should implement so it is tacked onto hep_file etc.
+            generator.SetOutputDirectory(outdir)
+            hist_filename = 'hists_{}.root'.format(i)
+            hist_files.append(hist_filename)
+            generator.SetHistFilename(hist_filename)
             generator.Generate(nevents_per_bin,hep_file)
 
         # Extract the truth-level particles from the full HepMC file.
@@ -92,9 +96,19 @@ def main(args):
         else: # Case 2: No Delphes
             jet_files.append(hep_file)
 
+    # Join together the histogram ROOT files.
+    hist_filename = 'hists.root'
+    if(do_generation):
+        comm = ['hadd', hist_filename]
+        comm += hist_files
+        sub.check_call(comm,cwd=outdir,stderr=sub.DEVNULL,stdout=sub.DEVNULL)
+        comm = ['rm'] + hist_files
+        sub.check_call(comm,cwd=outdir)
+
     # Now put everything into an HDF5 file.
     processor = Processor(use_delphes)
     processor.SetOutputDirectory(outdir)
+    processor.SetHistFilename(hist_filename)
     processor.Process(jet_files,truth_files,h5_file,verbosity=h5_conversion_verbosity,separate_truth_particles=separate_truth_particles)
 
     if(use_delphes):
