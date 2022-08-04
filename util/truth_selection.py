@@ -28,7 +28,7 @@ selections = {
         BasicSelection(23,5), # bottom from t -> W b
         BasicSelection(22,24) # W boson from t -> W b
     ],
-    't->Wb_nohad': [
+    't->Wb_nohad': [ # TODO: Should be redundant thanks to hadronization toggle
         BasicSelection(22,6), # top from ttbar
         BasicSelection(1,5), # bottom from t -> W b
         BasicSelection(22,24) # W boson from t -> W b
@@ -37,9 +37,15 @@ selections = {
         BasicSelection(23,5), # bottom from t -> W b
         BasicSelection(22,24) # W boson from t -> W b
     ],
-    'Wb_nohad': [
+    'Wb_nohad': [ # TODO: Should be redundant thanks to hadronization toggle
         BasicSelection(1,5), # bottom from t -> W b
         BasicSelection(22,24) # W boson from t -> W b
+    ],
+    'b': [
+        BasicSelection(23,5), # bottom from bbar production
+    ],
+    'bbar': [
+        BasicSelection(23,-5), # anti-bottom from bbar production
     ]
 }
 
