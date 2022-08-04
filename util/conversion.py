@@ -32,6 +32,7 @@ class Processor:
         self.outdir = ''
 
         self.hist_filename = 'hists.root'
+        self.diagnostic_plots = True
         self.InitializeHists()
 
     def SetOutputDirectory(self,outdir):
@@ -51,7 +52,7 @@ class Processor:
             self.hists.append(h)
 
         rt.gStyle.SetOptStat(0)
-        offset = 1 # TODO: This is a bit hacky
+        offset = 10 # TODO: This is a bit hacky
         hist_filename = '{}/{}'.format(self.outdir,self.hist_filename)
         f = rt.TFile(hist_filename,'UPDATE')
 
@@ -208,7 +209,7 @@ class Processor:
                     dset[start_idxs[i]:stop_idxs[i]] = data[key][:ranges[i]]
             if(verbosity == 1): printProgressBarColor(i+1,nchunks, prefix=self.prefix_level1, suffix=self.suffix, length=self.bl)
 
-        self.OutputHistograms()
+        if(self.diagnostic_plots): self.OutputHistograms()
         return h5_file
 
     # --- Utility functions for the class ---
@@ -280,7 +281,7 @@ class Processor:
 
         # If PDG code information was provided, let's determine the codes of the selected particles.
         # TODO: This will involve looping -> will be intensive. Is there a better way?
-        if(pdg is not None):
+        if(pdg is not None and self.diagnostic_plots):
             pdg_matching_tolerance = 1.0e-4
             selected_pdgs = np.zeros(pdg.shape,dtype=bool)
             candidate_particles = np.vstack((e,px,py,pz)).T
@@ -315,17 +316,18 @@ class Processor:
             data_buffer['jet_Pmu'][j,:]     = [jet.e(), jet.px(), jet.py(), jet.pz()]
             data_buffer['jet_Pmu_cyl'][j,:] = [jet.pt(), jet.eta(), AdjustPhi(jet.phi()), jet.m()]
 
-            # Histogram the dR between the jet and each of the truth-level particles.
-            for i, pid in enumerate(data_buffer['truth_Pdg'][j,:]):
-                if(pid not in self.jet_truth_dr_hists.keys()):
-                    self.jet_truth_dr_hists[pid] = rt.TH1D('jet_truth_dr_{}'.format(pid),'',200,0.,2.)
-                    title = '#Delta R #left( jet, {}_{} #right)'.format(pdg_names[pid],'{truth}')
-                    self.jet_truth_dr_hists[pid].SetTitle(title)
-                    self.jet_truth_dr_hists[pid].GetXaxis().SetTitle('#Delta R')
-                    self.jet_truth_dr_hists[pid].GetYaxis().SetTitle('Count')
-                h = self.jet_truth_dr_hists[pid]
-                dr = np.sqrt(DeltaR2(truth_particles[j][i].momentum.eta(),truth_particles[j][i].momentum.phi(), data_buffer['jet_Pmu_cyl'][j,1],data_buffer['jet_Pmu_cyl'][j,2]))
-                h.Fill(dr)
+            if(self.diagnostic_plots):
+                # Histogram the dR between the jet and each of the truth-level particles.
+                for i, pid in enumerate(data_buffer['truth_Pdg'][j,:]):
+                    if(pid not in self.jet_truth_dr_hists.keys()):
+                        self.jet_truth_dr_hists[pid] = rt.TH1D('jet_truth_dr_{}'.format(pid),'',200,0.,2.)
+                        title = '#Delta R #left( jet, {}_{} #right)'.format(pdg_names[pid],'{truth}')
+                        self.jet_truth_dr_hists[pid].SetTitle(title)
+                        self.jet_truth_dr_hists[pid].GetXaxis().SetTitle('#Delta R')
+                        self.jet_truth_dr_hists[pid].GetYaxis().SetTitle('Count')
+                    h = self.jet_truth_dr_hists[pid]
+                    dr = np.sqrt(DeltaR2(truth_particles[j][i].momentum.eta(),truth_particles[j][i].momentum.phi(), data_buffer['jet_Pmu_cyl'][j,1],data_buffer['jet_Pmu_cyl'][j,2]))
+                    h.Fill(dr)
 
         if(separate_truth_particles):
             for k in range(n_truth):

@@ -5,10 +5,9 @@ import subprocess as sub
 import pyhepmc_ng as hep
 import numpythia as npyth # Pythia, hepmc_write
 from util.config import GetEventSelection, GetTruthSelection, GetFinalStateSelection, GetPythiaConfig, GetPythiaConfigFile, GetJetConfig, GetNPars
-from util.qol_utils.pdg import pdg_names, pdg_plotcodes, FillPdgHist
-from util.gen_utils.utils import CreateHepMCEvent, HepMCOutput
+from util.qol_utils.pdg import pdg_names, pdg_plotcodes
+from util.gen_utils.utils import CreateHepMCEvent, HepMCOutput, HistogramFinalStateKinematics, HistogramFinalStateCodes
 from util.conv_utils.utils import InitFastJet
-from util.hepmc import RestructureParticleArray
 import util.qol_utils.qol_util as qu
 
 class Generator:
@@ -31,6 +30,7 @@ class Generator:
         self.outdir = None # TODO: Use this with filenames.
 
         self.hist_filename = 'hists.root'
+        self.diagnostic_plots = True
         self.InitializeHistograms()
 
     def SetOutputDirectory(self,dir):
@@ -38,6 +38,9 @@ class Generator:
 
     def SetHistFilename(self,name):
         self.hist_filename = name
+
+    def SetPlots(self,flag):
+        self.diagnostic_plots = flag
 
     def ConfigPythia(self):
         self.pythia_config = GetPythiaConfig(self.pt_min,self.pt_max)
@@ -78,6 +81,19 @@ class Generator:
         self.hist_fs_pdgid = rt.TH1D(qu.RN(),'Final-state particles;Particle;Count',47,0.,47)
         self.hists.append(self.hist_fs_pdgid)
 
+        # Initialize histograms for sum of energy, E_T and p_T for final-state particles.
+        self.kinematic_hists = {}
+        hist_binning = (1000,0.,1000.)
+
+        for key,key_insert in zip(('all','invisible','visible'),('',' (invisibles)',' (visibles)')):
+            d = {}
+            d['e'] = rt.TH1D(qu.RN(),'#sum Energy {};E [GeV];Count'.format(key_insert),*hist_binning)
+            d['et'] = rt.TH1D(qu.RN(),'#sum ET {};ET [GeV];Count'.format(key_insert).replace('ET','E_{T}'),*hist_binning)
+            d['pt'] = rt.TH1D(qu.RN(),'#sum pT {};pT [GeV];Count'.format(key_insert).replace('pT','p_{T}'),*hist_binning)
+            self.kinematic_hists[key] = d
+            for h in d.values():
+                self.hists.append(h)
+
     def OutputHistograms(self):
         hist_filename = '{}/{}'.format(self.outdir,self.hist_filename)
         f = rt.TFile(hist_filename,'UPDATE')
@@ -115,7 +131,6 @@ class Generator:
         return
 
     def GenerationLoop(self,pythia, nevents,filename,i_real = 1, nevents_disp=None,loop_number=0):
-
         n_fail = 0
         if(nevents_disp is None): nevents_disp = nevents # number of events to display in progress bar
 
@@ -130,6 +145,13 @@ class Generator:
 
         for i,event in enumerate(pythia(events=nevents)):
             success = True
+
+            # # Debug: Print full event record. #TODO: This is useful to keep here, is there a nicer way to implement this?
+            # all_particles = event.all()
+            # print('\n---START---')
+            # for par in all_particles:
+            #     print('\t',par)
+            # print('\n--- END ---')
 
             # Get the truth-level particles.
             arr_truth = self.truth_selection(event=event)
@@ -160,7 +182,10 @@ class Generator:
                 success = False
                 continue
 
-            self.HistogramFinalStateCodes(arr)
+            if(self.diagnostic_plots):
+                # Record the PDG codes of all selected final-state particles (i.e. all those that made it into the HepMC output).
+                HistogramFinalStateCodes(arr,self.hist_fs_pdgid)
+                HistogramFinalStateKinematics(arr,self.kinematic_hists)
 
             # Create a GenEvent (pyhepmc_ng) containing these selected particles.
             # Note that the event comes from pyhepmc_ng, *not* numpythia.
@@ -210,12 +235,12 @@ class Generator:
                                             i_real=n_success+1, nevents_disp = nevents, loop_number = nloops)
             nloops = nloops + 1
 
-        self.OutputHistograms()
+        if(self.diagnostic_plots): self.OutputHistograms()
         return
 
-    def HistogramFinalStateCodes(self,arr):
-        codes = []
-        for entry in arr:
-            codes.append(entry[-2])
-        FillPdgHist(self.hist_fs_pdgid,codes)
-        return
+    # def HistogramFinalStateCodes(self,arr):
+    #     codes = []
+    #     for entry in arr:
+    #         codes.append(entry[-2])
+    #     FillPdgHist(self.hist_fs_pdgid,codes)
+    #     return
