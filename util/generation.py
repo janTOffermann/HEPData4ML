@@ -39,7 +39,7 @@ class Generator:
     def SetHistFilename(self,name):
         self.hist_filename = name
 
-    def SetPlots(self,flag):
+    def SetDiagnosticPlots(self,flag):
         self.diagnostic_plots = flag
 
     def ConfigPythia(self):

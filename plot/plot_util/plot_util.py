@@ -6,7 +6,7 @@ import ROOT as rt
 path_prefix = os.getcwd() + '/../../'
 if(path_prefix not in sys.path): sys.path.append(path_prefix)
 from util import qol_util as qu
-from util.calcs import PxPyPzEToPtEtaPhiM, DeltaR2
+# from util.calcs import PxPyPzEToPtEtaPhiM, DeltaR2
 
 # Helper function for fetching four-momenta from a jagged array.
 def GetJagged(pmu, nobj):
@@ -19,12 +19,29 @@ def GetJagged(pmu, nobj):
         counter += nobj[i]
     return result
 
+# Helper function for coordinate conversion.
+def PxPyPzEToPtEtaPhiM(px,py,pz,e):
+    nvec = len(px)
+    result = np.zeros((nvec,4))
+    lvec = rt.Math.PxPyPzEVector()
+    for i in range(nvec):
+        lvec.SetCoordinates(px[i],py[i],pz[i],e[i])
+        result[i,:] = np.array([lvec.Pt(),lvec.Eta(),lvec.Phi(),lvec.M()])
+    return result
+
 # Helper function for calculating dR between two sets pf vectors.
 # Here, vecs are of form (eta, phi), one entry per event.
 def DeltaR(vec1, vec2):
     result = np.zeros(vec1.shape[0])
+    lvec1 = rt.Math.PtEtaPhiMVector()
+    lvec2 = rt.Math.PtEtaPhiMVector()
     for i in range(len(result)):
-        result[i] = np.sqrt(DeltaR2(*vec1[i], *vec2[i]))
+
+        lvec1.SetCoordinates(0.,vec1[i,0],vec1[i,1],0.)
+        lvec2.SetCoordinates(0.,vec2[i,0],vec2[i,1],0.)
+        result[i] = np.sqrt(rt.Math.VectorUtil.DeltaR2(lvec1,lvec2))
+
+        # result[i] = np.sqrt(DeltaR2(*vec1[i], *vec2[i]))
     return result
 
 # Function for making a kinematic plot (1D).

@@ -41,6 +41,9 @@ class Processor:
     def SetHistFilename(self,name):
         self.hist_filename = name
 
+    def SetDiagnosticPlots(self,flag):
+        self.diagnostic_plots = flag
+
     def InitializeHists(self):
         self.hists = []
         self.pdg_hist = rt.TH1F(RN(),'Selected final-state particles;Particle;Count',47,0.,47.)
