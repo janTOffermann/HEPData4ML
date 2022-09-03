@@ -26,6 +26,7 @@ def main(args):
     parser.add_argument('-O', '--outdir', type=str, help='Output directory.', default=None)
     parser.add_argument('-g', '--generation',type=int, help='Whether or not to do event generation.', default=True)
     parser.add_argument('-s', '--sep_truth',type=int, help='Whether or not to store truth-level particles in separate arrays.', default=True)
+    parser.add_argument('-d', '--diagnostic_plots',type=int, help='Whether or not to make diagnostic plots', default=True)
 
     args = vars(parser.parse_args())
 
@@ -35,6 +36,7 @@ def main(args):
     outdir = args['outdir']
     do_generation =args['generation'] > 0 # TODO: Find nicer way to handle Boolean -- argparse is weird.
     separate_truth_particles = args['sep_truth'] > 0
+    diagnostic_plots = args['diagnostic_plots'] > 0
     nbins = len(pt_bin_edges) - 1
 
     # Setting the verbosity for the HDF5 conversion.
@@ -77,6 +79,7 @@ def main(args):
             hist_filename = 'hists_{}.root'.format(i)
             hist_files.append(hist_filename)
             generator.SetHistFilename(hist_filename)
+            generator.SetDiagnosticPlots(diagnostic_plots)
             generator.Generate(nevents_per_bin,hep_file)
 
         # Extract the truth-level particles from the full HepMC file.
@@ -98,7 +101,7 @@ def main(args):
 
     # Join together the histogram ROOT files.
     hist_filename = 'hists.root'
-    if(do_generation):
+    if(do_generation and diagnostic_plots):
         comm = ['hadd', hist_filename]
         comm += hist_files
         sub.check_call(comm,cwd=outdir,stderr=sub.DEVNULL,stdout=sub.DEVNULL)
@@ -109,6 +112,7 @@ def main(args):
     processor = Processor(use_delphes)
     processor.SetOutputDirectory(outdir)
     processor.SetHistFilename(hist_filename)
+    processor.SetDiagnosticPlots(diagnostic_plots)
     processor.Process(jet_files,truth_files,h5_file,verbosity=h5_conversion_verbosity,separate_truth_particles=separate_truth_particles)
 
     if(use_delphes):
