@@ -10,7 +10,7 @@ BuildVectorCalcs()
 LoadVectorCalcs()
 
 def DeltaR2(eta1,phi1,eta2,phi2):
-    return rt.VectorCalcs.DeltaR2(eta1,phi2,eta2,phi2)
+    return rt.VectorCalcs.DeltaR2(eta1,phi1,eta2,phi2)
 
 # vec1 and vec2 are lists of (eta,phi) coordinates.
 # If len(vec1) = n and len(vec2) = m, returns an array
@@ -44,11 +44,31 @@ def PtEtaPhiMToPxPyPzE(pt,eta,phi,m,transpose=True):
 def PtEtaPhiMToEPxPyPz(pt,eta,phi,m,transpose=True):
     return PtEtaPhiMToEPxPyPz_numpy(pt,eta,phi,m,transpose)
 
+def EPxPyPzToM(e,px,py,pz):
+    return np.sqrt(np.square(e) - np.square(px) -np.square(py) - np.square(pz))
+
+def EPxPyPzToPtEtaPhiM(e,px,py,pz,transpose=True):
+
+    vec = rt.Math.PxPyPzEVector()
+    vec.SetCoordinates(px,py,pz,e)
+    pt = vec.Pt()
+    eta = vec.Eta()
+    phi = vec.Phi()
+    m = vec.M()
+    # pt = np.sqrt(np.square(px) + np.square(py))
+    # p = np.sqrt(np.square(px) + np.square(py) + np.square(pz))
+    # eta = np.arctanh(pz/p)
+    # phi = AdjustPhi(np.arctan(py/px))
+    # m = EPxPyPzToM(e,px,py,pz)
+    v = np.array([pt,eta,phi,m],dtype=np.dtype('f8'))
+    if(transpose): return v.T
+    return v
+
+def EPzToRap(e,pz):
+    return 0.5 * np.log((e + pz)/(e - pz))
+
 # Below are some functions that may get used above -- currently experimenting with purely numpy-based functions,
 # versus using my custom ROOT/C++ library.
-
-# TODO: Temporary definitions below.
-# from numba import jit
 
 def PtEtaPhiMToPxPyPzE_numpy(pt,eta,phi,m,transpose=True):
     px = pt * np.cos(phi)

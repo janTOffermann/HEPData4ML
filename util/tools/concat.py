@@ -15,9 +15,9 @@ def main(args):
     # Determine what are the input files.
     input_files = []
     for pattern in input_patterns:
-        if(',') in pattern:
+        if(',' in pattern):
             input_files += [x.strip() for x in pattern.split(',')]
-        elif('*') in pattern:
+        elif('*' in pattern or '[' in pattern):
             input_files += glob.glob(os.path.expanduser(pattern),recursive=True)
         else:
             input_files += [pattern]

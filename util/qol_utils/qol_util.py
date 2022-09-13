@@ -33,7 +33,6 @@ def stdout_redirected(to=os.devnull):
                                             # buffering and flags such as
                                             # CLOEXEC may be different
 
-
 # Print iterations progress.
 # Adapted from https://stackoverflow.com/a/34325723.
 def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█', printEnd = "\r"):
@@ -149,27 +148,3 @@ class PlotStyle:
         rt.gStyle.SetTextColor(self.text)
 
         rt.gStyle.SetPalette(self.palette)
-
-    def SetStylePlt(self, ax):
-
-        # canvas color
-        ax.set_facecolor(self.canv_plt)
-
-        # tick colors (marks, then tick labels)
-        ax.tick_params(axis='both',colors=self.main_plt)
-        plt.setp(ax.get_xticklabels(), color=self.text_plt)
-        plt.setp(ax.get_yticklabels(), color=self.text_plt)
-
-        # axis spines
-        for spine in ['bottom','top','left','right']:
-            ax.spines[spine].set_color(self.main_plt)
-
-        # axis titles
-        ax.xaxis.label.set_color(self.text_plt)
-        ax.yaxis.label.set_color(self.text_plt)
-
-        # plot title
-        ax.title.set_color(self.text_plt)
-
-        # grid color
-        ax.grid()
