@@ -17,12 +17,14 @@ config = {
     'jet_n_par': 200,
     'n_truth' : 3,
     'truth_selection' : truthsel.TruthSelection('t->Wb'),
+    'event_selection' : eventsel.TruthDistanceSelection(distance=2.4),
     'final_state_selection': parsel.SelectFinalState,
+    'invisibles' : False, # if False, invisible particles in the final state will be discarded
     # 'final_state_selection' : parsel.SelectSimplestHadronic(truthsel.TruthSelection('Wb_nohad')),
     'jet_selection':jetsel.GetNearestJet(truth_code=6,max_dr=0.8),
     # 'jet_selection' : None,
-    'event_selection' : eventsel.TruthDistanceSelection(distance=2.4),
     # 'event_selection' : None
+    'signal_flag' : 1 # What to provide as the "signal_flag" for these events. (relevant if combining datasets). Must be >= 0.
 }
 
 # Don't need to adjust the lines below.
