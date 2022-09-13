@@ -227,6 +227,7 @@ class Processor:
                     py = vecs[:,1]
                     pz = vecs[:,2]
                     e  = vecs[:,3]
+
                     pdg = None # No meaning to PDG codes if we're looking at detector-level reconstruction
 
                 else:
@@ -284,11 +285,11 @@ class Processor:
 
     def FetchJetConstituents(self,jet,n_constituents):
         # pt,eta,phi,m = np.hsplit(np.array([[x.pt(), x.eta(), x.phi(), x.m()] for x in jet.constituents()]),4)
-        pt,eta,phi,m,px,py,pz,e = np.hsplit(np.array([[x.pt(), x.eta(), x.phi(), x.m(), x.px(),x.py(),x.pz(),x.e()] for x in jet.constituents()]),8)
+        pt,px,py,pz,e = np.hsplit(np.array([[x.pt(), x.px(),x.py(),x.pz(),x.e()] for x in jet.constituents()]),8)
         pt = pt.flatten() # use this for sorting
-        eta = eta.flatten()
-        phi = phi.flatten()
-        m = m.flatten()
+        # eta = eta.flatten()
+        # phi = phi.flatten()
+        # m = m.flatten()
         px = px.flatten()
         py = py.flatten()
         pz = pz.flatten()
@@ -308,12 +309,6 @@ class Processor:
         e  =  e[sorting][:l]
 
         vecs = np.array([e,px,py,pz],dtype=np.dtype('f8')).T
-
-        # vecs = PtEtaPhiMToEPxPyPz(pt=pt, # Vector will be of format (E, px, py, pz)
-        #                             eta=eta,
-        #                             phi=phi,
-        #                             m=m
-        #                         )
         return vecs
 
     def SelectFinalStateParticles(self,px,py,pz,e, pdg, jetdef, truth_particles, data, j, separate_truth_particles):
@@ -345,6 +340,7 @@ class Processor:
 
         # If PDG code information was provided, let's determine the codes of the selected particles.
         # TODO: This will involve looping -> will be intensive. Is there a better way?
+        # See PseudoJet::set_user_index : http://www.fastjet.fr/repo/fastjet-doc-3.4.0.pdf
         if(pdg is not None and self.diagnostic_plots):
             pdg_matching_tolerance = 1.0e-4
             selected_pdgs = np.zeros(pdg.shape,dtype=bool)

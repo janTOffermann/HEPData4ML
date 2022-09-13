@@ -39,10 +39,10 @@ def PxPyPzEToPtEtaPhiM(px,py,pz,e,transpose=True):
     return output_vecs.T
 
 def PtEtaPhiMToPxPyPzE(pt,eta,phi,m,transpose=True):
-    return PtEtaPhiMToPxPyPzE_numpy(pt,eta,phi,m,transpose)
+    return PtEtaPhiMToPxPyPzE_root(pt,eta,phi,m,transpose)
 
 def PtEtaPhiMToEPxPyPz(pt,eta,phi,m,transpose=True):
-    return PtEtaPhiMToEPxPyPz_numpy(pt,eta,phi,m,transpose)
+    return PtEtaPhiMToEPxPyPz_root(pt,eta,phi,m,transpose)
 
 def EPxPyPzToM(e,px,py,pz):
     return np.sqrt(np.square(e) - np.square(px) -np.square(py) - np.square(pz))
@@ -67,8 +67,10 @@ def EPxPyPzToPtEtaPhiM(e,px,py,pz,transpose=True):
 def EPzToRap(e,pz):
     return 0.5 * np.log((e + pz)/(e - pz))
 
+#--------------------------------------------------
 # Below are some functions that may get used above -- currently experimenting with purely numpy-based functions,
 # versus using my custom ROOT/C++ library.
+#--------------------------------------------------
 
 def PtEtaPhiMToPxPyPzE_numpy(pt,eta,phi,m,transpose=True):
     px = pt * np.cos(phi)
@@ -78,7 +80,7 @@ def PtEtaPhiMToPxPyPzE_numpy(pt,eta,phi,m,transpose=True):
     if(transpose): return np.array([px,py,pz,e],dtype=np.dtype('f8')).T
     else: return np.array([px,py,pz,e],dtype=np.dtype('f8'))
 
-def PtEtaPhiMToPxPyPzE_root(pt,eta,phi,m,transpose=True):
+def PtEtaPhiMToPxPyPzE_root(pt,eta,phi,m,transpose=True): # more accurate
     nvecs = len(pt)
     input_vecs = np.vstack((pt,eta,phi,m)).T
     output_vecs = np.array(rt.VectorCalcs.PtEtaPhiM2PxPyPzEflat(input_vecs.flatten())).reshape((nvecs,-1))
