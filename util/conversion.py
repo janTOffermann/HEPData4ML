@@ -4,7 +4,7 @@ import h5py as h5
 import ROOT as rt
 import subprocess as sub
 from util.config import GetNPars, GetJetConfig, GetInvisiblesFlag, GetSignalFlag
-from util.calcs import DeltaR2, PtEtaPhiMToPxPyPzE, PtEtaPhiMToEPxPyPz, AdjustPhi
+from util.calcs import DeltaR2, EPxPyPzToPtEtaPhiM, EPzToRap, PtEtaPhiMToPxPyPzE, PtEtaPhiMToEPxPyPz, AdjustPhi, EPxPyPzToM
 from util.fastjet import BuildFastjet
 from util.qol_utils.qol_util import printProgressBarColor, RN
 from util.qol_utils.pdg import pdg_plotcodes, pdg_names, FillPdgHist
@@ -46,12 +46,54 @@ class Processor:
 
     def InitializeHists(self):
         self.hists = []
-        self.pdg_hist = rt.TH1F(RN(),'Selected final-state particles;Particle;Count',47,0.,47.)
+        self.pdg_hist = rt.TH1D(RN(),'Selected final-state particles;Particle;Count',47,0.,47.)
         self.hists.append(self.pdg_hist)
         self.jet_truth_dr_hists = {} # Entries get initialized and filled in FillDataBuffer
 
+        self.jet_hists = { # Jet kinematic histograms. Initialized/filled in FillDataBuffer.
+            'pt'  : rt.TH1D(RN(), 'Jet p_{T};p_{T} [GeV];Count', 500,0.,1000.),
+            'eta' : rt.TH1D(RN(), 'Jet #eta;#eta;Count',         200,-4.,4.),
+            'phi' : rt.TH1D(RN(), 'Jet #phi;#phi;Count',         200,-np.pi,np.pi),
+            'm'   : rt.TH1D(RN(), 'Jet m;m [GeV];Count',         250,0.,500.),
+            'e'   : rt.TH1D(RN(), 'Jet E;E [GeV];Count',         500,0.,1000.),
+            'et'  : rt.TH1D(RN(), 'Jet E_{T};E [GeV];Count',     500,0.,1000.)
+        }
+
+        self.pmu_sum_hists = {} # Ditto, for the sum of jet constituents.
+        for key,hist in self.jet_hists.items():
+            h = rt.TH1D(hist)
+            h.SetName(RN())
+            h.SetTitle(h.GetTitle().replace('Jet','#sum constituents'))
+            self.pmu_sum_hists[key] = h
+
+        self.jet_diff_hists = {
+            'dm': rt.TH1D(RN(),  ';(m_{consts} - m_{j}) / m_{j};Count'      , 400,-1.,1.),
+            'de': rt.TH1D(RN(),  ';(E_{consts} - E_{j}) / E_{j};Count'      , 400,-1.,1.),
+            'dpt': rt.TH1D(RN(), ';(p_{consts} - p_{T,j}) / p_{T,j};Count', 400,-1.,1.),
+            'det': rt.TH1D(RN(), ';(E_{consts} - E_{T,j}) / E_{T,j};Count', 400,-1.,1.),
+        } # Kinematic differences between the jets, and the sum of their constituents. (Sanity check!)
+
+        self.jet_diff_hists_2d = {
+            'dm': rt.TH2D(RN(),  ';m_{j};(m_{consts} - m_{j}) / m_{j};Count',         250,0.,500. ,400,-1.,1.),
+            'de': rt.TH2D(RN(),  ';E_{j};(E_{consts} - E_{j}) / E_{j};Count',         500,0.,1000.,400,-1.,1.),
+            'dpt': rt.TH2D(RN(), ';p_{T,j};(p_{consts} - p_{T,j}) / p_{T,j};Count', 500,0.,1000.,400,-1.,1.),
+            'det': rt.TH2D(RN(), ';E_{T,j};(E_{T,consts} - E_{T,j}) / E_{T,j};Count', 500,0.,1000.,400,-1.,1.),
+        } # Kinematic differences between the jets, and the sum of their constituents. (Sanity check!)
+
     def OutputHistograms(self):
         for key,h in self.jet_truth_dr_hists.items():
+            self.hists.append(h)
+
+        for key,h in self.pmu_sum_hists.items():
+            self.hists.append(h)
+
+        for key,h in self.jet_hists.items():
+            self.hists.append(h)
+
+        for key,h in self.jet_diff_hists.items():
+            self.hists.append(h)
+
+        for key,h in self.jet_diff_hists_2d.items():
             self.hists.append(h)
 
         rt.gStyle.SetOptStat(0)
@@ -86,7 +128,10 @@ class Processor:
                 rt.gPad.SetGrid(1,0)
             else: rt.gPad.SetGrid()
 
-            h.Draw('HIST')
+            if(type(h) in [rt.TH1F, rt.TH1D, rt.TH1I, rt.TH1S]): h.Draw('HIST')
+            else:
+                h.Draw('COLZ')
+                rt.gPad.SetRightMargin(0.2)
             rt.gPad.SetLogy()
             c.Draw()
             f.cd() # unnecessary
@@ -238,22 +283,38 @@ class Processor:
         return jets
 
     def FetchJetConstituents(self,jet,n_constituents):
-        pt,eta,phi,m = np.hsplit(np.array([[x.pt(), x.eta(), x.phi(), x.m()] for x in jet.constituents()]),4)
-
-        pt = pt.flatten()
+        # pt,eta,phi,m = np.hsplit(np.array([[x.pt(), x.eta(), x.phi(), x.m()] for x in jet.constituents()]),4)
+        pt,eta,phi,m,px,py,pz,e = np.hsplit(np.array([[x.pt(), x.eta(), x.phi(), x.m(), x.px(),x.py(),x.pz(),x.e()] for x in jet.constituents()]),8)
+        pt = pt.flatten() # use this for sorting
         eta = eta.flatten()
         phi = phi.flatten()
         m = m.flatten()
+        px = px.flatten()
+        py = py.flatten()
+        pz = pz.flatten()
+        e  =  e.flatten()
 
         # Sort by decreasing pt, and only keep leading constituents.
         sorting = np.argsort(-pt)
         l = int(np.minimum(n_constituents,len(pt)))
-        vec = PtEtaPhiMToEPxPyPz(pt=pt[sorting][:l], # Vector will be of format (E, px, py, pz)
-                                    eta=eta[sorting][:l],
-                                    phi=phi[sorting][:l],
-                                    m=m[sorting][:1]
-                                )
-        return vec
+
+        pt = pt[sorting][:l]
+        # eta = eta[sorting][:l]
+        # phi = phi[sorting][:l]
+        # m  =  m[sorting][:l]
+        px = px[sorting][:l]
+        py = py[sorting][:l]
+        pz = pz[sorting][:l]
+        e  =  e[sorting][:l]
+
+        vecs = np.array([e,px,py,pz],dtype=np.dtype('f8')).T
+
+        # vecs = PtEtaPhiMToEPxPyPz(pt=pt, # Vector will be of format (E, px, py, pz)
+        #                             eta=eta,
+        #                             phi=phi,
+        #                             m=m
+        #                         )
+        return vecs
 
     def SelectFinalStateParticles(self,px,py,pz,e, pdg, jetdef, truth_particles, data, j, separate_truth_particles):
         jet_config = GetJetConfig()
@@ -278,7 +339,7 @@ class Processor:
                 data['is_signal'][j] = -1 # Using -1 to mark as "no event". (To be discarded.)
                 return
             jet = jets[selected_jet_idx]
-            # Get the constituents of our selected jet. Assuming they are massless -> don't need to fetch the mass.
+            # Get the constituents of our selected jet.
             vecs = self.FetchJetConstituents(jet,n_constituents)
             self.FillDataBuffer(data,j,vecs,jet,truth_particles,separate_truth_particles)
 
@@ -335,6 +396,57 @@ class Processor:
         if(separate_truth_particles):
             for k in range(n_truth):
                 data_buffer['truth_Pmu_{}'.format(k)][j,:] = [truth_particles[j][k].momentum.e,truth_particles[j][k].momentum.px,truth_particles[j][k].momentum.py,truth_particles[j][k].momentum.pz]
+
+        # Let's make some more diagnostic plots, to look at the jet kinematics, and the kinematics of the sum of jet constituents.
+        if(self.diagnostic_plots):
+
+            # Kinematic histograms for sum of Pmu (jet constituents).
+            s = np.sum(vecs,axis=0) # E, px, py, pz
+            s_cyl = EPxPyPzToPtEtaPhiM(*s)
+            s_pt,s_eta,s_phi,s_m = s_cyl
+            s_e = s[0]
+            y = EPzToRap(s[0],s[3])
+            s_et = s[0]/np.cosh(y)
+            self.pmu_sum_hists['pt'].Fill(s_pt)
+            self.pmu_sum_hists['eta'].Fill(s_eta)
+            self.pmu_sum_hists['phi'].Fill(s_phi)
+            self.pmu_sum_hists['m'].Fill(s_m)
+            self.pmu_sum_hists['e'].Fill(s_e)
+            self.pmu_sum_hists['et'].Fill(s_et)
+
+            if(jet is not None):
+
+                # Kinematic histograms for jets.
+                jet_pt = data_buffer['jet_Pmu_cyl'][j,0]
+                jet_eta = data_buffer['jet_Pmu_cyl'][j,1]
+                jet_phi = data_buffer['jet_Pmu_cyl'][j,2]
+                jet_m = data_buffer['jet_Pmu_cyl'][j,3]
+                jet_e = jet.e()
+                jet_et = jet.Et()
+
+                self.jet_hists['pt'].Fill(jet_pt)
+                self.jet_hists['eta'].Fill(jet_eta)
+                self.jet_hists['phi'].Fill(jet_phi)
+                self.jet_hists['m'].Fill(jet_m)
+                self.jet_hists['e'].Fill(jet_e)
+                self.jet_hists['et'].Fill(jet_et)
+
+                # Kinematic difference histograms.
+                delta_e = (s_e - jet_e) / jet_e
+                delta_m = (s_m - jet_m) / jet_m
+                delta_pt = (s_pt - jet_pt) / jet_pt
+                delta_et = (s_et - jet_et) / jet_et
+
+                self.jet_diff_hists['de'].Fill(delta_e)
+                self.jet_diff_hists['dm'].Fill(delta_m)
+                self.jet_diff_hists['dpt'].Fill(delta_pt)
+                self.jet_diff_hists['det'].Fill(delta_et)
+
+                self.jet_diff_hists_2d['de'].Fill(jet_e,delta_e)
+                self.jet_diff_hists_2d['dm'].Fill(jet_m,delta_m)
+                self.jet_diff_hists_2d['dpt'].Fill(jet_pt,delta_pt)
+                self.jet_diff_hists_2d['det'].Fill(jet_et,delta_et)
+
         return
 
 # Remove any "failed events". They will be marked with a negative signal flag.
