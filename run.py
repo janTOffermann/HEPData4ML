@@ -5,6 +5,7 @@ from util.generation import Generator
 from util.delphes import BuildDelphes, HepMC3ToDelphes
 from util.conversion import Processor, RemoveFailedFromHDF5, SplitHDF5
 from util.config import GetDelphesConfig
+from util.vectorcalcs import BuildVectorCalcs, LoadVectorCalcs
 
 def CompressHepMC(files, delete=True, cwd=None):
     for file in files:
@@ -27,6 +28,7 @@ def main(args):
     parser.add_argument('-g', '--generation',type=int, help='Whether or not to do event generation.', default=True)
     parser.add_argument('-s', '--sep_truth',type=int, help='Whether or not to store truth-level particles in separate arrays.', default=True)
     parser.add_argument('-d', '--diagnostic_plots',type=int, help='Whether or not to make diagnostic plots', default=True)
+    parser.add_argument('-v', '--verbose',type=int,help='Verbosity.',default=0)
 
     args = vars(parser.parse_args())
 
@@ -37,6 +39,7 @@ def main(args):
     do_generation =args['generation'] > 0 # TODO: Find nicer way to handle Boolean -- argparse is weird.
     separate_truth_particles = args['sep_truth'] > 0
     diagnostic_plots = args['diagnostic_plots'] > 0
+    verbose = args['verbose'] > 0
     nbins = len(pt_bin_edges) - 1
 
     # Setting the verbosity for the HDF5 conversion.
@@ -59,7 +62,7 @@ def main(args):
     # h5_file = '{}/{}'.format(outdir,h5_file)
 
     # # Prepare our custom ROOT library, that is used to do coordinate conversions and other 4-vector calcs.
-    # BuildVectorCalcs(force=True) # make sure we re-build the library
+    # BuildVectorCalcs(force=False) # Set True to make sure the library is explicitly rebuilt.
     # LoadVectorCalcs()
 
     for i in range(nbins):
@@ -74,6 +77,7 @@ def main(args):
         # hep_file = '{}/events_{}-{}.hepmc'.format(outdir,pt_min,pt_max)
         hep_file = 'events_{}-{}.hepmc'.format(pt_min,pt_max)
         if(do_generation):
+            if(verbose and i == 0): print('Running Pythia8 event generation.')
             generator = Generator(pt_min,pt_max)
             generator.SetOutputDirectory(outdir)
             hist_filename = 'hists_{}.root'.format(i)
@@ -87,6 +91,7 @@ def main(args):
         truth_files.append(truthfile)
 
         if(use_delphes): # Case 1: Using Delphes
+            if(verbose and i == 0): print('Running Delphes on HepMC files.')
             # Pass the HepMC file to Delphes. Will output a ROOT file.
             delphes_dir = BuildDelphes() # build Delphes if it does not yet exist
             hep_file_with_extension = '{}/{}'.format(outdir,hep_file)
@@ -109,7 +114,9 @@ def main(args):
         sub.check_call(comm,cwd=outdir)
 
     # Now put everything into an HDF5 file.
+    if(verbose): print('Running jet clustering and producing final HDF5 output.')
     processor = Processor(use_delphes)
+    processor.SetVerbosity(verbose)
     processor.SetOutputDirectory(outdir)
     processor.SetHistFilename(hist_filename)
     processor.SetDiagnosticPlots(diagnostic_plots)
