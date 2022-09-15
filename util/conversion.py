@@ -3,7 +3,7 @@ import numpy as np
 import h5py as h5
 import ROOT as rt
 import subprocess as sub
-from util.config import GetNPars, GetJetConfig, GetInvisiblesFlag, GetSignalFlag
+from util.config import GetNPars, GetJetConfig, GetInvisiblesFlag, GetSignalFlag, GetTruthSelection
 from util.calcs import DeltaR2, EPxPyPzToPtEtaPhiM, EPzToRap, PtEtaPhiMToPxPyPzE, PtEtaPhiMToEPxPyPz, AdjustPhi, EPxPyPzToM
 from util.fastjet import BuildFastjet
 from util.qol_utils.qol_util import printProgressBarColor, RN
@@ -211,6 +211,10 @@ class Processor:
             # Get the truth particles.
             truth_particles = ExtractHepMCParticles(truth_events[start_idxs[i]:stop_idxs[i]],n_truth)
 
+            # print('\n----\nTRUTH PARTICLES:\n')
+            # print(truth_particles)
+            # print('---------------\n')
+
             prefix_nzero = int(np.ceil(np.log10(nchunks))) + 1
             prefix_level2 = '\tClustering jets & preparing data for chunk {}/{}:'.format(str(i+1).zfill(prefix_nzero),nchunks)
             if(verbosity==2): printProgressBarColor(0,ranges[i], prefix=prefix_level2, suffix=self.suffix, length=self.bl)
@@ -228,11 +232,6 @@ class Processor:
 
                     # Now package up the constituent four-momenta like (pt,eta,phi,m). (This is for the Delphes case!)
                     vecs = np.vstack((pt,eta,phi,m)).T
-                    # vecs = PtEtaPhiMToPxPyPzE(pt,eta,phi,m) # convert 4-vectors to (px, py, pz, e) for jet clustering.
-                    # px = vecs[:,0]
-                    # py = vecs[:,1]
-                    # pz = vecs[:,2]
-                    # e  = vecs[:,3]
                     pdg = None # No meaning to PDG codes if we're looking at detector-level reconstruction
 
                 else:
@@ -310,9 +309,6 @@ class Processor:
         # pt,eta,phi,m = np.hsplit(np.array([[x.pt(), x.eta(), x.phi(), x.m()] for x in jet.constituents()]),4)
         pt,px,py,pz,e = np.hsplit(np.array([[x.pt(), x.px(),x.py(),x.pz(),x.e()] for x in jet.constituents()]),5)
         pt = pt.flatten() # use this for sorting
-        # eta = eta.flatten()
-        # phi = phi.flatten()
-        # m = m.flatten()
         px = px.flatten()
         py = py.flatten()
         pz = pz.flatten()
@@ -322,10 +318,7 @@ class Processor:
         sorting = np.argsort(-pt)
         l = int(np.minimum(n_constituents,len(pt)))
 
-        pt = pt[sorting][:l]
-        # eta = eta[sorting][:l]
-        # phi = phi[sorting][:l]
-        # m  =  m[sorting][:l]
+        # pt = pt[sorting][:l]
         px = px[sorting][:l]
         py = py[sorting][:l]
         pz = pz[sorting][:l]
@@ -387,16 +380,33 @@ class Processor:
 
     def FillDataBuffer(self,data_buffer,j,vecs,jet,truth_particles,separate_truth_particles=False):
         npars = GetNPars()
+        truth_selection = GetTruthSelection()
         n_truth = npars['n_truth']
         l = vecs.shape[0]
         data_buffer['Nobj'][j] = l
         data_buffer['Pmu'][j,:l,:] = vecs
         data_buffer['truth_Nobj'][j] = len(truth_particles[j])
-        data_buffer['truth_Pdg'][j,:] = [par.pid for par in truth_particles[j]]
-        data_buffer['truth_Pmu'][j,:,:] = [
-            [par.momentum.e, par.momentum.px, par.momentum.py, par.momentum.pz]
-            for par in truth_particles[j]
-        ]
+        # data_buffer['truth_Pdg'][j,:] = [par.pid for par in truth_particles[j]]
+
+        # Filling the truth_Pmu array.
+        # For background generation, we may want to set "truth_selection" to None,
+        # but still fill some empty numpy arrays so that the data format matches
+        # some signal sample (if the arrays have different shapes, we may not be
+        # able to concatenate signal and background files).
+        if(truth_selection is None):
+            data_buffer['truth_Pmu'][j,:,:] = np.zeros((n_truth,4))
+            data_buffer['truth_Pdg'][j,:] = np.zeros(n_truth)
+        else:
+            data_buffer['truth_Pmu'][j,:,:] = [
+                [par.momentum.e, par.momentum.px, par.momentum.py, par.momentum.pz]
+                for par in truth_particles[j]
+            ]
+            data_buffer['truth_Pdg'][j,:] = [par.pid for par in truth_particles[j]]
+
+        # for k,par in enumerate(truth_particles[j]):
+        #     if(par == []): truth_par_components = np.zeros(4)
+        #     else: truth_par_components = np.array([par.momentum.e, par.momentum.px, par.momentum.py, par.momentum.pz])
+        #     data_buffer['truth_Pmu'][j,k,:] = truth_par_components
 
         if(jet is None):
             data_buffer['jet_Pmu'][j,:] = 0.
@@ -420,7 +430,10 @@ class Processor:
 
         if(separate_truth_particles):
             for k in range(n_truth):
-                data_buffer['truth_Pmu_{}'.format(k)][j,:] = [truth_particles[j][k].momentum.e,truth_particles[j][k].momentum.px,truth_particles[j][k].momentum.py,truth_particles[j][k].momentum.pz]
+                if(truth_selection is None):
+                    data_buffer['truth_Pmu_{}'.format(k)][j,:] = np.zeros(4)
+                else:
+                    data_buffer['truth_Pmu_{}'.format(k)][j,:] = [truth_particles[j][k].momentum.e,truth_particles[j][k].momentum.px,truth_particles[j][k].momentum.py,truth_particles[j][k].momentum.pz]
 
         # Let's make some more diagnostic plots, to look at the jet kinematics, and the kinematics of the sum of jet constituents.
         if(self.diagnostic_plots):
