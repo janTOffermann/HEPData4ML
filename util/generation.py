@@ -154,9 +154,10 @@ class Generator:
             # print('\n--- END ---')
 
             # Get the truth-level particles.
-            arr_truth = self.truth_selection(event=event)
+            try: arr_truth = self.truth_selection(event=event)
+            except: arr_truth = np.zeros((0,4))
 
-            if(len(arr_truth) != self.n_truth): # missing some desired truth particle -> potential trouble, discard this event.
+            if(len(arr_truth) != self.n_truth and self.truth_selection is not None): # missing some desired truth particle -> potential trouble, discard this event.
                 n_fail += 1
                 success = False
                 break
