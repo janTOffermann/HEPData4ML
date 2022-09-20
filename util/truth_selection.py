@@ -1,5 +1,6 @@
 import numpythia as npyth # for defining selections
 import numpy as np
+import pyhepmc_ng as pyhep
 
 class BasicSelection:
     def __init__(self,status,pdgid,hadronization=True):
