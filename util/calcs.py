@@ -48,18 +48,12 @@ def EPxPyPzToM(e,px,py,pz):
     return np.sqrt(np.square(e) - np.square(px) -np.square(py) - np.square(pz))
 
 def EPxPyPzToPtEtaPhiM(e,px,py,pz,transpose=True):
-
     vec = rt.Math.PxPyPzEVector()
     vec.SetCoordinates(px,py,pz,e)
     pt = vec.Pt()
     eta = vec.Eta()
     phi = vec.Phi()
     m = vec.M()
-    # pt = np.sqrt(np.square(px) + np.square(py))
-    # p = np.sqrt(np.square(px) + np.square(py) + np.square(pz))
-    # eta = np.arctanh(pz/p)
-    # phi = AdjustPhi(np.arctan(py/px))
-    # m = EPxPyPzToM(e,px,py,pz)
     v = np.array([pt,eta,phi,m],dtype=np.dtype('f8'))
     if(transpose): return v.T
     return v
@@ -69,7 +63,8 @@ def EPzToRap(e,pz):
 
 #--------------------------------------------------
 # Below are some functions that may get used above -- currently experimenting with purely numpy-based functions,
-# versus using my custom ROOT/C++ library.
+# versus using my custom ROOT/C++ library. TODO: When possible we want to avoid conversion due to numerical precision
+# issues. The ROOT-based method (e.g. using my "VectorCalcs" library) sometimes seem more precise, though also slower.
 #--------------------------------------------------
 
 def PtEtaPhiMToPxPyPzE_numpy(pt,eta,phi,m,transpose=True):
@@ -80,12 +75,12 @@ def PtEtaPhiMToPxPyPzE_numpy(pt,eta,phi,m,transpose=True):
     if(transpose): return np.array([px,py,pz,e],dtype=np.dtype('f8')).T
     else: return np.array([px,py,pz,e],dtype=np.dtype('f8'))
 
-def PtEtaPhiMToPxPyPzE_root(pt,eta,phi,m,transpose=True): # more accurate
-    nvecs = len(pt)
+def PtEtaPhiMToPxPyPzE_root(pt,eta,phi,m,transpose=True):
     input_vecs = np.vstack((pt,eta,phi,m)).T
-    output_vecs = np.array(rt.VectorCalcs.PtEtaPhiM2PxPyPzEflat(input_vecs.flatten())).reshape((nvecs,-1))
-    if(transpose): return output_vecs
-    return output_vecs.T
+    rvecs = [rt.Math.PtEtaPhiMVector(*v) for v in input_vecs]
+    output_vecs = np.array([[v.Px(),v.Py(),v.Pz(),v.E()] for v in rvecs],dtype=np.dtype('f8'))
+    if(not transpose): output_vecs = output_vecs.T
+    return output_vecs
 
 def PtEtaPhiMToEPxPyPz_numpy(pt,eta,phi,m,transpose=True):
     px = pt * np.cos(phi)

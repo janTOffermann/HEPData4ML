@@ -8,7 +8,7 @@ import argparse as ap
 # custom imports
 path_prefix = os.getcwd() + '/../'
 if(path_prefix not in sys.path): sys.path.append(path_prefix)
-from util import qol_util as qu
+from util.qol_utils import qol_util as qu
 from util.calcs import PxPyPzEToPtEtaPhiM
 from plot_util.plot_util import *
 

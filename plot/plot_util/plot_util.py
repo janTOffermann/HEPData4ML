@@ -5,7 +5,7 @@ import ROOT as rt
 # custom imports
 path_prefix = os.getcwd() + '/../../'
 if(path_prefix not in sys.path): sys.path.append(path_prefix)
-from util import qol_util as qu
+from util.qol_utils import qol_util as qu
 # from util.calcs import PxPyPzEToPtEtaPhiM, DeltaR2
 
 # Helper function for fetching four-momenta from a jagged array.
