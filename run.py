@@ -3,7 +3,7 @@ import argparse as ap
 import subprocess as sub
 from util.generation import Generator
 from util.delphes import BuildDelphes, HepMC3ToDelphes
-from util.conversion import Processor, RemoveFailedFromHDF5, SplitHDF5
+from util.conversion import Processor, RemoveFailedFromHDF5, SplitHDF5, AddEventIndices
 from util.config import GetDelphesConfig
 from util.vectorcalcs import BuildVectorCalcs, LoadVectorCalcs
 
@@ -139,9 +139,14 @@ def main(args):
     # Remove any failed events (e.g. detector-level events with no jets passing cuts).
     RemoveFailedFromHDF5(h5_file,cwd=outdir)
 
+    compression_opts = 7
+
+    # Add some event indices to our dataset.
+    AddEventIndices(h5_file,cwd=outdir,copts=compression_opts)
+
     # Now split the HDF5 file into training, testing and validation samples.
-    split_ratio = (7,2,1)
-    SplitHDF5(h5_file, split_ratio,cwd=outdir)
+    split_ratio = (7,2,1) # TODO: This should be configurable.
+    SplitHDF5(h5_file, split_ratio,cwd=outdir,copts=compression_opts)
 
     # Optionally delete the full HDF5 file.
     delete_h5 = False # TODO: Make this configurable
