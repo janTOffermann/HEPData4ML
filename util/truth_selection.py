@@ -47,9 +47,13 @@ selections = {
     ],
     'bbar': [
         BasicSelection(23,-5), # anti-bottom from bbar production
+    ],
+    'W': [
+        BasicSelection(22,24) # W boson from t -> W b
     ]
 }
 
+# This is a basic truth particle selection class. It takes an entry from the above dictionary.
 class TruthSelection:
     def __init__(self,selection,hadronization=True):
         self.SetHadronization(hadronization)
@@ -65,4 +69,22 @@ class TruthSelection:
             x.SetHadronization(self.hadronization)
             particle_list.append(x(event,return_hepmc=return_hepmc))
         if(not return_hepmc): particle_list = np.concatenate(particle_list, axis=0)
+        return particle_list
+
+# This is a wrapper for particle selection methods from particle_selection.
+# It truncates the output list to some fixed length n.
+class AdvTruthSelection:
+    def __init__(self,particle_selection, n):
+        self.particle_selection = particle_selection
+        self.n = n
+
+    def __call__(self,event,return_hepmc=False):
+        self.particle_selection.SetHepMC(return_hepmc)
+        status, particle_list = self.particle_selection(event)
+        # Optional truncation.
+        if(len(particle_list) > self.n):
+            particle_list = particle_list[:self.n]
+
+        print('\nParticle list: {}'.format(len(particle_list)))
+        print(particle_list)
         return particle_list

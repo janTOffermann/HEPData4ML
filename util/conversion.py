@@ -3,7 +3,7 @@ import numpy as np
 import h5py as h5
 import ROOT as rt
 import subprocess as sub
-from util.config import GetNPars, GetJetConfig, GetInvisiblesFlag, GetSignalFlag, GetTruthSelection
+from util.config import GetNPars, GetJetConfig, GetInvisiblesFlag, GetSignalFlag, GetTruthSelection, GetSplitSeed
 from util.calcs import DeltaR2, EPxPyPzToPtEtaPhiM, EPzToRap, PtEtaPhiMToPxPyPzE, PtEtaPhiMToEPxPyPz, AdjustPhi, EPxPyPzToM
 from util.fastjet import BuildFastjet
 from util.qol_utils.qol_util import printProgressBarColor, RN
@@ -487,7 +487,7 @@ class Processor:
 
         return
 
-# Remove any "failed events". They will be marked with a negative signal flag.
+# Remove any "failed events". They will have been marked with a negative signal flag.
 def RemoveFailedFromHDF5(h5_file, cwd=None):
     if(cwd is not None): h5_file = '{}/{}'.format(cwd,h5_file)
 
@@ -513,8 +513,16 @@ def RemoveFailedFromHDF5(h5_file, cwd=None):
     sub.check_call(['mv',fname_tmp, h5_file])
     return
 
+# Add a column with event indices.
+def AddEventIndices(h5_file, cwd=None, copts=7):
+    if(cwd is not None): h5_file = '{}/{}'.format(cwd,h5_file)
+    f = h5.File(h5_file,'r+')
+    nevents = f['is_signal'].shape[0]
+    event_indices = np.arange(nevents,dtype=int)
+    f.create_dataset('event_idx',data=event_indices, compression='gzip', compression_opts=copts)
+
 # Split an HDF5 file into training, testing and validation samples.
-def SplitHDF5(h5_file, split_ratio = (7,2,1), train_name=None, val_name=None, test_name=None, cwd=None):
+def SplitHDF5(h5_file, split_ratio = (7,2,1), train_name=None, val_name=None, test_name=None, cwd=None, copts=7):
     if(cwd is not None): h5_file = '{}/{}'.format(cwd,h5_file)
     file_dir = '/'.join(h5_file.split('/')[:-1])
 
@@ -543,7 +551,7 @@ def SplitHDF5(h5_file, split_ratio = (7,2,1), train_name=None, val_name=None, te
     diff = np.sum(n) - N
     n[-1] -= diff
 
-    rng = np.random.default_rng()
+    rng = np.random.default_rng(GetSplitSeed())
     index_list = np.array(range(N),dtype=int)
     rng.shuffle(index_list,axis=0)
     indices = []
@@ -560,7 +568,7 @@ def SplitHDF5(h5_file, split_ratio = (7,2,1), train_name=None, val_name=None, te
         for j,key in enumerate(keys):
                 # Putting the data from f into memory (numpy array)
                 # since h5py doesn't like non-ordered indices.
-                g.create_dataset(key, data=f[key][:][indices[i]],compression='gzip')
+                g.create_dataset(key, data=f[key][:][indices[i]],compression='gzip', compression_opts=copts)
         g.close()
     f.close()
     return
