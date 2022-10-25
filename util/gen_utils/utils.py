@@ -8,7 +8,7 @@ from util.qol_utils.pdg import pdg_names, pdg_plotcodes, FillPdgHist
 
 # --- Various utility functions for the class --
 def CreateHepMCEvent(particle_array,event_number):
-    particle_array = RestructureParticleArray(particle_array)
+    particle_array = RestructureParticleArray(particle_array) # Gives structure (px, py, pz, E, pdgid, status, eta, phi)
     N = len(particle_array)
     hepev = hep.GenEvent()
     hepev.event_number = event_number

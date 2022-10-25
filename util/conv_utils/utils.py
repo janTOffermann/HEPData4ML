@@ -57,7 +57,7 @@ def PrepDelphesArrays(delphes_files):
         else: var_map[key]['pt'] = branch
     return delphes_arr,var_map
 
-def PrepDataBuffer(nentries_per_chunk,separate_truth_particles=False):
+def PrepDataBuffer(nentries_per_chunk,separate_truth_particles=False, n_separate=-1):
     nentries_per_chunk = int(nentries_per_chunk)
     npars = GetNPars()
     n_constituents = npars['jet_n_par']
@@ -83,7 +83,8 @@ def PrepDataBuffer(nentries_per_chunk,separate_truth_particles=False):
     # TODO: Would be nice to accomplish this with references if possible, see: https://docs.h5py.org/en/stable/refs.html#refs .
     #       Not clear if that is actually feasible.
     if(separate_truth_particles):
-        for i in range(n_truth):
+        if(n_separate <= 0): n_separate = n_truth
+        for i in range(n_separate):
             key = 'truth_Pmu_{}'.format(i)
             data[key] = np.zeros((nentries_per_chunk,4),dtype=np.dtype('f8'))
     return data

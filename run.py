@@ -27,6 +27,7 @@ def main(args):
     parser.add_argument('-O', '--outdir', type=str, help='Output directory.', default=None)
     parser.add_argument('-g', '--generation',type=int, help='Whether or not to do event generation.', default=True)
     parser.add_argument('-s', '--sep_truth',type=int, help='Whether or not to store truth-level particles in separate arrays.', default=True)
+    parser.add_argument('-ns', '--n_sep_truth',type=int, help='How many truth particles to save in separate arrays -- will save the first n as given by the truth selection.', default=-1)
     parser.add_argument('-d', '--diagnostic_plots',type=int, help='Whether or not to make diagnostic plots', default=True)
     parser.add_argument('-v', '--verbose',type=int,help='Verbosity.',default=0)
     parser.add_argument('-h5', '--hdf5',type=int,help='Whether or not to produce final HDF5 files. If false, stops after HepMC or Delphes/ROOT file production.',default=1)
@@ -42,6 +43,7 @@ def main(args):
     outdir = args['outdir']
     do_generation =args['generation'] > 0 # TODO: Find nicer way to handle Boolean -- argparse is weird.
     separate_truth_particles = args['sep_truth'] > 0
+    n_separate_truth_particles = args['n_sep_truth']
     diagnostic_plots = args['diagnostic_plots'] > 0
     verbose = args['verbose'] > 0
     do_h5 = args['hdf5']
@@ -132,13 +134,15 @@ def main(args):
         return
 
     # Now put everything into an HDF5 file.
-    if(verbose): print('\n\n\n\n\nRunning jet clustering and producing final HDF5 output.\n\n\n\n\n')
+    if(verbose): print('\nRunning jet clustering and producing final HDF5 output.\n')
     processor = Processor(use_delphes)
     processor.SetVerbosity(verbose)
     processor.SetOutputDirectory(outdir)
     processor.SetHistFilename(hist_filename)
     processor.SetDiagnosticPlots(diagnostic_plots)
-    processor.Process(jet_files,truth_files,h5_file,verbosity=h5_conversion_verbosity,separate_truth_particles=separate_truth_particles)
+    processor.SetSeparateTruthParticles(separate_truth_particles)
+    processor.SetNSeparateTruthParticles(n_separate_truth_particles)
+    processor.Process(jet_files,truth_files,h5_file,verbosity=h5_conversion_verbosity)
 
     if(use_delphes):
         if(delete_delphes):
