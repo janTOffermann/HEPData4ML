@@ -30,6 +30,8 @@ class Generator:
         self.outdir = None # TODO: Use this with filenames.
 
         self.hist_filename = 'hists.root'
+        self.SetFilename('events.hepmc')
+
         self.diagnostic_plots = True
         self.InitializeHistograms()
 
@@ -41,6 +43,26 @@ class Generator:
 
     def SetDiagnosticPlots(self,flag):
         self.diagnostic_plots = flag
+
+    def SetFilename(self,name, truth=True):
+        if('.hepmc' not in name):
+            name = '{}.hepmc'.format(name)
+        self.filename = name
+        if(truth):
+            self.SetTruthFilename(name.replace('.hepmc','_truth.hepmc'))
+        return
+
+    def SetTruthFilename(self,name):
+        if('.hepmc' not in name):
+            name = '{}.hepmc'.format(name)
+        self.truth_filename = name
+        return
+
+    def GetFilename(self):
+        return self.filename
+
+    def GetTruthFilename(self):
+        return self.truth_filename
 
     def ConfigPythia(self):
         self.pythia_config = GetPythiaConfig(self.pt_min,self.pt_max)
@@ -214,10 +236,10 @@ class Generator:
     # Generate a bunch of events in the given pT range,
     # and save them to a HepMC file.
     # We do perform event selection: Only certain particles are saved to the file to begin with.
-    def Generate(self,nevents, filename = 'events.hepmc'): # TODO: implement file chunking
+    def Generate(self,nevents): # TODO: implement file chunking
         pythia = npyth.Pythia(config=self.pythia_config_file,params=self.pythia_config)
 
-        filename = '{}/{}'.format(self.outdir,filename)
+        filename = '{}/{}'.format(self.outdir,self.filename)
 
         # Get the Fastjet banner out of the way
         tmp = InitFastJet()

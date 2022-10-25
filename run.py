@@ -1,4 +1,4 @@
-import sys,os
+import sys,os,pathlib
 import argparse as ap
 import subprocess as sub
 from util.generation import Generator
@@ -29,6 +29,10 @@ def main(args):
     parser.add_argument('-s', '--sep_truth',type=int, help='Whether or not to store truth-level particles in separate arrays.', default=True)
     parser.add_argument('-d', '--diagnostic_plots',type=int, help='Whether or not to make diagnostic plots', default=True)
     parser.add_argument('-v', '--verbose',type=int,help='Verbosity.',default=0)
+    parser.add_argument('-h5', '--hdf5',type=int,help='Whether or not to produce final HDF5 files. If false, stops after HepMC or Delphes/ROOT file production.',default=1)
+    parser.add_argument('-f', '--force',type=int,help='Whether or not to force generation -- if true, will possibly overwrite existing HepMC files in output directory.', default=0)
+    parser.add_argument('-c', '--compress',type=int,help='Whether or not to compress HepMC files.',default=0)
+    parser.add_argument('-cd','--clean-delphes',type=int,help='Whether or not to clean up DELPHES/ROOT files.',default=0)
 
     args = vars(parser.parse_args())
 
@@ -40,6 +44,10 @@ def main(args):
     separate_truth_particles = args['sep_truth'] > 0
     diagnostic_plots = args['diagnostic_plots'] > 0
     verbose = args['verbose'] > 0
+    do_h5 = args['hdf5']
+    compress_hepmc = args['compress']
+    delete_delphes = args['clean_delphes']
+    force = args['force']
     nbins = len(pt_bin_edges) - 1
 
     # Setting the verbosity for the HDF5 conversion.
@@ -74,7 +82,6 @@ def main(args):
 
         pt_min = pt_bin_edges[i]
         pt_max = pt_bin_edges[i+1]
-        # hep_file = '{}/events_{}-{}.hepmc'.format(outdir,pt_min,pt_max)
         hep_file = 'events_{}-{}.hepmc'.format(pt_min,pt_max)
         if(do_generation):
             if(verbose and i == 0): print('Running Pythia8 event generation.')
@@ -83,8 +90,15 @@ def main(args):
             hist_filename = 'hists_{}.root'.format(i)
             hist_files.append(hist_filename)
             generator.SetHistFilename(hist_filename)
+            generator.SetFilename(hep_file)
             generator.SetDiagnosticPlots(diagnostic_plots)
-            generator.Generate(nevents_per_bin,hep_file)
+
+            hepfile_exists = pathlib.Path('{}/{}'.format(outdir,hep_file)).exists()
+            generate = True
+            if(hepfile_exists and not force):
+                print('\tHepMC3 file {}/{} already found, skipping its generation.'.format(outdir,hep_file))
+                generate = False
+            if(generate): generator.Generate(nevents_per_bin)
 
         # Extract the truth-level particles from the full HepMC file.
         truthfile = hep_file.replace('.hepmc','_truth.hepmc') # TODO: Should be returned by Generate()
@@ -99,7 +113,7 @@ def main(args):
             jet_files.append(delphesfile)
 
             # We can now compress the HepMC file. Once it's compressed, we delete the original file to recover space.
-            CompressHepMC([hep_file_with_extension],True)
+            if(compress_hepmc): CompressHepMC([hep_file_with_extension],True)
 
         else: # Case 2: No Delphes
             jet_files.append(hep_file)
@@ -113,8 +127,12 @@ def main(args):
         comm = ['rm'] + hist_files
         sub.check_call(comm,cwd=outdir)
 
+    # Optionally stop here, if we're not interested in progressing beyond HepMC or Delphes/ROOT.
+    if(not do_h5):
+        return
+
     # Now put everything into an HDF5 file.
-    if(verbose): print('Running jet clustering and producing final HDF5 output.')
+    if(verbose): print('\n\n\n\n\nRunning jet clustering and producing final HDF5 output.\n\n\n\n\n')
     processor = Processor(use_delphes)
     processor.SetVerbosity(verbose)
     processor.SetOutputDirectory(outdir)
@@ -123,18 +141,19 @@ def main(args):
     processor.Process(jet_files,truth_files,h5_file,verbosity=h5_conversion_verbosity,separate_truth_particles=separate_truth_particles)
 
     if(use_delphes):
-        # Cleanup: Delete the jet files, since they can always be recreated from the compressed HepMC files.
-        jet_files = ['{}/{}'.format(outdir,x) for x in jet_files]
-        comm = ['rm'] + jet_files
-        sub.check_call(comm)
+        if(delete_delphes):
+            # Cleanup: Delete the jet files -- which are Delphes/ROOT files, since they can always be recreated from the (compressed) HepMC files.
+            jet_files = ['{}/{}'.format(outdir,x) for x in jet_files]
+            comm = ['rm'] + jet_files
+            sub.check_call(comm)
 
     else:
         #Cleanup: Compress the HepMC files.
-        CompressHepMC(jet_files,True,cwd=outdir)
+        if(compress_hepmc): CompressHepMC(jet_files,True,cwd=outdir)
 
     # Cleanup.
     # Now also compress the truth files.
-    CompressHepMC(truth_files,True,cwd=outdir)
+    if(compress_hepmc): CompressHepMC(truth_files,True,cwd=outdir)
 
     # Remove any failed events (e.g. detector-level events with no jets passing cuts).
     RemoveFailedFromHDF5(h5_file,cwd=outdir)
