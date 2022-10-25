@@ -36,6 +36,15 @@ class Processor:
         self.diagnostic_plots = True
         self.InitializeHists()
 
+        self.separate_truth_particles = False
+        self.n_separate_truth_particles = -1
+
+    def SetSeparateTruthParticles(self,flag):
+        self.separate_truth_particles = flag
+
+    def SetNSeparateTruthParticles(self,n):
+        self.n_separate_truth_particles = n
+
     def SetVerbosity(self,flag):
         self.verbose = flag
 
@@ -144,7 +153,7 @@ class Processor:
         f.Close()
         return
 
-    def Process(self, final_state_files, truth_files=None, h5_file=None, nentries_per_chunk=1e4, verbosity=0, separate_truth_particles=True):
+    def Process(self, final_state_files, truth_files=None, h5_file=None, nentries_per_chunk=1e4, verbosity=0):
         if(type(final_state_files) == list): final_state_files = ['{}/{}'.format(self.outdir,x) for x in final_state_files]
         else: final_state_files = '{}/{}'.format(self.outdir,final_state_files)
 
@@ -178,7 +187,7 @@ class Processor:
         truth_events = ExtractHepMCEvents(truth_files)
 
         nentries_per_chunk = int(nentries_per_chunk)
-        data = PrepDataBuffer(nentries_per_chunk,separate_truth_particles)
+        data = PrepDataBuffer(nentries_per_chunk,self.separate_truth_particles,self.n_separate_truth_particles)
 
         # Prepare the HDF5 file.
         dsets = PrepH5File(h5_file,nentries,data)
@@ -258,7 +267,7 @@ class Processor:
                 if(debug_print):
                     print('\nProcessing event {}...'.format(j))
 
-                self.SelectFinalStateParticles(vecs, pdg, self.jetdef, truth_particles, data, j, separate_truth_particles, debug_print)
+                self.SelectFinalStateParticles(vecs, pdg, self.jetdef, truth_particles, data, j, debug_print)
 
                 if(verbosity==2 and not debug_print): printProgressBarColor(j+1,ranges[i], prefix=prefix_level2, suffix=self.suffix, length=self.bl)
 
@@ -327,7 +336,7 @@ class Processor:
         vecs = np.array([e,px,py,pz],dtype=np.dtype('f8')).T
         return vecs
 
-    def SelectFinalStateParticles(self,vecs, pdg, jetdef, truth_particles, data, j, separate_truth_particles, debug_print=False):
+    def SelectFinalStateParticles(self,vecs, pdg, jetdef, truth_particles, data, j, debug_print=False):
         vecs_input = np.copy(vecs) # useful for plotting later on, since vecs gets modified
 
         jet_config = GetJetConfig()
@@ -335,7 +344,7 @@ class Processor:
         jet_sel = jet_config['jet_selection']
 
         if(jet_sel is None):
-            self.FillDataBuffer(data,j,vecs,None,truth_particles,separate_truth_particles)
+            self.FillDataBuffer(data,j,vecs,None,truth_particles)
         else:
             jets = self.ClusterJets(vecs,jetdef,jet_config)
 
@@ -358,7 +367,7 @@ class Processor:
                 pt = np.sqrt(np.dot(vecs[0,1:3],vecs[0,1:3]))
                 print('\tLeading jet constituent (pT,E) = ({:.2e}, {:.2e})'.format(pt,e))
 
-            self.FillDataBuffer(data,j,vecs,jet,truth_particles,separate_truth_particles)
+            self.FillDataBuffer(data,j,vecs,jet,truth_particles)
 
         # If PDG code information was provided, let's determine the codes of the selected particles.
         # TODO: This will involve looping -> will be intensive. Is there a better way?
@@ -378,14 +387,15 @@ class Processor:
             FillPdgHist(self.pdg_hist,selected_pdgs)
         return
 
-    def FillDataBuffer(self,data_buffer,j,vecs,jet,truth_particles,separate_truth_particles=False):
+    def FillDataBuffer(self,data_buffer,j,vecs,jet,truth_particles):
         npars = GetNPars()
         truth_selection = GetTruthSelection()
         n_truth = npars['n_truth']
         l = vecs.shape[0]
         data_buffer['Nobj'][j] = l
         data_buffer['Pmu'][j,:l,:] = vecs
-        data_buffer['truth_Nobj'][j] = len(truth_particles[j])
+        n_truth_local = len(truth_particles[j])
+        data_buffer['truth_Nobj'][j] = n_truth_local
         # data_buffer['truth_Pdg'][j,:] = [par.pid for par in truth_particles[j]]
 
         # Filling the truth_Pmu array.
@@ -397,11 +407,13 @@ class Processor:
             data_buffer['truth_Pmu'][j,:,:] = np.zeros((n_truth,4))
             data_buffer['truth_Pdg'][j,:] = np.zeros(n_truth)
         else:
-            data_buffer['truth_Pmu'][j,:,:] = [
+            # Some truth-level selections may give a variable number of particles,
+            # the buffer array is of a fixed length so there will be zero-padding.
+            data_buffer['truth_Pmu'][j,:n_truth_local,:] = [
                 [par.momentum.e, par.momentum.px, par.momentum.py, par.momentum.pz]
                 for par in truth_particles[j]
             ]
-            data_buffer['truth_Pdg'][j,:] = [par.pid for par in truth_particles[j]]
+            data_buffer['truth_Pdg'][j,:n_truth_local] = [par.pid for par in truth_particles[j]]
 
         # for k,par in enumerate(truth_particles[j]):
         #     if(par == []): truth_par_components = np.zeros(4)
@@ -428,11 +440,15 @@ class Processor:
                     dr = np.sqrt(DeltaR2(truth_particles[j][i].momentum.eta(),truth_particles[j][i].momentum.phi(), data_buffer['jet_Pmu_cyl'][j,1],data_buffer['jet_Pmu_cyl'][j,2]))
                     h.Fill(dr)
 
-        if(separate_truth_particles):
-            for k in range(n_truth):
-                if(truth_selection is None):
+        if(self.separate_truth_particles):
+            n_separate = self.n_separate_truth_particles
+            if(n_separate <= 0): n_separate = n_truth
+            for k in range(n_separate):
+                if(truth_selection is None): # TODO: Is this redundant? Should be initialized to zeros.
                     data_buffer['truth_Pmu_{}'.format(k)][j,:] = np.zeros(4)
                 else:
+                    if(k >= n_truth_local): break
+                    # print('k = {}, len(truth_particles[{}]) = {}'.format(k,j,len(truth_particles[j])))
                     data_buffer['truth_Pmu_{}'.format(k)][j,:] = [truth_particles[j][k].momentum.e,truth_particles[j][k].momentum.px,truth_particles[j][k].momentum.py,truth_particles[j][k].momentum.pz]
 
         # Let's make some more diagnostic plots, to look at the jet kinematics, and the kinematics of the sum of jet constituents.

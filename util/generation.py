@@ -176,10 +176,16 @@ class Generator:
             # print('\n--- END ---')
 
             # Get the truth-level particles.
-            try: arr_truth = self.truth_selection(event=event)
-            except: arr_truth = np.zeros((0,4))
+            # try:
+            arr_truth = self.truth_selection(event=event)
+            truth_selection_fixed_length = self.truth_selection.IsFixedLength() # do we expect a fixed number of particles from this selection?
+            # except:
+            #     print('There was an exception.')
+            #     arr_truth = np.zeros((0,4))
+            #     truth_selection_fixed_length = True
 
-            if(len(arr_truth) != self.n_truth and self.truth_selection is not None): # missing some desired truth particle -> potential trouble, discard this event.
+            if((len(arr_truth) != self.n_truth and truth_selection_fixed_length == True) and self.truth_selection is not None): # missing some desired truth particle -> potential trouble, discard this event.
+            # if(len(arr_truth) != self.n_truth and self.truth_selection is not None): # missing some desired truth particle -> potential trouble, discard this event.
                 n_fail += 1
                 success = False
                 break
