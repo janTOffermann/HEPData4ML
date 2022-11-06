@@ -1,8 +1,8 @@
 import numpy as np
 import subprocess as sub
-import pyhepmc_ng as hep
+import pyhepmc as hep
 from util.hepmc import RestructureParticleArray
-from util.particle_selection import IsNeutrino
+from util.particle_selection.algos import IsNeutrino
 from util.calcs import PxPyPzEToPtEtaPhiM
 from util.qol_utils.pdg import pdg_names, pdg_plotcodes, FillPdgHist
 

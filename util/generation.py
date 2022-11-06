@@ -2,8 +2,10 @@ import sys, glob
 import numpy as np
 import ROOT as rt
 import subprocess as sub
-import pyhepmc_ng as hep
-import numpythia as npyth # Pythia, hepmc_write
+
+# import numpythia as npyth # Pythia, hepmc_write
+from util.pythia.utils import PythiaWrapper
+
 from util.config import GetEventSelection, GetTruthSelection, GetFinalStateSelection, GetPythiaConfig, GetPythiaConfigFile, GetJetConfig, GetNPars
 from util.qol_utils.pdg import pdg_names, pdg_plotcodes
 from util.gen_utils.utils import CreateHepMCEvent, HepMCOutput, HistogramFinalStateKinematics, HistogramFinalStateCodes
@@ -14,6 +16,9 @@ class Generator:
     def __init__(self, pt_min, pt_max):
         self.pt_min = pt_min
         self.pt_max = pt_max
+
+        # Create our Pythia wrapper.
+        self.pythia = PythiaWrapper()
 
         self.ConfigPythia()
         self.event_selection = GetEventSelection()
@@ -65,8 +70,12 @@ class Generator:
         return self.truth_filename
 
     def ConfigPythia(self):
+        """
+        Prepare our Pythia configuration. This turns our settings (from our config file)
+        into a list of strings ready to be input to Pythia8.
+        """
         self.pythia_config = GetPythiaConfig(self.pt_min,self.pt_max)
-        self.pythia_config = self.PythiaCompatibilityCheck(self.pythia_config)
+        # self.pythia_config = self.PythiaCompatibilityCheck(self.pythia_config)
         self.pythia_config_file = GetPythiaConfigFile()
 
     # TODO: This is a compatibility check for the pythia configuration.
@@ -92,9 +101,9 @@ class Generator:
 
             with qu.stdout_redirected():
                 try:
-                    pythia = npyth.Pythia(params=tmp_config)
+                    # pythia = npyth.Pythia(params=tmp_config)
                     pythia_config_safe[key] = val
-                    del pythia # TODO: Is this helpful?
+                    # del pythia # TODO: Is this helpful?
                 except: pass
         return pythia_config_safe
 
@@ -243,8 +252,8 @@ class Generator:
     # and save them to a HepMC file.
     # We do perform event selection: Only certain particles are saved to the file to begin with.
     def Generate(self,nevents): # TODO: implement file chunking
-        pythia = npyth.Pythia(config=self.pythia_config_file,params=self.pythia_config)
-
+        # pythia = npyth.Pythia(config=self.pythia_config_file,params=self.pythia_config)
+        pythia = None
         filename = '{}/{}'.format(self.outdir,self.filename)
 
         # Get the Fastjet banner out of the way
