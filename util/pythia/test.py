@@ -5,8 +5,9 @@ import pyhepmc as pyhep
 
 path_prefix = os.getcwd() + '/../../'
 if(path_prefix not in sys.path): sys.path.append(path_prefix)
-import util.particle_selection.truth_selection_nnp as ts_npp
+import util.particle_selection.particle_selection as par_sel
 import util.particle_selection.algos as algos
+import util.particle_selection.selection_algos as salgos
 
 p = PythiaWrapper()
 p.ReadString("HardQCD:gg2qqbar = on")
@@ -26,56 +27,80 @@ status = p.GetStatus(hepmc=True)
 
 stats = np.vstack((pids,status)).T
 names = p.GetNames()
+daughters = p.GetDaughters()
 
 for i in range(len(names)):
-    print('{}: {}, {}'.format(names[i], pids[i], status[i]))
+    print(i, '{}: {}, {}'.format(names[i], pids[i], status[i]),daughters[i])
 
 idx = 10
 
 stable_daughters = p.GetStableDaughtersSingle(idx, recursive=True)
-print(stable_daughters)
+print('For particle {}, the stable daughters:'.format(idx))
+for d in stable_daughters:
+    print('\t{}'.format(d))
+
+
+print('\n=== PyHEP test. === \n')
 
 # PyHEP tests
 vec = pyhep.FourVector(1.,0.,0.,10.) # px, py, pz, E
 pid = 6
 status = 1
 particle = pyhep.GenParticle(vec,pid,status)
-
 print('particle:',particle)
 
-# Truth selection test.
-selection_1 = ts_npp.FirstSelector(status=1,pdgid=22)
-selection_2 = ts_npp.FirstSelector(status=4, pdgid=2212)
-selection = ts_npp.BasicSelection([selection_1,selection_2])
+# Particle selection tests.
+print('\n\n Testing basic particle selection: FirstSelector & BasicSelection.')
+selection_1 = par_sel.FirstSelector(status=1,pdgid=22)
+selection_2 = par_sel.FirstSelector(status=4, pdgid=2212)
+selection = par_sel.BasicSelection([selection_1,selection_2])
 
-# HepMC style
-print('=== Selecting particle, with HEPMC return style ===')
-particles = selection(p,return_hepmc=True)
-print(particles)
+selected_indices = selection(p)
 
-# Test if particle is stable
-for particle in particles:
-    stable = algos.IsStable(particle)
-    print('Stable:',stable)
-    print('Quark:', algos.IsQuark(particle))
-    print('Lepton:', algos.IsLepton(particle))
-    print('Boson:', algos.IsBoson(particle))
-    print('Photon:', algos.IsPhoton(particle))
-    print()
+print('Selected indices:')
+for entry in selected_indices:
+    print(entry)
 
-    print(particle)
+selection_1.Print()
 
-# Numpy style
-print('=== Selecting particle, with numpy return style ===')
-particles = selection(p,return_hepmc=False)
-print(particles)
+print('\n\n Testing some selection algorithms directly.')
+i = 1
+print('Using particle {}, which is {} ({})'.format(i,pids[i],names[i]))
 
-for particle in particles:
-    stable = algos.IsStable(particle, use_hepmc=False)
-    print('Stable:',stable)
-    print('Quark:', algos.IsQuark(particle, use_hepmc=False))
-    print('Lepton:', algos.IsLepton(particle, use_hepmc=False))
-    print('Boson:', algos.IsBoson(particle, use_hepmc=False))
-    print('Photon:', algos.IsPhoton(particle, use_hepmc=False))
-    print()
+print('\n\nTesting GatherQuarks.')
+gatherer = algos.GatherQuarks()
+result = gatherer(p,i)
+print('Quark daughters:')
+for k in result:
+    print('\t [{}] ({})'.format(k,names[k]))
+
+print('\n\nTesting GatherStableDaughters.')
+gatherer = algos.GatherStableDaughters()
+result = gatherer(p,i)
+print('Stable daughters:')
+for k in result:
+    print('\t [{}] ({})'.format(k,names[k]))
+
+print('\n\nTesting AlgoSelection with SelectFinalStateDaughters.')
+algo = salgos.SelectFinalStateDaughters(truth_selection=selection) # use selection from earlier
+n = 10
+selector = par_sel.AlgoSelection(algo,n)
+result = selector(p)
+print('Result of AlgoSelection:')
+for k in result:
+    print('\t [{}] ({})'.format(k,names[k]))
+
+print('\n\nTesting MultiSelection with the above AlgoSelection + FirstSelector.')
+selectors = [selector, selection_2]
+selector = par_sel.MultiSelection(selectors)
+result = selector(p)
+print('Result of MultiSelection:')
+for k in result:
+    print('\t [{}] ({})'.format(k,names[k]))
+
+print('\n\nTesting event-level info.')
+process_id = p.GetProcessID()
+process_name = p.GetProcessName()
+
+print('Process code: {}\n\t({})'.format(process_id, process_name))
 

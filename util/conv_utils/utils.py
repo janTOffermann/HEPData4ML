@@ -2,7 +2,7 @@ import sys, glob
 import h5py as h5
 import numpy as np
 import uproot as ur
-import pyhepmc_ng as hep
+import pyhepmc as hep
 from util.fastjet import BuildFastjet
 from util.config import GetNPars, GetJetConfig
 
