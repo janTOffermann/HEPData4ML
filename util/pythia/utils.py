@@ -6,6 +6,7 @@ class PythiaWrapper:
     """
     A simple wrapper for Pythia8, performing much of the same functionality
     as the `numpythia` package but relying on an external Pythia8 installation.
+    Also adds new functionality!
     """
 
     def __init__(self):
@@ -200,39 +201,56 @@ class PythiaWrapper:
         if(indices is not None): names = names[indices]
         return names
 
-    # Return a particle's daughters.
+    # Return indices of particle's daughters.
     def GetDaughtersSingle(self,index, recursive=False):
         idx = index + 1 # using index + 1 to effectively drop entry 0, which represents "full event"
         if(recursive): d = np.array(self.event[idx].daughterListRecursive(),dtype='i4')
         else: d = np.array(self.event[index+1].daughterList(),dtype='i4')
-        return d
+        return d - 1 # subtract 1 again to deal with Pythia's entry 0
 
     # Return type is list, not array! This is because it is jagged -- could also consider awkward array.
     def GetDaughters(self, recursive=False):
         n = self.GetN()
         return [self.GetDaughtersSingle(i,recursive) for i in range(n)]
 
-    # Return a particle's mothers.
+    # Return indices of a particle's mothers.
     def GetMothersSingle(self,index, recursive=False):
         idx = index + 1 # using index + 1 to effectively drop entry 0, which represents "full event"
         if(recursive): m = np.array(self.event[idx].motherListRecursive(),dtype='i4')
         else: m = np.array(self.event[index+1].motherList(),dtype='i4')
-        return m
+        return m - 1 # subtract 1 again to deal with Pythia's entry 0
 
     def GetMothers(self, recursive=False):
         n = self.GetN()
         return [self.GetMothersSingle(i,recursive) for i in range(n)]
 
-    # Get any stable daughters (hepmc status == 1).
+    # Get indices of a particle's stable daughters (hepmc status == 1).
     def GetStableDaughtersSingle(self, index, recursive=False):
         daughters = self.GetDaughtersSingle(index,recursive)
         status = self.GetStatus(hepmc=True)
         stable = np.where(status == 1)[0]
         return np.intersect1d(daughters,stable)
 
-    # # Get the code of the event process.
-    # def GetProcessID(self):
+    # Get a single particle.
+    # Format is (E, px, py, pz, pid, status)
+    def GetParticle(self, index):
+        status = self.GetStatus(index,hepmc=True)
+        pid = self.GetPdgId(index)
+        pmu = self._getMomentum(index,'e px py pz')
+        return (*pmu, pid, status)
+        # return np.array(
+        #     [(*pmu,pid,status)],
+        #     dtype=[('e','f8'),('px','f8'),('py','f8'),('pz','f8'),('pdgid','i4'),('status','i4')]
+        # )
 
+    # Get the code of the event process.
+    def GetProcessID(self):
+        if(self.pythia is None): return None
+        return self.pythia.infoPython().code()
+
+    def GetProcessName(self):
+        if(self.pythia is None): return None
+        return self.pythia.infoPython().name()
 
     def _bool2string(self,flag):
         if(flag): return 'on'
