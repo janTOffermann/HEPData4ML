@@ -1,7 +1,8 @@
 import numpy as np
 
-def RestructureParticleArray(arr):
-    fields = ['px','py','pz','E','pdgid','status','eta','phi']
+def RestructureParticleArray(arr, fields=None):
+    if(fields is None):
+        fields = ['px','py','pz','E','pdgid','status','eta','phi']
     arr = np.array([[x[y] for y in fields] for x in arr])
     return arr
 

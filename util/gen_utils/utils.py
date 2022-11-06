@@ -7,21 +7,21 @@ from util.calcs import PxPyPzEToPtEtaPhiM
 from util.qol_utils.pdg import pdg_names, pdg_plotcodes, FillPdgHist
 
 # --- Various utility functions for the class --
-def CreateHepMCEvent(particle_array,event_number):
-    particle_array = RestructureParticleArray(particle_array) # Gives structure (px, py, pz, E, pdgid, status, eta, phi)
-    N = len(particle_array)
+def CreateHepMCEvent(pythia_wrapper, particle_indices, event_number):
     hepev = hep.GenEvent()
     hepev.event_number = event_number
-    for j in range(N):
-        momentum = particle_array[j][:4] # px, py, pz, E.
-        pid = int(particle_array[j][4])
-        status = int(particle_array[j][5])
-        par = hep.GenParticle(momentum=momentum, pid=pid, status=status)
+
+    momentum = pythia_wrapper.GetPxPyPzE(particle_indices)
+    pdgid = pythia_wrapper.GetPdgId(particle_indices)
+    status = pythia_wrapper.GetStatus(particle_indices, hepmc=True)
+
+    for j, pmu in enumerate(momentum):
+        par = hep.GenParticle(momentum=pmu, pid=pdgid[j], status=status[j])
         hepev.add_particle(par)
     return hepev
 
 def Write2HepMCBuffer(buffername,hepev):
-    with hep.WriterAscii(buffername) as f:
+    with hep.io.WriterAscii(buffername) as f:
         f.write_event(hepev)
     return
 

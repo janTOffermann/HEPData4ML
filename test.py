@@ -12,4 +12,15 @@ print('Starting test.')
 pt_min = 550
 pt_max = 650
 
+os.makedirs('test',exist_ok=True)
+
 g = Generator(pt_min, pt_max)
+g.SetOutputDirectory('test')
+
+# The generator has automatically read in the config from config.py, in its __init__ function.
+# Now let's try generating an event.
+nevents = 10
+g.Generate(nevents)
+
+
+

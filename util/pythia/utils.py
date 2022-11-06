@@ -25,9 +25,11 @@ class PythiaWrapper:
 
     def ReadStrings(self,strings):
         for string in strings:
+            string = string.strip('\n')
             string = string.split('#')[0]
-            if(self.verbose): print('Reading string: {}'.format(string))
+            string = string.split('!')[0]
             if(string in ['','\n']): continue
+            if(self.verbose): print('Reading string: {}'.format(string))
             self.ReadString(string)
 
     def ReadStringsFromFile(self,file):

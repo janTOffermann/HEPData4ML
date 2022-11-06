@@ -19,8 +19,9 @@ class Generator:
 
         # Create our Pythia wrapper.
         self.pythia = PythiaWrapper()
-
         self.ConfigPythia()
+
+        # Configure our particle selectors and event filters.
         self.event_selection = GetEventSelection()
         self.truth_selection = GetTruthSelection()
         self.final_state_selection = GetFinalStateSelection()
@@ -71,41 +72,18 @@ class Generator:
 
     def ConfigPythia(self):
         """
-        Prepare our Pythia configuration. This turns our settings (from our config file)
+        Prepare and apply Pythia configuration. This turns our settings (from our config file)
         into a list of strings ready to be input to Pythia8.
         """
         self.pythia_config = GetPythiaConfig(self.pt_min,self.pt_max)
-        # self.pythia_config = self.PythiaCompatibilityCheck(self.pythia_config)
         self.pythia_config_file = GetPythiaConfigFile()
 
-    # TODO: This is a compatibility check for the pythia configuration.
-    # Numpythia v. 1.2 uses Pythia 8.244, but Numpythia v. 1.1 uses Pythia 8.226.
-    # There are some noticeable differences in available process configs, and the latest numpythia
-    # may not be available on macOS/arm yet.
-    # The check is not very efficient, it will make many nympythia objects.
-    def PythiaCompatibilityCheck(self,pythia_config):
-        pythia_config_safe = {}
-        safe_keys = ['Beam','Random','Stat','Print','PhaseSpace','PartonLevel','HadronLevel']
-        for key,val in pythia_config.items():
-            safe = False
-            for safe_key in safe_keys:
-                if(safe_key in key):
-                    safe = True
-                    break
-            if(safe):
-                pythia_config_safe[key] = val
-                continue
-
-            tmp_config = {key_safe:val_safe for key_safe,val_safe in pythia_config_safe.items()}
-            tmp_config[key] = val
-
-            with qu.stdout_redirected():
-                try:
-                    # pythia = npyth.Pythia(params=tmp_config)
-                    pythia_config_safe[key] = val
-                    # del pythia # TODO: Is this helpful?
-                except: pass
-        return pythia_config_safe
+        # Now apply these configurations to our Generator's instance of PythiaWrapper.
+        self.pythia.ClearConfigDict()
+        self.pythia.AddToConfigDict(self.pythia_config)
+        # self.pythia.ReadConfigDict()
+        self.pythia.ReadStringsFromFile(self.pythia_config_file)
+        self.pythia.InitializePythia()
 
     def InitializeHistograms(self):
         self.hists = []
@@ -161,7 +139,7 @@ class Generator:
         f.Close()
         return
 
-    def GenerationLoop(self,pythia, nevents,filename,i_real = 1, nevents_disp=None,loop_number=0):
+    def GenerationLoop(self, nevents,filename,i_real = 1, nevents_disp=None,loop_number=0):
         n_fail = 0
         if(nevents_disp is None): nevents_disp = nevents # number of events to display in progress bar
 
@@ -174,71 +152,70 @@ class Generator:
         buffername = filename.replace('.hepmc','_buffer.hepmc')
         buffername_truth = buffername.replace('.hepmc','_truth.hepmc')
 
-        for i,event in enumerate(pythia(events=nevents)):
+        for i in range(nevents):
             success = True
+            self.pythia.Generate() # generate an event!
 
-            # # Debug: Print full event record. #TODO: This is useful to keep here, is there a nicer way to implement this?
-            # all_particles = event.all()
-            # print('\n---START---')
-            # for par in all_particles:
-            #     print('\t',par)
-            # print('\n--- END ---')
+            # Get the truth-level particles, using our truth selector.
+            truth_indices = np.atleast_1d(np.array(self.truth_selection(self.pythia),dtype=int))
+            truth_selection_status = self.truth_selection.GetSelectionStatus()
 
-            # Get the truth-level particles.
-            # try:
-            arr_truth = self.truth_selection(event=event)
-            truth_selection_fixed_length = self.truth_selection.IsFixedLength() # do we expect a fixed number of particles from this selection?
-            # except:
-            #     print('There was an exception.')
-            #     arr_truth = np.zeros((0,4))
-            #     truth_selection_fixed_length = True
-
-            if((len(arr_truth) != self.n_truth and truth_selection_fixed_length == True) and self.truth_selection is not None): # missing some desired truth particle -> potential trouble, discard this event.
-            # if(len(arr_truth) != self.n_truth and self.truth_selection is not None): # missing some desired truth particle -> potential trouble, discard this event.
-                n_fail += 1
+            # Some checks -- if we expect a fixed # of truth-level particles from our selector,
+            # and it didn't give this, it means that something went wrong. In that case, we should
+            # skip this event.
+            if(not truth_selection_status):
                 success = False
-                break
-
-            if(not success): continue
-
-            # Get the final-state particles, as a numpy array.
-            status, arr = self.final_state_selection(event=event)
-
-            # If we didn't pick up any final-state particles, discard this event.
-            if(not status):
                 n_fail += 1
-                success = False
                 continue
 
-            # Optionally filter down events (e.g. throw out particles too far from selected truth particles).
-            # This is typically some sort of filtering done just to reduce the HepMC file size (which can be rather large).
+            # Get the final-state particles that we're saving (however we've defined our final state!).
+            final_state_indices = np.atleast_1d(np.array(self.final_state_selection(self.pythia),dtype=int))
+            final_state_selection_status = self.final_state_selection.GetSelectionStatus()
+            if(not final_state_selection_status):
+                success = False
+                n_fail += 1
+                continue
+
+            # ==========================================
+            # Now we apply an (optional) "event filter". This selects only a subset of the final-state particles
+            # to save to our output HepMC file. In practice this can be useful for reducing these files' sizes.
+            # For example, one may choose to only save final-state particles within some distance of one of
+            # the selected truth-level particles.
+            # ==========================================
+
+            # print(final_state_indices)
             if(self.event_selection is not None):
-                status, arr, arr_truth = self.event_selection(arr,arr_truth)
+                final_state_indices = self.event_selection(self.pythia, final_state_indices, truth_indices)
+            # print(final_state_indices)
 
-            if(not status):
-                n_fail += 1
-                success = False
-                continue
+            # ==========================================
+            # Now lets create HepMC events -- one holding just the truth-level particles,
+            # and one holding just the final-state particles. By keeping these separate,
+            # we make it easy to (later) determine which particles are passed to jet clustering.
+            # ==========================================
+            final_state_hepev = CreateHepMCEvent(self.pythia,final_state_indices,i_real) # internally will fetch momenta
+            truth_hepev       = CreateHepMCEvent(self.pythia,truth_indices,      i_real)
 
-            if(self.diagnostic_plots):
-                # Record the PDG codes of all selected final-state particles (i.e. all those that made it into the HepMC output).
-                HistogramFinalStateCodes(arr,self.hist_fs_pdgid)
-                HistogramFinalStateKinematics(arr,self.kinematic_hists)
-
-            # Create a GenEvent (pyhepmc_ng) containing these selected particles.
-            # Note that the event comes from pyhepmc_ng, *not* numpythia.
-            # Thus we cannot just use GenParticles from numpythia (e.g. using return_hepmc=True above).
-            hepev       = CreateHepMCEvent(arr      ,i_real)
-            hepev_truth = CreateHepMCEvent(arr_truth,i_real)
+            # With the HepMC events created, we write them to disk.
+            # TODO: This is probably a bottleneck since it involves I/O, is there a clever way
+            #       for us to chunk this part and write a bunch of HepMC events to a memory buffer first?
 
             # ----- File I/O -----
             # Write this event to the HepMC buffer file, then copy the buffer contents to the full HepMC file.
-            HepMCOutput(hepev,buffername,filename,loop_number,i,i_real,nevents,n_fail)
-            HepMCOutput(hepev_truth,buffername_truth,filename_truth,loop_number,i,i_real,nevents,n_fail)
+            HepMCOutput(final_state_hepev,buffername,filename,loop_number,i,i_real,nevents,n_fail)
+            HepMCOutput(truth_hepev,buffername_truth,filename_truth,loop_number,i,i_real,nevents,n_fail)
             # ----- End File I/O -----
 
+            # Diagnostic plots.
+            # TODO: Probably a lot of optimization to do for these, some new options thanks to PythiaWrapper.
+            # if(self.diagnostic_plots):
+                # Record the PDG codes of all selected final-state particles (i.e. all those that made it into the HepMC output).
+                # HistogramFinalStateCodes(arr,self.hist_fs_pdgid)
+                # HistogramFinalStateKinematics(arr,self.kinematic_hists)
+
             qu.printProgressBarColor(i_real,nevents_disp, prefix=self.prefix, suffix=self.suffix, length=self.bl)
-            i_real += 1
+            i_real += 1 # If success, increase i_real -- this is a counter for the number of successful events
+            continue
 
         # Delete the buffer files.
         for fname in [buffername,buffername_truth]:
@@ -253,12 +230,11 @@ class Generator:
     # We do perform event selection: Only certain particles are saved to the file to begin with.
     def Generate(self,nevents): # TODO: implement file chunking
         # pythia = npyth.Pythia(config=self.pythia_config_file,params=self.pythia_config)
-        pythia = None
         filename = '{}/{}'.format(self.outdir,self.filename)
 
-        # Get the Fastjet banner out of the way
-        tmp = InitFastJet()
-        del tmp
+        # # Get the Fastjet banner out of the way
+        # tmp = InitFastJet()
+        # del tmp
 
         qu.printProgressBarColor(0,nevents, prefix=self.prefix, suffix=self.suffix, length=self.bl)
 
@@ -269,11 +245,11 @@ class Generator:
         n_fail = nevents
         nloops = 0
         while(n_fail > 0):
-            n_success, n_fail = self.GenerationLoop(pythia, nevents-n_success, filename,
+            n_success, n_fail = self.GenerationLoop(nevents-n_success, filename,
                                             i_real=n_success+1, nevents_disp = nevents, loop_number = nloops)
             nloops = nloops + 1
 
-        if(self.diagnostic_plots): self.OutputHistograms()
+        # if(self.diagnostic_plots): self.OutputHistograms()
         return
 
     # def HistogramFinalStateCodes(self,arr):

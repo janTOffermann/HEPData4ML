@@ -12,19 +12,13 @@ class TruthDistanceSelection:
 
     def SetDistance(self,distance):
         self.distance = distance
+        self.d2 = np.square(self.distance)
 
-    def __call__(self,arr,arr_truth):
-        arr_truth_tmp = RestructureParticleArray(arr_truth)
-        arr_tmp = RestructureParticleArray(arr)
-        # arr_truth = RestructureParticleArray(arr_truth)
-        # arr = RestructureParticleArray(arr)
-        dr2_limit = np.square(self.distance)
+    def __call__(self,pythia_wrapper,final_state_indices,truth_indices):
+        fs_particles    = np.array([[pythia_wrapper.GetTheta(x), pythia_wrapper.GetPhi(x)] for x in final_state_indices])
+        truth_particles = np.array([[pythia_wrapper.GetTheta(x), pythia_wrapper.GetPhi(x)] for x in truth_indices      ])
 
-        distances = DeltaR2Vectorized(arr_tmp[:,-2:], arr_truth_tmp[:,-2:])
+        distances = DeltaR2Vectorized(fs_particles, truth_particles)
         min_distances = np.min(distances,axis=1)
-        selected = (np.abs(min_distances) < np.abs(dr2_limit))
-        arr = arr[selected]
-
-        status = len(arr) > 0
-        del arr_truth_tmp, arr_tmp, distances, min_distances, selected
-        return status, arr,arr_truth
+        selected = (np.abs(min_distances) < np.abs(self.d2))
+        return final_state_indices[selected]
