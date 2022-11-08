@@ -245,14 +245,54 @@ class PythiaWrapper:
         #     dtype=[('e','f8'),('px','f8'),('py','f8'),('pz','f8'),('pdgid','i4'),('status','i4')]
         # )
 
-    # Get the code of the event process.
-    def GetProcessID(self):
+
+    # ================
+    # Event-level info
+    # ================
+
+    # Get the code of the latest event process.
+    def GetProcessCode(self):
         if(self.pythia is None): return None
         return self.pythia.infoPython().code()
 
+    # Get the name of the latest event process.
     def GetProcessName(self):
         if(self.pythia is None): return None
         return self.pythia.infoPython().name()
+
+    def GetEventWeight(self):
+        if(self.pythia is None): return None
+        return self.pythia.infoPython().weight()
+
+    def GetWeightSum(self):
+        return self.pythia.infoPython().weightSum()
+
+    # Get the codes of all event processes that have been run.
+    # Does not return a list of process code per event!
+    def GetProcessCodes(self):
+        return np.array(self.pythia.infoPython().codesHard(),dtype=int)
+
+    # Get the estimated cross-section for a particular process (via its code).
+    # Passing a code of 0 will give the cross-section for the sum of all active processes.
+    def GetSigmaGen(self, i = 0):
+        return self.pythia.infoPython().sigmaGen(i)
+
+    # Get the uncertainty in a cross-section estimate.
+    def GetSigmaErr(self, i = 0):
+        return self.pythia.infoPython().sigmaErr(i)
+
+    # Get a dictionary containing cross-sections (and their uncertainties) for all active processes,
+    # arranged by the process codes.
+    def GetSigmaDictionary(self):
+        sigma_dict = {}
+        codes = self.GetProcessCodes()
+        for code in codes:
+            sigma_dict[code] = (self.GetSigmaGen(code),self.GetSigmaErr(code))
+        return sigma_dict
+
+    # # Get statistics -- to be called after running.
+    # def GetStats(self):
+    #     return self.pythia.stat()
 
     def _bool2string(self,flag):
         if(flag): return 'on'

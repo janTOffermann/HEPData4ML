@@ -2,6 +2,9 @@ import util.jet_selection as jetsel
 import util.particle_selection.particle_selection as parsel
 import util.particle_selection.selection_algos as algos
 import util.event_selection as eventsel
+import config.selectors as s
+
+selections = s.selections
 
 config = {
     'proc' : 'Top_Wqq',
@@ -15,10 +18,10 @@ config = {
     'jet_min_pt': 15., #GeV
     'jet_max_eta': 2.,
     'jet_n_par': 200,
-    'n_truth' : 155, # max number of truth particles to save per event
+    'n_truth' : 3, # max number of truth particles to save per event
     # 'truth_selection' : truthsel.TruthSelection('t->Wb'),
     # 'truth_selection' : truthsel.AdvTruthSelection(parsel.SelectFinalStateDaughters(truthsel.TruthSelection('W')), 100),
-    'truth_selection' : parsel.FirstSelector(1,22),
+    'truth_selection' : selections['t->Wb'],
     # 'truth_selection' : None,
     'event_selection' : eventsel.TruthDistanceSelection(distance=2.4),
     # 'event_selection' : None,
