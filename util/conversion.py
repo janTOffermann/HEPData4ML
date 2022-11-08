@@ -10,6 +10,7 @@ from util.qol_utils.qol_util import printProgressBarColor, RN
 from util.qol_utils.pdg import pdg_plotcodes, pdg_names, FillPdgHist
 from util.conv_utils.utils import ExtractHepMCParticles, InitFastJet, PrepDataBuffer, ExtractHepMCEvents,PrepDelphesArrays, PrepH5File, PrepIndexRanges
 from util.particle_selection.algos import IsNeutrino
+
 # --- FASTJET IMPORT ---
 # TODO: Can this be done more nicely?
 fastjet_dir = BuildFastjet(j=8)
@@ -250,7 +251,7 @@ class Processor:
                     if(GetInvisiblesFlag()):
                         visibles = np.arange(l)
                     else:
-                        invisibles = np.array([IsNeutrino(final_state_particles[j][k]) for k in range(l)])
+                        invisibles = np.array([IsNeutrino(p=final_state_particles[j][k]) for k in range(l)])
                         visibles = np.where(invisibles == 0)[0]
                         del invisibles
 

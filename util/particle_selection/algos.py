@@ -4,38 +4,48 @@
 
 import numpy as np
 
-def IsQuark(pythia_wrapper, idx):
+#==========================================
+# Here are a bunch of convenience
+# functions, which may be useful
+# in defining particle selection algorithms.
+# By default they take a PythiaWrapper and a
+# particle index, but they can also be passed
+# a tuple (momentum, status, pdgid) as given
+# by PythiaWrapper.GetParticle().
+#==========================================
+
+def IsQuark(pythia_wrapper=None, idx=None, p = None):
     p = pythia_wrapper.GetParticle(idx)
     pid = np.abs(p[-2])
     return (pid > 0 and pid < 7)
 
-def IsLepton(pythia_wrapper, idx):
-    p = pythia_wrapper.GetParticle(idx)
+def IsLepton(pythia_wrapper=None, idx=None, p = None):
+    if(p is None): p = pythia_wrapper.GetParticle(idx)
     pid = np.abs(p[-2])
     return (pid > 10 and pid < 19)
 
-def IsGluon(pythia_wrapper, idx):
-    p = pythia_wrapper.GetParticle(idx)
+def IsGluon(pythia_wrapper=None, idx=None, p = None):
+    if(p is None): p = pythia_wrapper.GetParticle(idx)
     pid = np.abs(p[-2])
     return (pid in [9,21])
 
-def IsPhoton(pythia_wrapper, idx):
-    p = pythia_wrapper.GetParticle(idx)
+def IsPhoton(pythia_wrapper=None, idx=None, p = None):
+    if(p is None): p = pythia_wrapper.GetParticle(idx)
     pid = np.abs(p[-2])
     return (pid == 22)
 
-def IsNeutrino(pythia_wrapper, idx):
-    p = pythia_wrapper.GetParticle(idx)
+def IsNeutrino(pythia_wrapper=None, idx=None, p = None):
+    if(p is None): p = pythia_wrapper.GetParticle(idx)
     pid = np.abs(p[-2])
     return (pid in [12, 14, 16, 18])
 
-def IsBoson(pythia_wrapper, idx):
-    p = pythia_wrapper.GetParticle(idx)
+def IsBoson(pythia_wrapper=None, idx=None, p = None):
+    if(p is None): p = pythia_wrapper.GetParticle(idx)
     pid = np.abs(p[-2])
     return (pid in [23, 24, 25])
 
-def IsStable(pythia_wrapper, idx):
-    p = pythia_wrapper.GetParticle(idx)
+def IsStable(pythia_wrapper=None, idx=None, p = None):
+    if(p is None): p = pythia_wrapper.GetParticle(idx)
     status = p[-1]
     return (status == 1)
 

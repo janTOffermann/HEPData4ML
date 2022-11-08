@@ -99,7 +99,7 @@ for k in result:
     print('\t [{}] ({})'.format(k,names[k]))
 
 print('\n\nTesting event-level info.')
-process_id = p.GetProcessID()
+process_id = p.GetProcessCode()
 process_name = p.GetProcessName()
 
 print('Process code: {}\n\t({})'.format(process_id, process_name))

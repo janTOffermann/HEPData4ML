@@ -6,14 +6,13 @@ import pyhepmc as hep
 from util.fastjet import BuildFastjet
 from util.config import GetNPars, GetJetConfig
 
-# TODO: Disabling this for tests on macOS arm64, need to config fastjet build for that arch.
-# # --- FASTJET IMPORT ---
-# # TODO: Can this be done more nicely?
-# fastjet_dir = BuildFastjet(j=8)
-# fastjet_dir = glob.glob('{}/**/site-packages'.format(fastjet_dir),recursive=True)[0]
-# if(fastjet_dir not in sys.path): sys.path.append(fastjet_dir)
-# import fastjet as fj
-# # ----------------------
+# --- FASTJET IMPORT ---
+# TODO: Can this be done more nicely?
+fastjet_dir = BuildFastjet(j=8)
+fastjet_dir = glob.glob('{}/**/site-packages'.format(fastjet_dir),recursive=True)[0]
+if(fastjet_dir not in sys.path): sys.path.append(fastjet_dir)
+import fastjet as fj
+# ----------------------
 
 def InitFastJet():
     fj.ClusterSequence.print_banner() # Get the Fastjet banner out of the way. TODO: Can we get rid of the banner? It is annoying.
@@ -25,7 +24,7 @@ def ExtractHepMCEvents(files,get_nevents=False):
     events = []
     nevents = 0
     for file in files:
-        with hep.ReaderAscii(file) as f:
+        with hep.io.ReaderAscii(file) as f:
             for evt in f:
                 events.append(evt)
                 if(get_nevents): nevents += 1
