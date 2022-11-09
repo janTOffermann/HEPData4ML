@@ -245,7 +245,6 @@ class PythiaWrapper:
         #     dtype=[('e','f8'),('px','f8'),('py','f8'),('pz','f8'),('pdgid','i4'),('status','i4')]
         # )
 
-
     # ================
     # Event-level info
     # ================
@@ -260,6 +259,7 @@ class PythiaWrapper:
         if(self.pythia is None): return None
         return self.pythia.infoPython().name()
 
+    # Get the weight of the latest event.
     def GetEventWeight(self):
         if(self.pythia is None): return None
         return self.pythia.infoPython().weight()
@@ -289,10 +289,6 @@ class PythiaWrapper:
         for code in codes:
             sigma_dict[code] = (self.GetSigmaGen(code),self.GetSigmaErr(code))
         return sigma_dict
-
-    # # Get statistics -- to be called after running.
-    # def GetStats(self):
-    #     return self.pythia.stat()
 
     def _bool2string(self,flag):
         if(flag): return 'on'

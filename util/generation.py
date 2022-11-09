@@ -1,6 +1,7 @@
 import sys, os, glob
 import numpy as np
 import ROOT as rt
+import h5py as h5
 import subprocess as sub
 
 from util.pythia.utils import PythiaWrapper
@@ -31,10 +32,11 @@ class Generator:
         self.suffix = 'Complete'
         self.bl = 50
 
-        self.outdir = None # TODO: Use this with filenames.
+        self.outdir = None
 
-        self.hist_filename = 'hists.root'
+        self.SetHistFilename('hists.root')
         self.SetFilename('events.hepmc')
+        self.stats_filename = 'stats.h5'
 
         self.diagnostic_plots = True
         self.InitializeHistograms()
@@ -42,15 +44,16 @@ class Generator:
         # Containers for event-level information.
         self.weights = None
         self.process_codes = None
+        self.xsecs = None
 
     def SetOutputDirectory(self,dir):
         self.outdir = dir
 
-    def SetHistFilename(self,name):
-        self.hist_filename = name
-
     def SetDiagnosticPlots(self,flag):
         self.diagnostic_plots = flag
+
+    def SetHistFilename(self,name):
+        self.hist_filename = name
 
     def SetFilename(self,name, truth=True):
         if('.hepmc' not in name):
@@ -66,11 +69,20 @@ class Generator:
         self.truth_filename = name
         return
 
+    def SetStatsFilename(self,name):
+        if('.h5' not in name):
+            name = '{}.h5'.format(name)
+        self.stats_filename = name
+        return
+
     def GetFilename(self):
         return self.filename
 
     def GetTruthFilename(self):
         return self.truth_filename
+
+    def GetStatsFilename(self):
+        return self.stats_filename
 
     def ConfigPythia(self):
         """
@@ -251,10 +263,30 @@ class Generator:
         self.weights       = np.zeros(nevents)
         self.process_codes = np.zeros(nevents, dtype=int)
         while(n_fail > 0):
-            n_success, n_fail = self.GenerationLoop(nevents-n_success, filename,
-                                            i_real=n_success+1, nevents_disp = nevents, loop_number = nloops)
+            n_success, n_fail = self.GenerationLoop(
+                nevents-n_success,
+                filename,
+                i_real=n_success+1,
+                nevents_disp = nevents,
+                loop_number = nloops
+            )
             nloops = nloops + 1
 
+        # Fill out an array with each event's cross section (and the uncertainty on that cross-section).
+        self.xsecs = np.zeros((nevents,2))
+        xsec_dictionary = self.GetSigmaDictionary()
+        for i,pcode in enumerate(self.process_codes):
+            self.xsecs[i,:] = xsec_dictionary[pcode]
+
+        # Create a stats file, and put in information on event weights & cross-sections.
+        f = h5.File('{}/{}'.format(self.outdir,self.stats_filename),'w')
+        compression = 'gzip'
+        copts = 7
+        f.create_dataset('mc_weight',data=self.weights,compression=compression,compression_opts=copts)
+        f.create_dataset('process_code',data=self.process_codes,compression=compression,compression_opts=copts)
+        f.create_dataset('cross_section',data=self.xsecs[:,0],compression=compression,compression_opts=copts)
+        f.create_dataset('cross_section_uncertainty',data=self.xsecs[:,1],compression=compression,compression_opts=copts)
+        f.close()
         # if(self.diagnostic_plots): self.OutputHistograms()
         return
 
