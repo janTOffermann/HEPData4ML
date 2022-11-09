@@ -22,9 +22,6 @@ g.SetOutputDirectory('test')
 nevents = 20
 g.Generate(nevents)
 
-codes = g.GetUniqueProcessCodes()
-print(codes)
-
 xsecs = g.GetSigmaDictionary()
 for key,val in xsecs.items():
     print('Process code: {}, xsec: {:.2e}, xsec error: {:.2e}'.format(key,*val))

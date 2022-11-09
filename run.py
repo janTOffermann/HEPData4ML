@@ -3,7 +3,7 @@ import argparse as ap
 import subprocess as sub
 from util.generation import Generator
 from util.delphes import BuildDelphes, HepMC3ToDelphes
-from util.conversion import Processor, RemoveFailedFromHDF5, SplitHDF5, AddEventIndices
+from util.conversion import Processor, RemoveFailedFromHDF5, SplitHDF5, AddEventIndices, ConcatenateH5, MergeStatsInfo
 from util.config import GetDelphesConfig
 from util.vectorcalcs import BuildVectorCalcs, LoadVectorCalcs
 
@@ -65,6 +65,7 @@ def main(args):
     jet_files = []
     truth_files = []
     hist_files = []
+    stat_files = []
 
     # Prepare the output directory.
     if(outdir is None): outdir = os.getcwd()
@@ -89,9 +90,15 @@ def main(args):
             if(verbose and i == 0): print('Running Pythia8 event generation.')
             generator = Generator(pt_min,pt_max)
             generator.SetOutputDirectory(outdir)
+
             hist_filename = 'hists_{}.root'.format(i)
             hist_files.append(hist_filename)
             generator.SetHistFilename(hist_filename)
+
+            stat_filename = 'stats_{}.h5'.format(i)
+            stat_files.append(stat_filename)
+            generator.SetStatsFilename(stat_filename)
+
             generator.SetFilename(hep_file)
             generator.SetDiagnosticPlots(diagnostic_plots)
 
@@ -155,14 +162,20 @@ def main(args):
         #Cleanup: Compress the HepMC files.
         if(compress_hepmc): CompressHepMC(jet_files,True,cwd=outdir)
 
-    # Cleanup.
+    compression_opts = 7
+
+    # Combine the stats files.
+    # TODO: Can we handle some of the stats file stuff under-the-hood? Or just access all the files
+    # without making the aggregate stats file.
+    stats_filename = 'stats.h5'
+    ConcatenateH5(stat_files,stats_filename,cwd=outdir,delete_inputs=True, copts=7)
+    MergeStatsInfo(h5_file,stats_filename,cwd=outdir,delete_stats_file=True, copts=7)
+
     # Now also compress the truth files.
     if(compress_hepmc): CompressHepMC(truth_files,True,cwd=outdir)
 
     # Remove any failed events (e.g. detector-level events with no jets passing cuts).
     RemoveFailedFromHDF5(h5_file,cwd=outdir)
-
-    compression_opts = 7
 
     # Add some event indices to our dataset.
     AddEventIndices(h5_file,cwd=outdir,copts=compression_opts)

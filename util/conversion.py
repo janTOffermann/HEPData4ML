@@ -40,6 +40,9 @@ class Processor:
         self.separate_truth_particles = False
         self.n_separate_truth_particles = -1
 
+    def SetStatsFile(self,filename):
+        self.stats_file = filename
+
     def SetSeparateTruthParticles(self,flag):
         self.separate_truth_particles = flag
 
@@ -168,7 +171,7 @@ class Processor:
         npars = GetNPars()
         n_truth = npars['n_truth']
 
-            # Note: It's important that the Delphes files and truth HepMC files line up!
+        # Note: It's important that the Delphes files and truth HepMC files line up!
         #       The way we usually do this, it will be guaranteed.
         if(type(final_state_files) == str): final_state_files = glob.glob(final_state_files,recursive=True)
         if(truth_files is None):
@@ -205,7 +208,7 @@ class Processor:
 
             if(self.delphes):
                 # Get the momenta of the final-state particles, first in cylindrical coordinates.
-                # We will be setting m=0 for all these particles.
+                # We will be setting m=0 for all these particles. # TODO: We may want this to be more configurable.
                 momenta = {}
                 types = var_map.keys() # TODO: Can this be placed elsewhere? Renamed?
                 for delphes_type in types:
@@ -220,10 +223,6 @@ class Processor:
 
             # Get the truth particles.
             truth_particles = ExtractHepMCParticles(truth_events[start_idxs[i]:stop_idxs[i]],n_truth)
-
-            # print('\n----\nTRUTH PARTICLES:\n')
-            # print(truth_particles)
-            # print('---------------\n')
 
             prefix_nzero = int(np.ceil(np.log10(nchunks))) + 1
             prefix_level2 = '\tClustering jets & preparing data for chunk {}/{}:'.format(str(i+1).zfill(prefix_nzero),nchunks)
@@ -255,11 +254,11 @@ class Processor:
                         visibles = np.where(invisibles == 0)[0]
                         del invisibles
 
-                    px = np.array([final_state_particles[j][k].momentum.px for k in visibles])
-                    py = np.array([final_state_particles[j][k].momentum.py for k in visibles])
-                    pz = np.array([final_state_particles[j][k].momentum.pz for k in visibles])
-                    e  = np.array([final_state_particles[j][k].momentum.e  for k in visibles])
-                    pdg  = np.array([final_state_particles[j][k].pid  for k in visibles])
+                    px  = np.array([final_state_particles[j][k].momentum.px for k in visibles])
+                    py  = np.array([final_state_particles[j][k].momentum.py for k in visibles])
+                    pz  = np.array([final_state_particles[j][k].momentum.pz for k in visibles])
+                    e   = np.array([final_state_particles[j][k].momentum.e  for k in visibles])
+                    pdg = np.array([final_state_particles[j][k].pid         for k in visibles])
 
                     # Now package up the constituent four-momenta like (E,px,py,pz).
                     vecs = np.vstack((e,px,py,pz)).T
@@ -503,6 +502,51 @@ class Processor:
                 self.jet_diff_hists_2d['det'].Fill(jet_et,delta_et)
 
         return
+
+# Generic function for concatenating HDF5 files.
+def ConcatenateH5(input_files,output_file,cwd=None,delete_inputs=False, compression='gzip', copts=7):
+    if(cwd is not None):
+        input_files = ['{}/{}'.format(cwd,x) for x in input_files]
+    infiles = [h5.File(f,'r') for f in input_files]
+    keys = list(infiles[0].keys())
+    if(cwd is not None):
+        output_file = '{}/{}'.format(cwd,output_file)
+    outfile = h5.File(output_file,'w')
+
+    for key in keys:
+        data = np.concatenate([f[key] for f in infiles],axis=0)
+        outfile.create_dataset(key,data=data,compression=compression,compression_opts=copts)
+
+    outfile.close()
+
+    for f in infiles:
+        f.close()
+
+    if(delete_inputs):
+        for f in input_files:
+            sub.check_call(['rm',f])
+
+def MergeStatsInfo(h5_file, stats_file, cwd=None, delete_stats_file=False, compression='gzip',copts=7):
+    if(cwd is not None):
+        h5_file = '{}/{}'.format(cwd,h5_file)
+        stats_file = '{}/{}'.format(cwd,stats_file)
+
+    f = h5.File(h5_file,'a')
+    g = h5.File(stats_file,'r')
+    keys = list(g.keys())
+    f_keys = list(f.keys())
+
+    for key in keys:
+        if key in f_keys:
+            print('Warning: key {} found in {} before merging in stats info.'.format(key,h5_file))
+            continue
+        f.create_dataset(key,data=g[key][:],compression=compression,compression_opts=copts)
+
+    f.close()
+    g.close()
+    if(delete_stats_file):
+        sub.check_call(['rm',stats_file])
+    return
 
 # Remove any "failed events". They will have been marked with a negative signal flag.
 def RemoveFailedFromHDF5(h5_file, cwd=None):
