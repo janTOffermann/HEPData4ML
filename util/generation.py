@@ -12,12 +12,13 @@ from util.conv_utils.utils import InitFastJet
 import util.qol_utils.qol_util as qu
 
 class Generator:
-    def __init__(self, pt_min, pt_max):
+    def __init__(self, pt_min, pt_max, pythia_rng=None):
         self.pt_min = pt_min
         self.pt_max = pt_max
 
         # Create our Pythia wrapper.
         self.pythia = PythiaWrapper()
+        self.pythia_rng = pythia_rng
         self.ConfigPythia()
 
         # Configure our particle selectors and event filters.
@@ -91,6 +92,11 @@ class Generator:
         """
         self.pythia_config = GetPythiaConfig(self.pt_min,self.pt_max)
         self.pythia_config_file = GetPythiaConfigFile()
+
+        # Optionally set the Pythia RNG seed to something other than what's in the config.
+        # TODO: Can we make this more tidy?
+        if(self.pythia_rng is not None):
+            self.pythia_config['Random:seed'] = self.pythia_rng
 
         # Now apply these configurations to our Generator's instance of PythiaWrapper.
         self.pythia.ClearConfigDict()

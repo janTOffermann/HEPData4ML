@@ -34,6 +34,7 @@ def main(args):
     parser.add_argument('-f', '--force',type=int,help='Whether or not to force generation -- if true, will possibly overwrite existing HepMC files in output directory.', default=0)
     parser.add_argument('-c', '--compress',type=int,help='Whether or not to compress HepMC files.',default=0)
     parser.add_argument('-cd','--clean-delphes',type=int,help='Whether or not to clean up DELPHES/ROOT files.',default=0)
+    parser.add_argument('-rng','--rng',type=int,help='Pythia RNG seed. Will override the one provided in the config file.',default=None)
 
     args = vars(parser.parse_args())
 
@@ -51,6 +52,7 @@ def main(args):
     delete_delphes = args['clean_delphes']
     force = args['force']
     nbins = len(pt_bin_edges) - 1
+    pythia_rng = args['rng']
 
     # Setting the verbosity for the HDF5 conversion.
     # If there are many events it might take a bit, so some printout
@@ -88,7 +90,9 @@ def main(args):
         hep_file = 'events_{}-{}.hepmc'.format(pt_min,pt_max)
         if(do_generation):
             if(verbose and i == 0): print('Running Pythia8 event generation.')
-            generator = Generator(pt_min,pt_max)
+            if(i == 0 and pythia_rng is not None):
+                print('\tSetting Pythia RNG seed to {}. (overriding config)'.format(pythia_rng))
+            generator = Generator(pt_min,pt_max, pythia_rng)
             generator.SetOutputDirectory(outdir)
 
             hist_filename = 'hists_{}.root'.format(i)
