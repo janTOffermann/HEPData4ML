@@ -250,7 +250,7 @@ class Processor:
                     if(GetInvisiblesFlag()):
                         visibles = np.arange(l)
                     else:
-                        invisibles = np.array([IsNeutrino(p=final_state_particles[j][k]) for k in range(l)])
+                        invisibles = np.array([IsNeutrino(hepmc_particle=final_state_particles[j][k]) for k in range(l)])
                         visibles = np.where(invisibles == 0)[0]
                         del invisibles
 

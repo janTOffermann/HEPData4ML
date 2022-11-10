@@ -11,42 +11,66 @@ import numpy as np
 # By default they take a PythiaWrapper and a
 # particle index, but they can also be passed
 # a tuple (momentum, status, pdgid) as given
-# by PythiaWrapper.GetParticle().
+# by PythiaWrapper.GetParticle(), or a
+# HepMC::GenParticle (from pyhepmc).
+# The priority of inputs is:
+# GenParticle > tuple > PythiaWrapper+idx.
 #==========================================
 
-def IsQuark(pythia_wrapper=None, idx=None, p = None):
-    p = pythia_wrapper.GetParticle(idx)
-    pid = np.abs(p[-2])
+def IsQuark(pythia_wrapper=None, idx=None, p=None, hepmc_particle=None):
+    if(hepmc_particle is not None):
+        pid = np.abs(hepmc_particle.pid)
+    else:
+        if(p is None): p = pythia_wrapper.GetParticle(idx)
+        pid = np.abs(p[-2])
     return (pid > 0 and pid < 7)
 
-def IsLepton(pythia_wrapper=None, idx=None, p = None):
-    if(p is None): p = pythia_wrapper.GetParticle(idx)
-    pid = np.abs(p[-2])
+def IsLepton(pythia_wrapper=None, idx=None, p=None, hepmc_particle=None):
+    if(hepmc_particle is not None):
+        pid = np.abs(hepmc_particle.pid)
+    else:
+        if(p is None): p = pythia_wrapper.GetParticle(idx)
+        pid = np.abs(p[-2])
     return (pid > 10 and pid < 19)
 
-def IsGluon(pythia_wrapper=None, idx=None, p = None):
-    if(p is None): p = pythia_wrapper.GetParticle(idx)
-    pid = np.abs(p[-2])
+def IsGluon(pythia_wrapper=None, idx=None, p=None, hepmc_particle=None):
+    if(hepmc_particle is not None):
+        pid = np.abs(hepmc_particle.pid)
+    else:
+        if(p is None): p = pythia_wrapper.GetParticle(idx)
+        pid = np.abs(p[-2])
     return (pid in [9,21])
 
-def IsPhoton(pythia_wrapper=None, idx=None, p = None):
-    if(p is None): p = pythia_wrapper.GetParticle(idx)
-    pid = np.abs(p[-2])
+def IsPhoton(pythia_wrapper=None, idx=None, p=None, hepmc_particle=None):
+    if(hepmc_particle is not None):
+        pid = np.abs(hepmc_particle.pid)
+    else:
+        if(p is None): p = pythia_wrapper.GetParticle(idx)
+        pid = np.abs(p[-2])
     return (pid == 22)
 
-def IsNeutrino(pythia_wrapper=None, idx=None, p = None):
-    if(p is None): p = pythia_wrapper.GetParticle(idx)
-    pid = np.abs(p[-2])
+def IsNeutrino(pythia_wrapper=None, idx=None, p=None, hepmc_particle=None):
+    if(hepmc_particle is not None):
+        pid = np.abs(hepmc_particle.pid)
+    else:
+        if(p is None): p = pythia_wrapper.GetParticle(idx)
+        pid = np.abs(p[-2])
     return (pid in [12, 14, 16, 18])
 
-def IsBoson(pythia_wrapper=None, idx=None, p = None):
-    if(p is None): p = pythia_wrapper.GetParticle(idx)
-    pid = np.abs(p[-2])
+def IsBoson(pythia_wrapper=None, idx=None, p=None, hepmc_particle=None):
+    if(hepmc_particle is not None):
+        pid = np.abs(hepmc_particle.pid)
+    else:
+        if(p is None): p = pythia_wrapper.GetParticle(idx)
+        pid = np.abs(p[-2])
     return (pid in [23, 24, 25])
 
-def IsStable(pythia_wrapper=None, idx=None, p = None):
-    if(p is None): p = pythia_wrapper.GetParticle(idx)
-    status = p[-1]
+def IsStable(pythia_wrapper=None, idx=None, p=None, hepmc_particle=None):
+    if(hepmc_particle is not None):
+        status = np.abs(hepmc_particle.status)
+    else:
+        if(p is None): p = pythia_wrapper.GetParticle(idx)
+        status = p[-1]
     return (status == 1)
 
 # # Given the index of a particle in the event listing
