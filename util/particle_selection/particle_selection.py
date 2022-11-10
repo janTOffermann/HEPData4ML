@@ -142,7 +142,10 @@ class MultiSelection:
         particle_lists = []
         statuses = []
         for i,selector in enumerate(self.particle_selection_list):
-            particle_lists.append(selector(pythia_wrapper))
+            particle_list = selector(pythia_wrapper)
+            if(particle_list is None): particle_list = -1 # a selector failed -- the status should be reported as False
+            if(type(particle_list) not in [list,np.ndarray]): particle_list = np.array(particle_list,dtype=int)
+            particle_lists.append(particle_list)
             statuses.append(selector.GetSelectionStatus())
 
         if(False in statuses): self.selection_status = False

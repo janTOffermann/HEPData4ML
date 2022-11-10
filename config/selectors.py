@@ -22,7 +22,7 @@ selections = {
             parsel.FirstSelector(23, 5), # bottom quark
             parsel.FirstSelector(22,24), # W boson
             parsel.AlgoSelection(algos.SelectSimplestQuarks(     parsel.FirstSelector(22,24)),n=2, fixed_length=True), # q's from W->qq'
-            parsel.AlgoSelection(algos.SelectFinalStateDaughters(parsel.FirstSelector(22,24)),n=200) # up to 200 stable daughters of W
+            parsel.AlgoSelection(algos.SelectFinalStateDaughters(parsel.FirstSelector(22,24)),n=120) # up to 120 stable daughters of W
         ]
     )
 }
