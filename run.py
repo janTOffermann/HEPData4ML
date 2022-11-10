@@ -28,7 +28,7 @@ def main(args):
     parser.add_argument('-g', '--generation',type=int, help='Whether or not to do event generation.', default=True)
     parser.add_argument('-s', '--sep_truth',type=int, help='Whether or not to store truth-level particles in separate arrays.', default=True)
     parser.add_argument('-ns', '--n_sep_truth',type=int, help='How many truth particles to save in separate arrays -- will save the first n as given by the truth selection.', default=-1)
-    parser.add_argument('-d', '--diagnostic_plots',type=int, help='Whether or not to make diagnostic plots', default=True)
+    parser.add_argument('-d', '--diagnostic_plots',type=int, help='Whether or not to make diagnostic plots.', default=False)
     parser.add_argument('-v', '--verbose',type=int,help='Verbosity.',default=0)
     parser.add_argument('-h5', '--hdf5',type=int,help='Whether or not to produce final HDF5 files. If false, stops after HepMC or Delphes/ROOT file production.',default=1)
     parser.add_argument('-f', '--force',type=int,help='Whether or not to force generation -- if true, will possibly overwrite existing HepMC files in output directory.', default=0)
