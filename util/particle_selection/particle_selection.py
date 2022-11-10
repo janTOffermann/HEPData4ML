@@ -95,10 +95,10 @@ class BasicSelection:
 # This is a more advanced particle selection class -- it takes a particle selection algorithm,
 # and returns that algorithm's output (truncated to some requested length n).
 class AlgoSelection():
-    def __init__(self,selection_algo,n):
+    def __init__(self,selection_algo,n, fixed_length=False):
         self.particle_selection_algo = selection_algo
         self.n = n
-        self.fixed_length = False
+        self.fixed_length = fixed_length # whether or not this selector will always return the exact same number of particles
         self.selection_status = True
 
     def GetN(self):
