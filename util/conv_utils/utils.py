@@ -1,4 +1,4 @@
-import sys, glob
+import sys, glob, pathlib
 import h5py as h5
 import numpy as np
 import uproot as ur
@@ -20,10 +20,16 @@ def InitFastJet():
     jetdef = fj.JetDefinition(fj.antikt_algorithm, jet_config['jet_radius'])
     return jet_config,jetdef
 
-def ExtractHepMCEvents(files,get_nevents=False):
+def ExtractHepMCEvents(files,get_nevents=False, silent=False):
     events = []
     nevents = 0
     for file in files:
+        # Check that the file exists.
+        if(not pathlib.Path(file).exists()):
+            if(not silent):
+                print('Warning: Tried to access file {} but it does not exist!'.format(file))
+            continue
+
         with hep.io.ReaderAscii(file) as f:
             for evt in f:
                 events.append(evt)
