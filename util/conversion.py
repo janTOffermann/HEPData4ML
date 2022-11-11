@@ -188,7 +188,9 @@ class Processor:
             final_state_events, nentries = ExtractHepMCEvents(final_state_files,get_nevents=True)
 
         # Also extract truth particle info from the HepMC files.
-        truth_events = ExtractHepMCEvents(truth_files)
+        # Note that it's possible that there are no truth HepMC files, if we didn't specify any
+        # truth_selection in our configuration (e.g. if we were making a background sample).
+        truth_events = ExtractHepMCEvents(truth_files,silent=True)
 
         nentries_per_chunk = int(nentries_per_chunk)
         data = PrepDataBuffer(nentries_per_chunk,self.separate_truth_particles,self.n_separate_truth_particles)
@@ -354,7 +356,9 @@ class Processor:
                 return
 
             # selected_jet_idx = jet_config['jet_selection'](truth=truth_particles[j], jets=jets, use_hepmc=True)
-            selected_jet_idx = jet_sel(truth=truth_particles[j], jets=jets)
+            try: truth = truth_particles[j]
+            except: truth = None # needed in case there was no truth selection
+            selected_jet_idx = jet_sel(truth=truth, jets=jets)
             if(selected_jet_idx < 0):
                 data['is_signal'][j] = -1 # Using -1 to mark as "no event". (To be discarded.)
                 return
@@ -394,7 +398,8 @@ class Processor:
         l = vecs.shape[0]
         data_buffer['Nobj'][j] = l
         data_buffer['Pmu'][j,:l,:] = vecs
-        n_truth_local = len(truth_particles[j])
+        try: n_truth_local = len(truth_particles[j])
+        except: n_truth_local = 0
         data_buffer['truth_Nobj'][j] = n_truth_local
         # data_buffer['truth_Pdg'][j,:] = [par.pid for par in truth_particles[j]]
 

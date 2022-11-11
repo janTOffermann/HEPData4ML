@@ -177,8 +177,12 @@ class Generator:
             self.pythia.Generate() # generate an event!
 
             # Get the truth-level particles, using our truth selector.
-            truth_indices = np.atleast_1d(np.array(self.truth_selection(self.pythia),dtype=int))
-            truth_selection_status = self.truth_selection.GetSelectionStatus()
+            if(self.truth_selection is not None):
+                truth_indices = np.atleast_1d(np.array(self.truth_selection(self.pythia),dtype=int))
+                truth_selection_status = self.truth_selection.GetSelectionStatus()
+            else:
+                truth_indices = np.zeros(0)
+                truth_selection_status = True # no truth particles, but it is okay
 
             # Some checks -- if we expect a fixed # of truth-level particles from our selector,
             # and it didn't give this, it means that something went wrong. In that case, we should
@@ -213,7 +217,8 @@ class Generator:
             # we make it easy to (later) determine which particles are passed to jet clustering.
             # ==========================================
             final_state_hepev = CreateHepMCEvent(self.pythia,final_state_indices,i_real) # internally will fetch momenta
-            truth_hepev       = CreateHepMCEvent(self.pythia,truth_indices,      i_real)
+            if(len(truth_indices) > 0):
+                truth_hepev       = CreateHepMCEvent(self.pythia,truth_indices,      i_real)
 
             # With the HepMC events created, we write them to disk.
             # TODO: This is probably a bottleneck since it involves I/O, is there a clever way
@@ -221,7 +226,8 @@ class Generator:
 
             # Write this event to the HepMC buffer file, then copy the buffer contents to the full HepMC file.
             HepMCOutput(final_state_hepev,buffername,filename,loop_number,i,i_real,nevents,n_fail)
-            HepMCOutput(truth_hepev,buffername_truth,filename_truth,loop_number,i,i_real,nevents,n_fail)
+            if(len(truth_indices) > 0):
+                HepMCOutput(truth_hepev,buffername_truth,filename_truth,loop_number,i,i_real,nevents,n_fail)
 
             # Diagnostic plots.
             # TODO: Probably a lot of optimization to do for these, some new options thanks to PythiaWrapper.
