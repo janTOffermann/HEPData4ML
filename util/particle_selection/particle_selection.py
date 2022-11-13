@@ -149,8 +149,9 @@ class MultiSelection:
             statuses.append(selector.GetSelectionStatus())
 
         if(False in statuses): self.selection_status = False
-        particle_list = np.unique(np.hstack(particle_lists))
-        return np.sort(particle_list)
+        return np.hstack(particle_list).flatten()
+        # particle_list = np.unique(np.hstack(particle_lists))
+        # return np.sort(particle_list)
 
 # selections = {
 #     't->Wb': [

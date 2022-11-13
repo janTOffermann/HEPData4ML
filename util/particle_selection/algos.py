@@ -133,3 +133,17 @@ class GatherStableDaughters:
     def __call__(self,pythia_wrapper,idx):
         self.__run(pythia_wrapper,idx)
         return np.array(self.particle_list,dtype=int)
+
+class GatherAllDaughters:
+    def __init__(self):
+        self.particle_list = []
+
+    def __run(self,pythia_wrapper,idx):
+        daughters = pythia_wrapper.GetDaughtersSingle(idx,recursive=True)
+        for d in daughters:
+            if(d not in self.particle_list):
+                self.particle_list.append(d)
+
+    def __call__(self,pythia_wrapper,idx):
+        self.__run(pythia_wrapper,idx)
+        return np.array(self.particle_list,dtype=int)
