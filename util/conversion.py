@@ -40,6 +40,10 @@ class Processor:
         self.separate_truth_particles = False
         self.n_separate_truth_particles = -1
 
+        self.cluster_sequence = None
+        self.jets = None
+        self.jets_filtered = None
+
     def SetStatsFile(self,filename):
         self.stats_file = filename
 
@@ -233,6 +237,9 @@ class Processor:
             # For each event we must combine tracks and neutral hadrons, perform jet clustering on them,
             # select a single jet (based on user criteria), and select that jet's leading constituents.
             for j in range(ranges[i]):
+
+                # print(j)
+
                 data['is_signal'][j] = GetSignalFlag()
 
                 if(self.delphes):
@@ -246,13 +253,13 @@ class Processor:
                     pdg = None # No meaning to PDG codes if we're looking at detector-level reconstruction
 
                 else:
-                    l = len(final_state_particles[j])
+                    final_state_length = len(final_state_particles[j])
 
                     # Optionally exclude invisibles (neutrinos). If using Delphes, this should be handled by Delphes internally.
                     if(GetInvisiblesFlag()):
-                        visibles = np.arange(l)
+                        visibles = np.arange(final_state_length)
                     else:
-                        invisibles = np.array([IsNeutrino(hepmc_particle=final_state_particles[j][k]) for k in range(l)])
+                        invisibles = np.array([IsNeutrino(hepmc_particle=final_state_particles[j][k]) for k in range(final_state_length)])
                         visibles = np.where(invisibles == 0)[0]
                         del invisibles
 
@@ -291,7 +298,6 @@ class Processor:
         return jet_config,jetdef
 
     def ClusterJets(self,vecs, jetdef, jet_config):
-
         cartesian = True
         if(self.delphes): cartesian = False
 
@@ -303,18 +309,102 @@ class Processor:
             for i,x in enumerate(vecs):
                 pj[i].reset_momentum_PtYPhiM(*x) # massless -> okay to use eta for Y
 
-        jets = jetdef(pj)
+        # selector = fj.SelectorPtMin(jet_config['jet_min_pt']) & fj.SelectorAbsEtaMax(jet_config['jet_max_eta'])
+        # Note: Switched from the old method, this is more verbose but seems to do the same thing anyway.
+        self.cluster_sequence = fj.ClusterSequence(pj, jetdef) # member of class, otherwise goes out-of-scope when ref'd later
+        self.jets = self.cluster_sequence.inclusive_jets()
 
-        # Apply optional minimum jet pT cut.
-        jet_pt = np.array([jet.pt() for jet in jets])
-        jet_indices = np.linspace(0,len(jets)-1,len(jets),dtype=np.dtype('i8'))[jet_pt >= jet_config['jet_min_pt']]
-        jets = [jets[i] for i in jet_indices]
+        # c = rt.TCanvas('c1','c1',1000,314)
+        # circles = []
+        # radius = 0.8
+        # constituent_graph = rt.TGraph()
+        # for jet in self.jets:
+        #     eta,phi = jet.eta(), jet.phi() - np.pi
+        #     circ = rt.TEllipse(eta,phi,radius,radius)
+        #     circ.SetLineColor(rt.kRed)
+        #     circ.SetFillColorAlpha(rt.kWhite,0.)
+        #     circles.append(circ)
+        #     constituents = jet.constituents()
+        #     for const in constituents:
+        #         eta,phi = const.eta(), const.phi() - np.pi
+        #         constituent_graph.AddPoint(eta,phi)
 
-        # Apply optional maximum |eta| cut.
-        jet_eta = np.array([jet.eta() for jet in jets])
-        jet_indices = np.linspace(0,len(jets)-1,len(jets),dtype=np.dtype('i8'))[np.abs(jet_eta) <= jet_config['jet_max_eta']]
-        jets = [jets[i] for i in jet_indices]
-        return jets
+        # constituent_graph.SetMarkerStyle(rt.kFullCircle)
+        # constituent_graph.SetMarkerColor(rt.kBlue)
+        # constituent_graph.SetMarkerSize(.67)
+
+        # constituent_graph.Draw('AP')
+        # ax = constituent_graph.GetXaxis()
+        # eta_max = 10.
+        # ax.SetLimits(-eta_max,eta_max)
+        # constituent_graph.GetHistogram().SetMinimum(-np.pi)
+        # constituent_graph.GetHistogram().SetMaximum(np.pi)
+        # constituent_graph.GetXaxis().SetTitle('#eta')
+        # constituent_graph.GetYaxis().SetTitle('#phi')
+        # for circ in circles:
+        #     circ.Draw()
+        # c.Draw()
+        # c.SaveAs('event.png')
+
+        # Now we will apply our (optional) pt and eta cuts to the jets.
+        # TODO: Should be achievable with Fastjet selector classes too.
+        jet_eta = np.array([jet.eta() for jet in self.jets])
+        jet_pt  = np.array([jet.pt()  for jet in self.jets])
+
+        selected_eta = np.where(np.abs(jet_eta) <= jet_config['jet_max_eta'])[0]
+        selected_pt  = np.where(jet_pt          >= jet_config['jet_min_pt'] )[0]
+        selected = np.sort(np.intersect1d(selected_eta, selected_pt)) # TODO: Is the sort needed?
+        self.jets_filtered = [self.jets[x] for x in selected]
+
+        # c = rt.TCanvas('c2','c2',1000,314)
+        # circles = []
+        # radius = 0.8
+        # constituent_graph = rt.TGraph()
+        # for jet in self.jets_filtered:
+        #     eta,phi = jet.eta(), jet.phi() - np.pi
+        #     circ = rt.TEllipse(eta,phi,radius,radius)
+        #     circ.SetLineColor(rt.kRed)
+        #     circ.SetFillColorAlpha(rt.kWhite,0.)
+        #     circles.append(circ)
+        #     constituents = jet.constituents()
+        #     for const in constituents:
+        #         eta,phi = const.eta(), const.phi() - np.pi
+        #         constituent_graph.AddPoint(eta,phi)
+
+        # constituent_graph.SetMarkerStyle(rt.kFullCircle)
+        # constituent_graph.SetMarkerColor(rt.kBlue)
+        # constituent_graph.SetMarkerSize(.67)
+
+        # constituent_graph.Draw('AP')
+        # ax = constituent_graph.GetXaxis()
+        # eta_max = 10.
+        # ax.SetLimits(-eta_max,eta_max)
+        # constituent_graph.GetHistogram().SetMinimum(-np.pi)
+        # constituent_graph.GetHistogram().SetMaximum(np.pi)
+
+        # constituent_graph.GetXaxis().SetTitle('#eta')
+        # constituent_graph.GetYaxis().SetTitle('#phi')
+        # for circ in circles:
+        #     circ.Draw()
+        # c.Draw()
+        # c.SaveAs('event_2.png')
+
+        # print('\nbefore: ',len(self.jets))
+        # for jet in self.jets:
+        #     print('\t\t',jet.e(),jet.pt(),jet.eta(),len(jet.constituents()))
+        # self.jets_filtered = selector(self.jets)
+        # print('\tafter:',len(self.jets))
+        # jets = jetdef(pj)
+
+        # # Apply optional maximum |eta| cut.
+        # jet_eta = np.array([jet.eta() for jet in jets])
+        # jet_indices = np.linspace(0,len(jets)-1,len(jets),dtype=np.dtype('i8'))[np.abs(jet_eta) <= jet_config['jet_max_eta']]
+        # jets = [jets[i] for i in jet_indices]
+
+        # # Apply optional minimum jet pT cut.
+        # jet_pt = np.array([jet.pt() for jet in jets])
+        # jet_indices = np.linspace(0,len(jets)-1,len(jets),dtype=np.dtype('i8'))[jet_pt >= jet_config['jet_min_pt']]
+        # jets = [jets[i] for i in jet_indices]
 
     def FetchJetConstituents(self,jet,n_constituents):
         # pt,eta,phi,m = np.hsplit(np.array([[x.pt(), x.eta(), x.phi(), x.m()] for x in jet.constituents()]),4)
@@ -327,6 +417,8 @@ class Processor:
 
         # Sort by decreasing pt, and only keep leading constituents.
         sorting = np.argsort(-pt)
+        # l = len(pt)
+        # if(l > n_constituents): l = n_constituents
         l = int(np.minimum(n_constituents,len(pt)))
 
         # pt = pt[sorting][:l]
@@ -348,7 +440,8 @@ class Processor:
         if(jet_sel is None):
             self.FillDataBuffer(data,j,vecs,None,truth_particles)
         else:
-            jets = self.ClusterJets(vecs,jetdef,jet_config)
+            self.ClusterJets(vecs,jetdef,jet_config)
+            jets = self.jets_filtered
 
             njets = len(jets)
             if(njets == 0):
@@ -364,14 +457,14 @@ class Processor:
                 return
             jet = jets[selected_jet_idx]
             # Get the constituents of our selected jet.
-            vecs = self.FetchJetConstituents(jet,n_constituents)
+            selected_vecs = self.FetchJetConstituents(jet,n_constituents)
 
             if(debug_print):
                 e = vecs[0,0]
                 pt = np.sqrt(np.dot(vecs[0,1:3],vecs[0,1:3]))
                 print('\tLeading jet constituent (pT,E) = ({:.2e}, {:.2e})'.format(pt,e))
 
-            self.FillDataBuffer(data,j,vecs,jet,truth_particles)
+            self.FillDataBuffer(data,j,selected_vecs,jet,truth_particles)
 
         # If PDG code information was provided, let's determine the codes of the selected particles.
         # TODO: This will involve looping -> will be intensive. Is there a better way?
@@ -554,7 +647,7 @@ def MergeStatsInfo(h5_file, stats_file, cwd=None, delete_stats_file=False, compr
     return
 
 # Remove any "failed events". They will have been marked with a negative signal flag.
-def RemoveFailedFromHDF5(h5_file, cwd=None):
+def RemoveFailedFromHDF5(h5_file, cwd=None, copts=7):
     if(cwd is not None): h5_file = '{}/{}'.format(cwd,h5_file)
 
     fname_tmp = h5_file.replace('.h5','_{}.h5'.format(str(uuid.uuid4())))
@@ -570,7 +663,7 @@ def RemoveFailedFromHDF5(h5_file, cwd=None):
     g = h5.File(fname_tmp,'w')
 
     for i,key in enumerate(keys):
-        g.create_dataset(key, data = f[key][:][keep_indices],compression='gzip')
+        g.create_dataset(key, data = f[key][:][keep_indices],compression='gzip',compression_opts=copts)
 
     f.close()
     g.close()

@@ -172,8 +172,14 @@ def main(args):
     # TODO: Can we handle some of the stats file stuff under-the-hood? Or just access all the files
     # without making the aggregate stats file.
     stats_filename = 'stats.h5'
-    ConcatenateH5(stat_files,stats_filename,cwd=outdir,delete_inputs=True, copts=7)
-    MergeStatsInfo(h5_file,stats_filename,cwd=outdir,delete_stats_file=True, copts=7)
+    try: ConcatenateH5(stat_files,stats_filename,cwd=outdir,delete_inputs=True, copts=7)
+    except: pass # as long as the full stats file exists, it's okay if the individual ones were deleted already
+
+    try:
+        MergeStatsInfo(h5_file,stats_filename,cwd=outdir,delete_stats_file=False, copts=7)
+    except:
+        print('Warning: Stats information not found!')
+        pass
 
     # Now also compress the truth files.
     if(compress_hepmc): CompressHepMC(truth_files,True,cwd=outdir)

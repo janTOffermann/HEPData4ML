@@ -44,7 +44,7 @@ class GetNearestJet:
         if(self.max_dr > 0.):
             min_dr2 = np.min(dr2)
             if(min_dr2 > self.max_dr * self.max_dr): return -1 # no jet within requested radius
-        return np.argmax(-dr2)
+        return np.argmin(dr2)
 
 class GetLeadingJet:
     def __init__(self):
