@@ -112,13 +112,14 @@ class AlgoSelection():
 
     def __call__(self,pythia_wrapper):
         self.selection_status, particle_list = self.particle_selection_algo(pythia_wrapper)
-        if(len(particle_list) > self.n): particle_list = particle_list[:self.n]
-        return np.sort(particle_list)
+        if(len(particle_list) > self.n and self.n > 0): particle_list = particle_list[:self.n]
+        return particle_list
+        # return np.sort(particle_list)
 
 # This is a simple class for passing a list comprised of the above selectors.
 # This allows one to construct more complex particle selections, implementing multiple algorithms.
 class MultiSelection:
-    def __init__(self,particle_selection_list):
+    def __init__(self,particle_selection_list, enforce_unique=False):
         self.particle_selection_list = particle_selection_list
         self.n = np.sum([x.GetN() for x in particle_selection_list],dtype=int)
 
@@ -126,6 +127,7 @@ class MultiSelection:
         fixed_lengths = np.array([x.IsFixedLength() for x in self.particle_selection_list])
         if(False in fixed_lengths): self.fixed_length = False
 
+        self.enforce_unique = enforce_unique
         self.selection_status = True
 
     def GetN(self):
@@ -149,9 +151,10 @@ class MultiSelection:
             statuses.append(selector.GetSelectionStatus())
 
         if(False in statuses): self.selection_status = False
-        return np.hstack(particle_list).flatten()
-        # particle_list = np.unique(np.hstack(particle_lists))
-        # return np.sort(particle_list)
+        # return np.hstack(particle_list).flatten()
+        particle_list = np.hstack(particle_lists)
+        if(self.enforce_unique): particle_list = np.unique(particle_list) # TODO: May have unexpected consequences for particle ordering
+        return particle_list
 
 # selections = {
 #     't->Wb': [
