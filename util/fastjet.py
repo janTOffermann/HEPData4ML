@@ -2,6 +2,8 @@ import sys, os, glob
 import subprocess as sub
 import util.qol_utils.qol_util as qu
 
+# TODO: Fastjet build is not working on macOS with arm64 architecture (works on x86).
+#       This has to do with the Fastjet build configuration, maybe it can be modified.
 def BuildFastjet(fastjet_dir=None, j=4, force=False, verbose=False):
     if(fastjet_dir is None):
         fastjet_dir = os.path.dirname(os.path.abspath(__file__)) + '/../fastjet'

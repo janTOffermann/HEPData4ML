@@ -7,10 +7,12 @@ def main(args):
     parser = ap.ArgumentParser()
     parser.add_argument('-i', '--input',   nargs='+', help='Input file pattern (or a list of patterns). Each pattern can also be provided as a comma-separated string of filenames.', required=True)
     parser.add_argument('-o', '--output', type=str, help='Output file.', default=None)
+    parser.add_argument('-c', '--compression',type=int,help='Compression level (0-10).',default=7)
     args = vars(parser.parse_args())
 
     input_patterns = args['input']
     output = args['output']
+    copts = args['compression']
 
     # Determine what are the input files.
     input_files = []
@@ -21,6 +23,11 @@ def main(args):
             input_files += glob.glob(os.path.expanduser(pattern),recursive=True)
         else:
             input_files += [pattern]
+
+    input_files.sort()
+    print('Concatenating files:')
+    for i,file in enumerate(input_files):
+        print('\t{}: {}'.format(i,file))
 
     infiles = [h5.File(x,'r') for x in input_files]
     # Determine the keys -- we assume they are the same for all files!
@@ -37,7 +44,7 @@ def main(args):
 
     for key in keys:
         data = np.concatenate([x[key][:] for x in infiles],axis=0)
-        f.create_dataset(key,data=data,compression='gzip',compression_opts=7)
+        f.create_dataset(key,data=data,compression='gzip',compression_opts=copts)
         del data
 
     f.close()

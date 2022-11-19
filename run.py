@@ -1,9 +1,9 @@
-import sys,os
+import sys,os,pathlib
 import argparse as ap
 import subprocess as sub
 from util.generation import Generator
 from util.delphes import BuildDelphes, HepMC3ToDelphes
-from util.conversion import Processor, RemoveFailedFromHDF5, SplitHDF5
+from util.conversion import Processor, RemoveFailedFromHDF5, SplitHDF5, AddEventIndices, ConcatenateH5, MergeStatsInfo
 from util.config import GetDelphesConfig
 from util.vectorcalcs import BuildVectorCalcs, LoadVectorCalcs
 
@@ -27,8 +27,14 @@ def main(args):
     parser.add_argument('-O', '--outdir', type=str, help='Output directory.', default=None)
     parser.add_argument('-g', '--generation',type=int, help='Whether or not to do event generation.', default=True)
     parser.add_argument('-s', '--sep_truth',type=int, help='Whether or not to store truth-level particles in separate arrays.', default=True)
-    parser.add_argument('-d', '--diagnostic_plots',type=int, help='Whether or not to make diagnostic plots', default=True)
+    parser.add_argument('-ns', '--n_sep_truth',type=int, help='How many truth particles to save in separate arrays -- will save the first n as given by the truth selection.', default=-1)
+    parser.add_argument('-d', '--diagnostic_plots',type=int, help='Whether or not to make diagnostic plots.', default=False)
     parser.add_argument('-v', '--verbose',type=int,help='Verbosity.',default=0)
+    parser.add_argument('-h5', '--hdf5',type=int,help='Whether or not to produce final HDF5 files. If false, stops after HepMC or Delphes/ROOT file production.',default=1)
+    parser.add_argument('-f', '--force',type=int,help='Whether or not to force generation -- if true, will possibly overwrite existing HepMC files in output directory.', default=0)
+    parser.add_argument('-c', '--compress',type=int,help='Whether or not to compress HepMC files.',default=0)
+    parser.add_argument('-cd','--clean-delphes',type=int,help='Whether or not to clean up DELPHES/ROOT files.',default=0)
+    parser.add_argument('-rng','--rng',type=int,help='Pythia RNG seed. Will override the one provided in the config file.',default=None)
 
     args = vars(parser.parse_args())
 
@@ -38,9 +44,15 @@ def main(args):
     outdir = args['outdir']
     do_generation =args['generation'] > 0 # TODO: Find nicer way to handle Boolean -- argparse is weird.
     separate_truth_particles = args['sep_truth'] > 0
+    n_separate_truth_particles = args['n_sep_truth']
     diagnostic_plots = args['diagnostic_plots'] > 0
     verbose = args['verbose'] > 0
+    do_h5 = args['hdf5']
+    compress_hepmc = args['compress']
+    delete_delphes = args['clean_delphes']
+    force = args['force']
     nbins = len(pt_bin_edges) - 1
+    pythia_rng = args['rng']
 
     # Setting the verbosity for the HDF5 conversion.
     # If there are many events it might take a bit, so some printout
@@ -55,6 +67,7 @@ def main(args):
     jet_files = []
     truth_files = []
     hist_files = []
+    stat_files = []
 
     # Prepare the output directory.
     if(outdir is None): outdir = os.getcwd()
@@ -74,17 +87,31 @@ def main(args):
 
         pt_min = pt_bin_edges[i]
         pt_max = pt_bin_edges[i+1]
-        # hep_file = '{}/events_{}-{}.hepmc'.format(outdir,pt_min,pt_max)
         hep_file = 'events_{}-{}.hepmc'.format(pt_min,pt_max)
         if(do_generation):
             if(verbose and i == 0): print('Running Pythia8 event generation.')
-            generator = Generator(pt_min,pt_max)
+            if(i == 0 and pythia_rng is not None):
+                print('\tSetting Pythia RNG seed to {}. (overriding config)'.format(pythia_rng))
+            generator = Generator(pt_min,pt_max, pythia_rng)
             generator.SetOutputDirectory(outdir)
+
             hist_filename = 'hists_{}.root'.format(i)
             hist_files.append(hist_filename)
             generator.SetHistFilename(hist_filename)
+
+            stat_filename = 'stats_{}.h5'.format(i)
+            stat_files.append(stat_filename)
+            generator.SetStatsFilename(stat_filename)
+
+            generator.SetFilename(hep_file)
             generator.SetDiagnosticPlots(diagnostic_plots)
-            generator.Generate(nevents_per_bin,hep_file)
+
+            hepfile_exists = pathlib.Path('{}/{}'.format(outdir,hep_file)).exists()
+            generate = True
+            if(hepfile_exists and not force):
+                print('\tHepMC3 file {}/{} already found, skipping its generation.'.format(outdir,hep_file))
+                generate = False
+            if(generate): generator.Generate(nevents_per_bin)
 
         # Extract the truth-level particles from the full HepMC file.
         truthfile = hep_file.replace('.hepmc','_truth.hepmc') # TODO: Should be returned by Generate()
@@ -99,7 +126,7 @@ def main(args):
             jet_files.append(delphesfile)
 
             # We can now compress the HepMC file. Once it's compressed, we delete the original file to recover space.
-            CompressHepMC([hep_file_with_extension],True)
+            if(compress_hepmc): CompressHepMC([hep_file_with_extension],True)
 
         else: # Case 2: No Delphes
             jet_files.append(hep_file)
@@ -113,35 +140,59 @@ def main(args):
         comm = ['rm'] + hist_files
         sub.check_call(comm,cwd=outdir)
 
+    # Optionally stop here, if we're not interested in progressing beyond HepMC or Delphes/ROOT.
+    if(not do_h5):
+        return
+
     # Now put everything into an HDF5 file.
-    if(verbose): print('Running jet clustering and producing final HDF5 output.')
+    if(verbose): print('\nRunning jet clustering and producing final HDF5 output.\n')
     processor = Processor(use_delphes)
     processor.SetVerbosity(verbose)
     processor.SetOutputDirectory(outdir)
     processor.SetHistFilename(hist_filename)
     processor.SetDiagnosticPlots(diagnostic_plots)
-    processor.Process(jet_files,truth_files,h5_file,verbosity=h5_conversion_verbosity,separate_truth_particles=separate_truth_particles)
+    processor.SetSeparateTruthParticles(separate_truth_particles)
+    processor.SetNSeparateTruthParticles(n_separate_truth_particles)
+    processor.Process(jet_files,truth_files,h5_file,verbosity=h5_conversion_verbosity)
 
     if(use_delphes):
-        # Cleanup: Delete the jet files, since they can always be recreated from the compressed HepMC files.
-        jet_files = ['{}/{}'.format(outdir,x) for x in jet_files]
-        comm = ['rm'] + jet_files
-        sub.check_call(comm)
+        if(delete_delphes):
+            # Cleanup: Delete the jet files -- which are Delphes/ROOT files, since they can always be recreated from the (compressed) HepMC files.
+            jet_files = ['{}/{}'.format(outdir,x) for x in jet_files]
+            comm = ['rm'] + jet_files
+            sub.check_call(comm)
 
     else:
         #Cleanup: Compress the HepMC files.
-        CompressHepMC(jet_files,True,cwd=outdir)
+        if(compress_hepmc): CompressHepMC(jet_files,True,cwd=outdir)
 
-    # Cleanup.
+    compression_opts = 7
+
+    # Combine the stats files.
+    # TODO: Can we handle some of the stats file stuff under-the-hood? Or just access all the files
+    # without making the aggregate stats file.
+    stats_filename = 'stats.h5'
+    try: ConcatenateH5(stat_files,stats_filename,cwd=outdir,delete_inputs=True, copts=7)
+    except: pass # as long as the full stats file exists, it's okay if the individual ones were deleted already
+
+    try:
+        MergeStatsInfo(h5_file,stats_filename,cwd=outdir,delete_stats_file=False, copts=7)
+    except:
+        print('Warning: Stats information not found!')
+        pass
+
     # Now also compress the truth files.
-    CompressHepMC(truth_files,True,cwd=outdir)
+    if(compress_hepmc): CompressHepMC(truth_files,True,cwd=outdir)
 
     # Remove any failed events (e.g. detector-level events with no jets passing cuts).
     RemoveFailedFromHDF5(h5_file,cwd=outdir)
 
+    # Add some event indices to our dataset.
+    AddEventIndices(h5_file,cwd=outdir,copts=compression_opts)
+
     # Now split the HDF5 file into training, testing and validation samples.
-    split_ratio = (7,2,1)
-    SplitHDF5(h5_file, split_ratio,cwd=outdir)
+    split_ratio = (7,2,1) # TODO: This should be configurable.
+    SplitHDF5(h5_file, split_ratio,cwd=outdir,copts=compression_opts)
 
     # Optionally delete the full HDF5 file.
     delete_h5 = False # TODO: Make this configurable
