@@ -1,12 +1,9 @@
-import sys, os
+import sys, os, uuid
 import numpy as np
 import ROOT as rt
 
-# custom imports
-path_prefix = os.getcwd() + '/../../'
-if(path_prefix not in sys.path): sys.path.append(path_prefix)
-from util.qol_utils import qol_util as qu
-# from util.calcs import PxPyPzEToPtEtaPhiM, DeltaR2
+def RN():
+    return str(uuid.uuid4())
 
 # Helper function for fetching four-momenta from a jagged array.
 def GetJagged(pmu, nobj):
@@ -46,9 +43,9 @@ def DeltaR(vec1, vec2):
 
 # Function for making a kinematic plot (1D).
 def KinematicDraw(keys, data, bin_info, title, logx=True, logy=True, colors=None):
-    c = rt.TCanvas(qu.RN(),'c0',800,600)
+    c = rt.TCanvas(RN(),'c0',800,600)
     legend = rt.TLegend(0.8,0.8,0.95,0.95)
-    hstack = rt.THStack(qu.RN(),title)
+    hstack = rt.THStack(RN(),title)
     hlist = []
     nbins, xmin, xmax = bin_info
 
@@ -60,7 +57,7 @@ def KinematicDraw(keys, data, bin_info, title, logx=True, logy=True, colors=None
 
     for key in keys:
 
-        h = rt.TH1F(qu.RN(),'',nbins,xmin,xmax)
+        h = rt.TH1F(RN(),'',nbins,xmin,xmax)
         for elem in data[key]: h.Fill(elem)
         if(colors is not None): h.SetLineColor(colors[key])
         integral = h.Integral()
@@ -81,12 +78,12 @@ def KinematicDraw(keys, data, bin_info, title, logx=True, logy=True, colors=None
 
 # Function for making a kinematic plot (2D).
 def KinematicDraw2D(data_x, data_y, bin_info, title, logx=True, logy=True):
-    c = rt.TCanvas(qu.RN(),'c0',800,600)
+    c = rt.TCanvas(RN(),'c0',800,600)
     # legend = rt.TLegend(0.8,0.8,0.95,0.95)
     nx, xmin, xmax, ny, ymin, ymax = bin_info
     # dummy = {'a':'a'}
 
-    h = rt.TH2F(qu.RN(),title,nx, xmin, xmax, ny, ymin, ymax)
+    h = rt.TH2F(RN(),title,nx, xmin, xmax, ny, ymin, ymax)
 
     for i in range(len(data_x)):
         h.Fill(data_x[i], data_y[i])

@@ -70,3 +70,6 @@ def GetEventSelection():
 
 def GetSignalFlag():
     return config['signal_flag']
+
+def GetSplitSeed():
+    return config['split_seed']

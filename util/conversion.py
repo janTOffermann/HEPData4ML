@@ -3,13 +3,14 @@ import numpy as np
 import h5py as h5
 import ROOT as rt
 import subprocess as sub
-from util.config import GetNPars, GetJetConfig, GetInvisiblesFlag, GetSignalFlag, GetTruthSelection
+from util.config import GetNPars, GetJetConfig, GetInvisiblesFlag, GetSignalFlag, GetTruthSelection, GetSplitSeed
 from util.calcs import DeltaR2, EPxPyPzToPtEtaPhiM, EPzToRap, PtEtaPhiMToPxPyPzE, PtEtaPhiMToEPxPyPz, AdjustPhi, EPxPyPzToM
 from util.fastjet import BuildFastjet
 from util.qol_utils.qol_util import printProgressBarColor, RN
 from util.qol_utils.pdg import pdg_plotcodes, pdg_names, FillPdgHist
 from util.conv_utils.utils import ExtractHepMCParticles, InitFastJet, PrepDataBuffer, ExtractHepMCEvents,PrepDelphesArrays, PrepH5File, PrepIndexRanges
-from util.particle_selection import IsNeutrino
+from util.particle_selection.algos import IsNeutrino
+
 # --- FASTJET IMPORT ---
 # TODO: Can this be done more nicely?
 fastjet_dir = BuildFastjet(j=8)
@@ -35,6 +36,22 @@ class Processor:
         self.hist_filename = 'hists.root'
         self.diagnostic_plots = True
         self.InitializeHists()
+
+        self.separate_truth_particles = False
+        self.n_separate_truth_particles = -1
+
+        self.cluster_sequence = None
+        self.jets = None
+        self.jets_filtered = None
+
+    def SetStatsFile(self,filename):
+        self.stats_file = filename
+
+    def SetSeparateTruthParticles(self,flag):
+        self.separate_truth_particles = flag
+
+    def SetNSeparateTruthParticles(self,n):
+        self.n_separate_truth_particles = n
 
     def SetVerbosity(self,flag):
         self.verbose = flag
@@ -144,7 +161,7 @@ class Processor:
         f.Close()
         return
 
-    def Process(self, final_state_files, truth_files=None, h5_file=None, nentries_per_chunk=1e4, verbosity=0, separate_truth_particles=True):
+    def Process(self, final_state_files, truth_files=None, h5_file=None, nentries_per_chunk=1e4, verbosity=0):
         if(type(final_state_files) == list): final_state_files = ['{}/{}'.format(self.outdir,x) for x in final_state_files]
         else: final_state_files = '{}/{}'.format(self.outdir,final_state_files)
 
@@ -158,7 +175,7 @@ class Processor:
         npars = GetNPars()
         n_truth = npars['n_truth']
 
-            # Note: It's important that the Delphes files and truth HepMC files line up!
+        # Note: It's important that the Delphes files and truth HepMC files line up!
         #       The way we usually do this, it will be guaranteed.
         if(type(final_state_files) == str): final_state_files = glob.glob(final_state_files,recursive=True)
         if(truth_files is None):
@@ -175,10 +192,12 @@ class Processor:
             final_state_events, nentries = ExtractHepMCEvents(final_state_files,get_nevents=True)
 
         # Also extract truth particle info from the HepMC files.
-        truth_events = ExtractHepMCEvents(truth_files)
+        # Note that it's possible that there are no truth HepMC files, if we didn't specify any
+        # truth_selection in our configuration (e.g. if we were making a background sample).
+        truth_events = ExtractHepMCEvents(truth_files,silent=True)
 
         nentries_per_chunk = int(nentries_per_chunk)
-        data = PrepDataBuffer(nentries_per_chunk,separate_truth_particles)
+        data = PrepDataBuffer(nentries_per_chunk,self.separate_truth_particles,self.n_separate_truth_particles)
 
         # Prepare the HDF5 file.
         dsets = PrepH5File(h5_file,nentries,data)
@@ -195,7 +214,7 @@ class Processor:
 
             if(self.delphes):
                 # Get the momenta of the final-state particles, first in cylindrical coordinates.
-                # We will be setting m=0 for all these particles.
+                # We will be setting m=0 for all these particles. # TODO: We may want this to be more configurable.
                 momenta = {}
                 types = var_map.keys() # TODO: Can this be placed elsewhere? Renamed?
                 for delphes_type in types:
@@ -211,10 +230,6 @@ class Processor:
             # Get the truth particles.
             truth_particles = ExtractHepMCParticles(truth_events[start_idxs[i]:stop_idxs[i]],n_truth)
 
-            # print('\n----\nTRUTH PARTICLES:\n')
-            # print(truth_particles)
-            # print('---------------\n')
-
             prefix_nzero = int(np.ceil(np.log10(nchunks))) + 1
             prefix_level2 = '\tClustering jets & preparing data for chunk {}/{}:'.format(str(i+1).zfill(prefix_nzero),nchunks)
             if(verbosity==2): printProgressBarColor(0,ranges[i], prefix=prefix_level2, suffix=self.suffix, length=self.bl)
@@ -222,6 +237,9 @@ class Processor:
             # For each event we must combine tracks and neutral hadrons, perform jet clustering on them,
             # select a single jet (based on user criteria), and select that jet's leading constituents.
             for j in range(ranges[i]):
+
+                # print(j)
+
                 data['is_signal'][j] = GetSignalFlag()
 
                 if(self.delphes):
@@ -235,21 +253,21 @@ class Processor:
                     pdg = None # No meaning to PDG codes if we're looking at detector-level reconstruction
 
                 else:
-                    l = len(final_state_particles[j])
+                    final_state_length = len(final_state_particles[j])
 
                     # Optionally exclude invisibles (neutrinos). If using Delphes, this should be handled by Delphes internally.
                     if(GetInvisiblesFlag()):
-                        visibles = np.arange(l)
+                        visibles = np.arange(final_state_length)
                     else:
-                        invisibles = np.array([IsNeutrino(final_state_particles[j][k]) for k in range(l)])
+                        invisibles = np.array([IsNeutrino(hepmc_particle=final_state_particles[j][k]) for k in range(final_state_length)])
                         visibles = np.where(invisibles == 0)[0]
                         del invisibles
 
-                    px = np.array([final_state_particles[j][k].momentum.px for k in visibles])
-                    py = np.array([final_state_particles[j][k].momentum.py for k in visibles])
-                    pz = np.array([final_state_particles[j][k].momentum.pz for k in visibles])
-                    e  = np.array([final_state_particles[j][k].momentum.e  for k in visibles])
-                    pdg  = np.array([final_state_particles[j][k].pid  for k in visibles])
+                    px  = np.array([final_state_particles[j][k].momentum.px for k in visibles])
+                    py  = np.array([final_state_particles[j][k].momentum.py for k in visibles])
+                    pz  = np.array([final_state_particles[j][k].momentum.pz for k in visibles])
+                    e   = np.array([final_state_particles[j][k].momentum.e  for k in visibles])
+                    pdg = np.array([final_state_particles[j][k].pid         for k in visibles])
 
                     # Now package up the constituent four-momenta like (E,px,py,pz).
                     vecs = np.vstack((e,px,py,pz)).T
@@ -258,7 +276,7 @@ class Processor:
                 if(debug_print):
                     print('\nProcessing event {}...'.format(j))
 
-                self.SelectFinalStateParticles(vecs, pdg, self.jetdef, truth_particles, data, j, separate_truth_particles, debug_print)
+                self.SelectFinalStateParticles(vecs, pdg, self.jetdef, truth_particles, data, j, debug_print)
 
                 if(verbosity==2 and not debug_print): printProgressBarColor(j+1,ranges[i], prefix=prefix_level2, suffix=self.suffix, length=self.bl)
 
@@ -280,7 +298,6 @@ class Processor:
         return jet_config,jetdef
 
     def ClusterJets(self,vecs, jetdef, jet_config):
-
         cartesian = True
         if(self.delphes): cartesian = False
 
@@ -292,18 +309,102 @@ class Processor:
             for i,x in enumerate(vecs):
                 pj[i].reset_momentum_PtYPhiM(*x) # massless -> okay to use eta for Y
 
-        jets = jetdef(pj)
+        # selector = fj.SelectorPtMin(jet_config['jet_min_pt']) & fj.SelectorAbsEtaMax(jet_config['jet_max_eta'])
+        # Note: Switched from the old method, this is more verbose but seems to do the same thing anyway.
+        self.cluster_sequence = fj.ClusterSequence(pj, jetdef) # member of class, otherwise goes out-of-scope when ref'd later
+        self.jets = self.cluster_sequence.inclusive_jets()
 
-        # Apply optional minimum jet pT cut.
-        jet_pt = np.array([jet.pt() for jet in jets])
-        jet_indices = np.linspace(0,len(jets)-1,len(jets),dtype=np.dtype('i8'))[jet_pt >= jet_config['jet_min_pt']]
-        jets = [jets[i] for i in jet_indices]
+        # c = rt.TCanvas('c1','c1',1000,314)
+        # circles = []
+        # radius = 0.8
+        # constituent_graph = rt.TGraph()
+        # for jet in self.jets:
+        #     eta,phi = jet.eta(), jet.phi() - np.pi
+        #     circ = rt.TEllipse(eta,phi,radius,radius)
+        #     circ.SetLineColor(rt.kRed)
+        #     circ.SetFillColorAlpha(rt.kWhite,0.)
+        #     circles.append(circ)
+        #     constituents = jet.constituents()
+        #     for const in constituents:
+        #         eta,phi = const.eta(), const.phi() - np.pi
+        #         constituent_graph.AddPoint(eta,phi)
 
-        # Apply optional maximum |eta| cut.
-        jet_eta = np.array([jet.eta() for jet in jets])
-        jet_indices = np.linspace(0,len(jets)-1,len(jets),dtype=np.dtype('i8'))[np.abs(jet_eta) <= jet_config['jet_max_eta']]
-        jets = [jets[i] for i in jet_indices]
-        return jets
+        # constituent_graph.SetMarkerStyle(rt.kFullCircle)
+        # constituent_graph.SetMarkerColor(rt.kBlue)
+        # constituent_graph.SetMarkerSize(.67)
+
+        # constituent_graph.Draw('AP')
+        # ax = constituent_graph.GetXaxis()
+        # eta_max = 10.
+        # ax.SetLimits(-eta_max,eta_max)
+        # constituent_graph.GetHistogram().SetMinimum(-np.pi)
+        # constituent_graph.GetHistogram().SetMaximum(np.pi)
+        # constituent_graph.GetXaxis().SetTitle('#eta')
+        # constituent_graph.GetYaxis().SetTitle('#phi')
+        # for circ in circles:
+        #     circ.Draw()
+        # c.Draw()
+        # c.SaveAs('event.png')
+
+        # Now we will apply our (optional) pt and eta cuts to the jets.
+        # TODO: Should be achievable with Fastjet selector classes too.
+        jet_eta = np.array([jet.eta() for jet in self.jets])
+        jet_pt  = np.array([jet.pt()  for jet in self.jets])
+
+        selected_eta = np.where(np.abs(jet_eta) <= jet_config['jet_max_eta'])[0]
+        selected_pt  = np.where(jet_pt          >= jet_config['jet_min_pt'] )[0]
+        selected = np.sort(np.intersect1d(selected_eta, selected_pt)) # TODO: Is the sort needed?
+        self.jets_filtered = [self.jets[x] for x in selected]
+
+        # c = rt.TCanvas('c2','c2',1000,314)
+        # circles = []
+        # radius = 0.8
+        # constituent_graph = rt.TGraph()
+        # for jet in self.jets_filtered:
+        #     eta,phi = jet.eta(), jet.phi() - np.pi
+        #     circ = rt.TEllipse(eta,phi,radius,radius)
+        #     circ.SetLineColor(rt.kRed)
+        #     circ.SetFillColorAlpha(rt.kWhite,0.)
+        #     circles.append(circ)
+        #     constituents = jet.constituents()
+        #     for const in constituents:
+        #         eta,phi = const.eta(), const.phi() - np.pi
+        #         constituent_graph.AddPoint(eta,phi)
+
+        # constituent_graph.SetMarkerStyle(rt.kFullCircle)
+        # constituent_graph.SetMarkerColor(rt.kBlue)
+        # constituent_graph.SetMarkerSize(.67)
+
+        # constituent_graph.Draw('AP')
+        # ax = constituent_graph.GetXaxis()
+        # eta_max = 10.
+        # ax.SetLimits(-eta_max,eta_max)
+        # constituent_graph.GetHistogram().SetMinimum(-np.pi)
+        # constituent_graph.GetHistogram().SetMaximum(np.pi)
+
+        # constituent_graph.GetXaxis().SetTitle('#eta')
+        # constituent_graph.GetYaxis().SetTitle('#phi')
+        # for circ in circles:
+        #     circ.Draw()
+        # c.Draw()
+        # c.SaveAs('event_2.png')
+
+        # print('\nbefore: ',len(self.jets))
+        # for jet in self.jets:
+        #     print('\t\t',jet.e(),jet.pt(),jet.eta(),len(jet.constituents()))
+        # self.jets_filtered = selector(self.jets)
+        # print('\tafter:',len(self.jets))
+        # jets = jetdef(pj)
+
+        # # Apply optional maximum |eta| cut.
+        # jet_eta = np.array([jet.eta() for jet in jets])
+        # jet_indices = np.linspace(0,len(jets)-1,len(jets),dtype=np.dtype('i8'))[np.abs(jet_eta) <= jet_config['jet_max_eta']]
+        # jets = [jets[i] for i in jet_indices]
+
+        # # Apply optional minimum jet pT cut.
+        # jet_pt = np.array([jet.pt() for jet in jets])
+        # jet_indices = np.linspace(0,len(jets)-1,len(jets),dtype=np.dtype('i8'))[jet_pt >= jet_config['jet_min_pt']]
+        # jets = [jets[i] for i in jet_indices]
 
     def FetchJetConstituents(self,jet,n_constituents):
         # pt,eta,phi,m = np.hsplit(np.array([[x.pt(), x.eta(), x.phi(), x.m()] for x in jet.constituents()]),4)
@@ -316,6 +417,8 @@ class Processor:
 
         # Sort by decreasing pt, and only keep leading constituents.
         sorting = np.argsort(-pt)
+        # l = len(pt)
+        # if(l > n_constituents): l = n_constituents
         l = int(np.minimum(n_constituents,len(pt)))
 
         # pt = pt[sorting][:l]
@@ -327,7 +430,7 @@ class Processor:
         vecs = np.array([e,px,py,pz],dtype=np.dtype('f8')).T
         return vecs
 
-    def SelectFinalStateParticles(self,vecs, pdg, jetdef, truth_particles, data, j, separate_truth_particles, debug_print=False):
+    def SelectFinalStateParticles(self,vecs, pdg, jetdef, truth_particles, data, j, debug_print=False):
         vecs_input = np.copy(vecs) # useful for plotting later on, since vecs gets modified
 
         jet_config = GetJetConfig()
@@ -335,9 +438,10 @@ class Processor:
         jet_sel = jet_config['jet_selection']
 
         if(jet_sel is None):
-            self.FillDataBuffer(data,j,vecs,None,truth_particles,separate_truth_particles)
+            self.FillDataBuffer(data,j,vecs,None,truth_particles)
         else:
-            jets = self.ClusterJets(vecs,jetdef,jet_config)
+            self.ClusterJets(vecs,jetdef,jet_config)
+            jets = self.jets_filtered
 
             njets = len(jets)
             if(njets == 0):
@@ -345,20 +449,22 @@ class Processor:
                 return
 
             # selected_jet_idx = jet_config['jet_selection'](truth=truth_particles[j], jets=jets, use_hepmc=True)
-            selected_jet_idx = jet_sel(truth=truth_particles[j], jets=jets)
+            try: truth = truth_particles[j]
+            except: truth = None # needed in case there was no truth selection
+            selected_jet_idx = jet_sel(truth=truth, jets=jets)
             if(selected_jet_idx < 0):
                 data['is_signal'][j] = -1 # Using -1 to mark as "no event". (To be discarded.)
                 return
             jet = jets[selected_jet_idx]
             # Get the constituents of our selected jet.
-            vecs = self.FetchJetConstituents(jet,n_constituents)
+            selected_vecs = self.FetchJetConstituents(jet,n_constituents)
 
             if(debug_print):
                 e = vecs[0,0]
                 pt = np.sqrt(np.dot(vecs[0,1:3],vecs[0,1:3]))
                 print('\tLeading jet constituent (pT,E) = ({:.2e}, {:.2e})'.format(pt,e))
 
-            self.FillDataBuffer(data,j,vecs,jet,truth_particles,separate_truth_particles)
+            self.FillDataBuffer(data,j,selected_vecs,jet,truth_particles)
 
         # If PDG code information was provided, let's determine the codes of the selected particles.
         # TODO: This will involve looping -> will be intensive. Is there a better way?
@@ -378,14 +484,16 @@ class Processor:
             FillPdgHist(self.pdg_hist,selected_pdgs)
         return
 
-    def FillDataBuffer(self,data_buffer,j,vecs,jet,truth_particles,separate_truth_particles=False):
+    def FillDataBuffer(self,data_buffer,j,vecs,jet,truth_particles):
         npars = GetNPars()
         truth_selection = GetTruthSelection()
         n_truth = npars['n_truth']
         l = vecs.shape[0]
         data_buffer['Nobj'][j] = l
         data_buffer['Pmu'][j,:l,:] = vecs
-        data_buffer['truth_Nobj'][j] = len(truth_particles[j])
+        try: n_truth_local = len(truth_particles[j])
+        except: n_truth_local = 0
+        data_buffer['truth_Nobj'][j] = n_truth_local
         # data_buffer['truth_Pdg'][j,:] = [par.pid for par in truth_particles[j]]
 
         # Filling the truth_Pmu array.
@@ -397,11 +505,13 @@ class Processor:
             data_buffer['truth_Pmu'][j,:,:] = np.zeros((n_truth,4))
             data_buffer['truth_Pdg'][j,:] = np.zeros(n_truth)
         else:
-            data_buffer['truth_Pmu'][j,:,:] = [
+            # Some truth-level selections may give a variable number of particles,
+            # the buffer array is of a fixed length so there will be zero-padding.
+            data_buffer['truth_Pmu'][j,:n_truth_local,:] = [
                 [par.momentum.e, par.momentum.px, par.momentum.py, par.momentum.pz]
                 for par in truth_particles[j]
             ]
-            data_buffer['truth_Pdg'][j,:] = [par.pid for par in truth_particles[j]]
+            data_buffer['truth_Pdg'][j,:n_truth_local] = [par.pid for par in truth_particles[j]]
 
         # for k,par in enumerate(truth_particles[j]):
         #     if(par == []): truth_par_components = np.zeros(4)
@@ -428,11 +538,15 @@ class Processor:
                     dr = np.sqrt(DeltaR2(truth_particles[j][i].momentum.eta(),truth_particles[j][i].momentum.phi(), data_buffer['jet_Pmu_cyl'][j,1],data_buffer['jet_Pmu_cyl'][j,2]))
                     h.Fill(dr)
 
-        if(separate_truth_particles):
-            for k in range(n_truth):
-                if(truth_selection is None):
+        if(self.separate_truth_particles):
+            n_separate = self.n_separate_truth_particles
+            if(n_separate <= 0): n_separate = n_truth
+            for k in range(n_separate):
+                if(truth_selection is None): # TODO: Is this redundant? Should be initialized to zeros.
                     data_buffer['truth_Pmu_{}'.format(k)][j,:] = np.zeros(4)
                 else:
+                    if(k >= n_truth_local): break
+                    # print('k = {}, len(truth_particles[{}]) = {}'.format(k,j,len(truth_particles[j])))
                     data_buffer['truth_Pmu_{}'.format(k)][j,:] = [truth_particles[j][k].momentum.e,truth_particles[j][k].momentum.px,truth_particles[j][k].momentum.py,truth_particles[j][k].momentum.pz]
 
         # Let's make some more diagnostic plots, to look at the jet kinematics, and the kinematics of the sum of jet constituents.
@@ -487,8 +601,53 @@ class Processor:
 
         return
 
-# Remove any "failed events". They will be marked with a negative signal flag.
-def RemoveFailedFromHDF5(h5_file, cwd=None):
+# Generic function for concatenating HDF5 files.
+def ConcatenateH5(input_files,output_file,cwd=None,delete_inputs=False, compression='gzip', copts=7):
+    if(cwd is not None):
+        input_files = ['{}/{}'.format(cwd,x) for x in input_files]
+    infiles = [h5.File(f,'r') for f in input_files]
+    keys = list(infiles[0].keys())
+    if(cwd is not None):
+        output_file = '{}/{}'.format(cwd,output_file)
+    outfile = h5.File(output_file,'w')
+
+    for key in keys:
+        data = np.concatenate([f[key] for f in infiles],axis=0)
+        outfile.create_dataset(key,data=data,compression=compression,compression_opts=copts)
+
+    outfile.close()
+
+    for f in infiles:
+        f.close()
+
+    if(delete_inputs):
+        for f in input_files:
+            sub.check_call(['rm',f])
+
+def MergeStatsInfo(h5_file, stats_file, cwd=None, delete_stats_file=False, compression='gzip',copts=7):
+    if(cwd is not None):
+        h5_file = '{}/{}'.format(cwd,h5_file)
+        stats_file = '{}/{}'.format(cwd,stats_file)
+
+    f = h5.File(h5_file,'a')
+    g = h5.File(stats_file,'r')
+    keys = list(g.keys())
+    f_keys = list(f.keys())
+
+    for key in keys:
+        if key in f_keys:
+            print('Warning: key {} found in {} before merging in stats info.'.format(key,h5_file))
+            continue
+        f.create_dataset(key,data=g[key][:],compression=compression,compression_opts=copts)
+
+    f.close()
+    g.close()
+    if(delete_stats_file):
+        sub.check_call(['rm',stats_file])
+    return
+
+# Remove any "failed events". They will have been marked with a negative signal flag.
+def RemoveFailedFromHDF5(h5_file, cwd=None, copts=7):
     if(cwd is not None): h5_file = '{}/{}'.format(cwd,h5_file)
 
     fname_tmp = h5_file.replace('.h5','_{}.h5'.format(str(uuid.uuid4())))
@@ -504,7 +663,7 @@ def RemoveFailedFromHDF5(h5_file, cwd=None):
     g = h5.File(fname_tmp,'w')
 
     for i,key in enumerate(keys):
-        g.create_dataset(key, data = f[key][:][keep_indices],compression='gzip')
+        g.create_dataset(key, data = f[key][:][keep_indices],compression='gzip',compression_opts=copts)
 
     f.close()
     g.close()
@@ -513,8 +672,16 @@ def RemoveFailedFromHDF5(h5_file, cwd=None):
     sub.check_call(['mv',fname_tmp, h5_file])
     return
 
+# Add a column with event indices.
+def AddEventIndices(h5_file, cwd=None, copts=7):
+    if(cwd is not None): h5_file = '{}/{}'.format(cwd,h5_file)
+    f = h5.File(h5_file,'r+')
+    nevents = f['is_signal'].shape[0]
+    event_indices = np.arange(nevents,dtype=int)
+    f.create_dataset('event_idx',data=event_indices, compression='gzip', compression_opts=copts)
+
 # Split an HDF5 file into training, testing and validation samples.
-def SplitHDF5(h5_file, split_ratio = (7,2,1), train_name=None, val_name=None, test_name=None, cwd=None):
+def SplitHDF5(h5_file, split_ratio = (7,2,1), train_name=None, val_name=None, test_name=None, cwd=None, copts=7):
     if(cwd is not None): h5_file = '{}/{}'.format(cwd,h5_file)
     file_dir = '/'.join(h5_file.split('/')[:-1])
 
@@ -543,7 +710,7 @@ def SplitHDF5(h5_file, split_ratio = (7,2,1), train_name=None, val_name=None, te
     diff = np.sum(n) - N
     n[-1] -= diff
 
-    rng = np.random.default_rng()
+    rng = np.random.default_rng(GetSplitSeed())
     index_list = np.array(range(N),dtype=int)
     rng.shuffle(index_list,axis=0)
     indices = []
@@ -560,7 +727,7 @@ def SplitHDF5(h5_file, split_ratio = (7,2,1), train_name=None, val_name=None, te
         for j,key in enumerate(keys):
                 # Putting the data from f into memory (numpy array)
                 # since h5py doesn't like non-ordered indices.
-                g.create_dataset(key, data=f[key][:][indices[i]],compression='gzip')
+                g.create_dataset(key, data=f[key][:][indices[i]],compression='gzip', compression_opts=copts)
         g.close()
     f.close()
     return

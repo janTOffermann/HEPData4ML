@@ -1,8 +1,8 @@
-import sys, glob
+import sys, glob, pathlib
 import h5py as h5
 import numpy as np
 import uproot as ur
-import pyhepmc_ng as hep
+import pyhepmc as hep
 from util.fastjet import BuildFastjet
 from util.config import GetNPars, GetJetConfig
 
@@ -20,11 +20,17 @@ def InitFastJet():
     jetdef = fj.JetDefinition(fj.antikt_algorithm, jet_config['jet_radius'])
     return jet_config,jetdef
 
-def ExtractHepMCEvents(files,get_nevents=False):
+def ExtractHepMCEvents(files,get_nevents=False, silent=False):
     events = []
     nevents = 0
     for file in files:
-        with hep.ReaderAscii(file) as f:
+        # Check that the file exists.
+        if(not pathlib.Path(file).exists()):
+            if(not silent):
+                print('Warning: Tried to access file {} but it does not exist!'.format(file))
+            continue
+
+        with hep.io.ReaderAscii(file) as f:
             for evt in f:
                 events.append(evt)
                 if(get_nevents): nevents += 1
@@ -57,7 +63,7 @@ def PrepDelphesArrays(delphes_files):
         else: var_map[key]['pt'] = branch
     return delphes_arr,var_map
 
-def PrepDataBuffer(nentries_per_chunk,separate_truth_particles=False):
+def PrepDataBuffer(nentries_per_chunk,separate_truth_particles=False, n_separate=-1):
     nentries_per_chunk = int(nentries_per_chunk)
     npars = GetNPars()
     n_constituents = npars['jet_n_par']
@@ -83,7 +89,8 @@ def PrepDataBuffer(nentries_per_chunk,separate_truth_particles=False):
     # TODO: Would be nice to accomplish this with references if possible, see: https://docs.h5py.org/en/stable/refs.html#refs .
     #       Not clear if that is actually feasible.
     if(separate_truth_particles):
-        for i in range(n_truth):
+        if(n_separate <= 0): n_separate = n_truth
+        for i in range(n_separate):
             key = 'truth_Pmu_{}'.format(i)
             data[key] = np.zeros((nentries_per_chunk,4),dtype=np.dtype('f8'))
     return data

@@ -1,7 +1,10 @@
 import util.jet_selection as jetsel
-import util.truth_selection as truthsel
-import util.particle_selection as parsel
+import util.particle_selection.particle_selection as parsel
+import util.particle_selection.selection_algos as algos
 import util.event_selection as eventsel
+import config.selectors as s
+
+selections = s.selections
 
 config = {
     'proc' : 'Top_Wqq',
@@ -10,22 +13,22 @@ config = {
     'isr' : False,
     'fsr' : False,
     'delphes' : False,
-    'rng' : 1,
+    'rng' : 12, # Pythia RNG seed
     'jet_radius': 0.8,
     'jet_min_pt': 15., #GeV
-    'jet_max_eta': 2.,
-    'jet_n_par': 200,
-    'n_truth' : 3,
-    'truth_selection' : truthsel.TruthSelection('t->Wb'),
-    'event_selection' : eventsel.TruthDistanceSelection(distance=2.4),
-    'final_state_selection': parsel.SelectFinalState,
+    'jet_max_eta': 2., # absolute value eta cut
+    'jet_n_par': 200, # max number of jet constituents to save per jet
+    'n_truth' : 3, # max number of truth particles to save per jet
+    'truth_selection' : selections['t->Wb w/ qq and daughters'],
+    'final_state_selection': parsel.AlgoSelection(algos.SelectFinalState(),-1),
+    # 'event_selection' : eventsel.TruthDistanceSelection(distance=2.4, n_truth=3), # filters an event to remove some final-state particles, primarily for lowering HepMC file-size. Ideally does not affect the final output.
+    'event_selection' : None,
     'invisibles' : False, # if False, invisible particles in the final state will be discarded
-    # 'final_state_selection' : parsel.SelectSimplestHadronic(truthsel.TruthSelection('Wb_nohad')),
     'jet_selection':jetsel.GetNearestJet(truth_code=6,max_dr=0.8),
-    # 'jet_selection' : None,
-    # 'event_selection' : None
-    'signal_flag' : 1 # What to provide as the "signal_flag" for these events. (relevant if combining datasets). Must be >= 0.
+    'signal_flag' : 1, # What to provide as the "signal_flag" for these events. (relevant if combining datasets). Must be >= 0.
+    'split_seed' : 1 # seed to be used for the RNG when splitting dataset into train/test/validation samples
 }
 
 # Don't need to adjust the lines below.
-config['truth_selection'].SetHadronization(config['hadronization'])
+try: config['truth_selection'].SetHadronization(config['hadronization'])
+except: pass

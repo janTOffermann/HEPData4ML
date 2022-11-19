@@ -1,9 +1,10 @@
-import sys, glob
+import sys, os, glob
 import numpy as np
 import ROOT as rt
+import h5py as h5
 import subprocess as sub
-import pyhepmc_ng as hep
-import numpythia as npyth # Pythia, hepmc_write
+
+from util.pythia.utils import PythiaWrapper
 from util.config import GetEventSelection, GetTruthSelection, GetFinalStateSelection, GetPythiaConfig, GetPythiaConfigFile, GetJetConfig, GetNPars
 from util.qol_utils.pdg import pdg_names, pdg_plotcodes
 from util.gen_utils.utils import CreateHepMCEvent, HepMCOutput, HistogramFinalStateKinematics, HistogramFinalStateCodes
@@ -11,11 +12,16 @@ from util.conv_utils.utils import InitFastJet
 import util.qol_utils.qol_util as qu
 
 class Generator:
-    def __init__(self, pt_min, pt_max):
+    def __init__(self, pt_min, pt_max, pythia_rng=None):
         self.pt_min = pt_min
         self.pt_max = pt_max
 
+        # Create our Pythia wrapper.
+        self.pythia = PythiaWrapper()
+        self.pythia_rng = pythia_rng
         self.ConfigPythia()
+
+        # Configure our particle selectors and event filters.
         self.event_selection = GetEventSelection()
         self.truth_selection = GetTruthSelection()
         self.final_state_selection = GetFinalStateSelection()
@@ -27,54 +33,77 @@ class Generator:
         self.suffix = 'Complete'
         self.bl = 50
 
-        self.outdir = None # TODO: Use this with filenames.
+        self.outdir = None
 
-        self.hist_filename = 'hists.root'
+        self.SetHistFilename('hists.root')
+        self.SetFilename('events.hepmc')
+        self.stats_filename = 'stats.h5'
+
         self.diagnostic_plots = True
         self.InitializeHistograms()
+
+        # Containers for event-level information.
+        self.weights = None
+        self.process_codes = None
+        self.xsecs = None
 
     def SetOutputDirectory(self,dir):
         self.outdir = dir
 
-    def SetHistFilename(self,name):
-        self.hist_filename = name
-
     def SetDiagnosticPlots(self,flag):
         self.diagnostic_plots = flag
 
+    def SetHistFilename(self,name):
+        self.hist_filename = name
+
+    def SetFilename(self,name, truth=True):
+        if('.hepmc' not in name):
+            name = '{}.hepmc'.format(name)
+        self.filename = name
+        if(truth):
+            self.SetTruthFilename(name.replace('.hepmc','_truth.hepmc'))
+        return
+
+    def SetTruthFilename(self,name):
+        if('.hepmc' not in name):
+            name = '{}.hepmc'.format(name)
+        self.truth_filename = name
+        return
+
+    def SetStatsFilename(self,name):
+        if('.h5' not in name):
+            name = '{}.h5'.format(name)
+        self.stats_filename = name
+        return
+
+    def GetFilename(self):
+        return self.filename
+
+    def GetTruthFilename(self):
+        return self.truth_filename
+
+    def GetStatsFilename(self):
+        return self.stats_filename
+
     def ConfigPythia(self):
+        """
+        Prepare and apply Pythia configuration. This turns our settings (from our config file)
+        into a list of strings ready to be input to Pythia8.
+        """
         self.pythia_config = GetPythiaConfig(self.pt_min,self.pt_max)
-        self.pythia_config = self.PythiaCompatibilityCheck(self.pythia_config)
         self.pythia_config_file = GetPythiaConfigFile()
 
-    # TODO: This is a compatibility check for the pythia configuration.
-    # Numpythia v. 1.2 uses Pythia 8.244, but Numpythia v. 1.1 uses Pythia 8.226.
-    # There are some noticeable differences in available process configs, and the latest numpythia
-    # may not be available on macOS/arm yet.
-    # The check is not very efficient, it will make many nympythia objects.
-    def PythiaCompatibilityCheck(self,pythia_config):
-        pythia_config_safe = {}
-        safe_keys = ['Beam','Random','Stat','Print','PhaseSpace','PartonLevel','HadronLevel']
-        for key,val in pythia_config.items():
-            safe = False
-            for safe_key in safe_keys:
-                if(safe_key in key):
-                    safe = True
-                    break
-            if(safe):
-                pythia_config_safe[key] = val
-                continue
+        # Optionally set the Pythia RNG seed to something other than what's in the config.
+        # TODO: Can we make this more tidy?
+        if(self.pythia_rng is not None):
+            self.pythia_config['Random:seed'] = self.pythia_rng
 
-            tmp_config = {key_safe:val_safe for key_safe,val_safe in pythia_config_safe.items()}
-            tmp_config[key] = val
-
-            with qu.stdout_redirected():
-                try:
-                    pythia = npyth.Pythia(params=tmp_config)
-                    pythia_config_safe[key] = val
-                    del pythia # TODO: Is this helpful?
-                except: pass
-        return pythia_config_safe
+        # Now apply these configurations to our Generator's instance of PythiaWrapper.
+        self.pythia.ClearConfigDict()
+        self.pythia.AddToConfigDict(self.pythia_config)
+        # self.pythia.ReadConfigDict()
+        self.pythia.ReadStringsFromFile(self.pythia_config_file)
+        self.pythia.InitializePythia()
 
     def InitializeHistograms(self):
         self.hists = []
@@ -130,7 +159,7 @@ class Generator:
         f.Close()
         return
 
-    def GenerationLoop(self,pythia, nevents,filename,i_real = 1, nevents_disp=None,loop_number=0):
+    def GenerationLoop(self, nevents,filename,i_real = 1, nevents_disp=None,loop_number=0):
         n_fail = 0
         if(nevents_disp is None): nevents_disp = nevents # number of events to display in progress bar
 
@@ -143,65 +172,79 @@ class Generator:
         buffername = filename.replace('.hepmc','_buffer.hepmc')
         buffername_truth = buffername.replace('.hepmc','_truth.hepmc')
 
-        for i,event in enumerate(pythia(events=nevents)):
+        for i in range(nevents):
             success = True
+            self.pythia.Generate() # generate an event!
 
-            # # Debug: Print full event record. #TODO: This is useful to keep here, is there a nicer way to implement this?
-            # all_particles = event.all()
-            # print('\n---START---')
-            # for par in all_particles:
-            #     print('\t',par)
-            # print('\n--- END ---')
+            # Get the truth-level particles, using our truth selector.
+            if(self.truth_selection is not None):
+                truth_indices = np.atleast_1d(np.array(self.truth_selection(self.pythia),dtype=int))
+                truth_selection_status = self.truth_selection.GetSelectionStatus()
+            else:
+                truth_indices = np.zeros(0)
+                truth_selection_status = True # no truth particles, but it is okay
 
-            # Get the truth-level particles.
-            try: arr_truth = self.truth_selection(event=event)
-            except: arr_truth = np.zeros((0,4))
-
-            if(len(arr_truth) != self.n_truth and self.truth_selection is not None): # missing some desired truth particle -> potential trouble, discard this event.
-                n_fail += 1
+            # Some checks -- if we expect a fixed # of truth-level particles from our selector,
+            # and it didn't give this, it means that something went wrong. In that case, we should
+            # skip this event.
+            if(not truth_selection_status):
                 success = False
-                break
-
-            if(not success): continue
-
-            # Get the final-state particles, as a numpy array.
-            status, arr = self.final_state_selection(event=event)
-
-            # If we didn't pick up any final-state particles, discard this event.
-            if(not status):
                 n_fail += 1
-                success = False
                 continue
 
-            # Optionally filter down events (e.g. throw out particles too far from selected truth particles).
-            # This is typically some sort of filtering done just to reduce the HepMC file size (which can be rather large).
+            # Get the final-state particles that we're saving (however we've defined our final state!).
+            final_state_indices = np.atleast_1d(np.array(self.final_state_selection(self.pythia),dtype=int))
+            final_state_selection_status = self.final_state_selection.GetSelectionStatus()
+            if(not final_state_selection_status):
+                success = False
+                n_fail += 1
+                continue
+
+            # ==========================================
+            # Now we apply an (optional) "event filter". This selects only a subset of the final-state particles
+            # to save to our output HepMC file. In practice this can be useful for reducing these files' sizes.
+            # For example, one may choose to only save final-state particles within some distance of one of
+            # the selected truth-level particles.
+            # ==========================================
+
+            # print(final_state_indices)
             if(self.event_selection is not None):
-                status, arr, arr_truth = self.event_selection(arr,arr_truth)
+                final_state_indices = self.event_selection(self.pythia, final_state_indices, truth_indices)
 
-            if(not status):
-                n_fail += 1
-                success = False
-                continue
+            # ==========================================
+            # Now lets create HepMC events -- one holding just the truth-level particles,
+            # and one holding just the final-state particles. By keeping these separate,
+            # we make it easy to (later) determine which particles are passed to jet clustering.
+            # ==========================================
+            final_state_hepev = CreateHepMCEvent(self.pythia,final_state_indices,i_real) # internally will fetch momenta
+            if(len(truth_indices) > 0):
+                truth_hepev       = CreateHepMCEvent(self.pythia,truth_indices,      i_real)
 
-            if(self.diagnostic_plots):
-                # Record the PDG codes of all selected final-state particles (i.e. all those that made it into the HepMC output).
-                HistogramFinalStateCodes(arr,self.hist_fs_pdgid)
-                HistogramFinalStateKinematics(arr,self.kinematic_hists)
+            # With the HepMC events created, we write them to disk.
+            # TODO: This is probably a bottleneck since it involves I/O, is there a clever way
+            #       for us to chunk this part and write a bunch of HepMC events to a memory buffer first?
 
-            # Create a GenEvent (pyhepmc_ng) containing these selected particles.
-            # Note that the event comes from pyhepmc_ng, *not* numpythia.
-            # Thus we cannot just use GenParticles from numpythia (e.g. using return_hepmc=True above).
-            hepev       = CreateHepMCEvent(arr      ,i_real)
-            hepev_truth = CreateHepMCEvent(arr_truth,i_real)
-
-            # ----- File I/O -----
             # Write this event to the HepMC buffer file, then copy the buffer contents to the full HepMC file.
-            HepMCOutput(hepev,buffername,filename,loop_number,i,i_real,nevents,n_fail)
-            HepMCOutput(hepev_truth,buffername_truth,filename_truth,loop_number,i,i_real,nevents,n_fail)
-            # ----- End File I/O -----
+            HepMCOutput(final_state_hepev,buffername,filename,loop_number,i,i_real,nevents,n_fail)
+            if(len(truth_indices) > 0):
+                HepMCOutput(truth_hepev,buffername_truth,filename_truth,loop_number,i,i_real,nevents,n_fail)
+
+            # Diagnostic plots.
+            # TODO: Probably a lot of optimization to do for these, some new options thanks to PythiaWrapper.
+            # if(self.diagnostic_plots):
+                # Record the PDG codes of all selected final-state particles (i.e. all those that made it into the HepMC output).
+                # HistogramFinalStateCodes(arr,self.hist_fs_pdgid)
+                # HistogramFinalStateKinematics(arr,self.kinematic_hists)
 
             qu.printProgressBarColor(i_real,nevents_disp, prefix=self.prefix, suffix=self.suffix, length=self.bl)
-            i_real += 1
+
+            # Record this event's weight.
+            self.weights[i_real-1] = self.pythia.GetEventWeight() # convert from 1-indexing to 0-indxing
+
+            # Record this event's process code.
+            self.process_codes[i_real-1] = self.pythia.GetProcessCode() # convert from 1-indexing to 0-indxing
+
+            i_real += 1 # If success, increase i_real -- this is a counter for the number of successful events
 
         # Delete the buffer files.
         for fname in [buffername,buffername_truth]:
@@ -209,15 +252,13 @@ class Generator:
             try: sub.check_call(comm,stderr=sub.DEVNULL)
             except: pass
 
-        return i_real-1, n_fail
+        return i_real-1, n_fail # note that i_real is using 1-indexing, which is what HepMC events use
 
     # Generate a bunch of events in the given pT range,
     # and save them to a HepMC file.
     # We do perform event selection: Only certain particles are saved to the file to begin with.
-    def Generate(self,nevents, filename = 'events.hepmc'): # TODO: implement file chunking
-        pythia = npyth.Pythia(config=self.pythia_config_file,params=self.pythia_config)
-
-        filename = '{}/{}'.format(self.outdir,filename)
+    def Generate(self,nevents): # TODO: implement file chunking
+        filename = '{}/{}'.format(self.outdir,self.filename)
 
         # Get the Fastjet banner out of the way
         tmp = InitFastJet()
@@ -231,13 +272,63 @@ class Generator:
         n_success = 0
         n_fail = nevents
         nloops = 0
+        self.weights       = np.zeros(nevents)
+        self.process_codes = np.zeros(nevents, dtype=int)
         while(n_fail > 0):
-            n_success, n_fail = self.GenerationLoop(pythia, nevents-n_success, filename,
-                                            i_real=n_success+1, nevents_disp = nevents, loop_number = nloops)
+            n_success, n_fail = self.GenerationLoop(
+                nevents-n_success,
+                filename,
+                i_real=n_success+1,
+                nevents_disp = nevents,
+                loop_number = nloops
+            )
             nloops = nloops + 1
 
-        if(self.diagnostic_plots): self.OutputHistograms()
+        # Fill out an array with each event's cross section (and the uncertainty on that cross-section).
+        self.xsecs = np.zeros((nevents,2))
+        xsec_dictionary = self.GetSigmaDictionary()
+        for i,pcode in enumerate(self.process_codes):
+            self.xsecs[i,:] = xsec_dictionary[pcode]
+
+        # Create a stats file, and put in information on event weights & cross-sections.
+        f = h5.File('{}/{}'.format(self.outdir,self.stats_filename),'w')
+        compression = 'gzip'
+        copts = 7
+        f.create_dataset('mc_weight',data=self.weights,compression=compression,compression_opts=copts)
+        f.create_dataset('process_code',data=self.process_codes,compression=compression,compression_opts=copts)
+        f.create_dataset('cross_section',data=self.xsecs[:,0],compression=compression,compression_opts=copts)
+        f.create_dataset('cross_section_uncertainty',data=self.xsecs[:,1],compression=compression,compression_opts=copts)
+        f.close()
+        # if(self.diagnostic_plots): self.OutputHistograms()
         return
+
+    # Get the MC event weights (will typically just be 1 for each event).
+    # This reads from a file, which is only written to when an event is written to disk.
+    # Thus these weights will line up with the events we've saved, i.e. we don't have to worry
+    # about events that Pythia8 successfully generated but which we threw out because they failed
+    # one of our selectors.
+    def GetEventWeights(self):
+        return self.weights
+
+    def GetProcessCodes(self):
+        return self.process_codes
+
+    # This returns a list of all unique process codes encountered,
+    # not a list of per-event process codes.
+    def GetUniqueProcessCodes(self):
+        return self.pythia.GetProcessCodes()
+
+    # Get a dictionary containing cross sections (and their uncertainties)
+    # for every process that was run, organized by process code.
+    # Note that turning on a single Pythia process flag can in principle
+    # turn on multiple processes, e.g. HardQCD will provide for many different
+    # processes and the codes will distinguish between them.
+    # Cross-sections are given in mb.
+    # TODO: The estimates will possibly be inaccurate, as we throw out certain
+    # events that Pythia8 has generated when they fail our particle selectors, but
+    # those thrown out events are still included in computing the cross-section estimates.
+    def GetSigmaDictionary(self):
+        return self.pythia.GetSigmaDictionary()
 
     # def HistogramFinalStateCodes(self,arr):
     #     codes = []

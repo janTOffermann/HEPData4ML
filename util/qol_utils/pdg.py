@@ -1,5 +1,6 @@
 # Map PDG codes to particle names, with ROOT/Latex formatting.
 pdg_names = {
+    0 : 'None',
     1 : 'd',
     2 : 'u',
     3 : 's',
