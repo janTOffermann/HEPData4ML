@@ -3,6 +3,7 @@ import numpy as np
 import ROOT as rt
 import h5py as h5
 import matplotlib.pyplot as plt
+from matplotlib.offsetbox import AnchoredText
 import argparse as ap
 from plot_util.plot_util import RN
 
@@ -42,6 +43,22 @@ def Root2Plt_hist1d(h,ax,grid=True):
 
     if(grid):
         ax.grid()
+    PltStatBox(h,ax)
+    return
+
+def PltStatBox(h,ax):
+    mean = h.GetMean()
+    rms = h.GetRMS()
+    text = '\n'.join(
+        [
+        'mean = {:.2e}'.format(mean),
+        'RMS  = {:.2e}'.format(rms)
+        ]
+    )
+    # props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
+    # ax.text(0.05,0.95,text,fontsize=14,verticalalignment='top',bbox=props)
+    anchored_text = AnchoredText(text,loc='upper right')
+    ax.add_artist(anchored_text)
     return
 
 def SaveOutput(name,outdir):
@@ -79,7 +96,10 @@ def main(args):
     h = SimpleHist(Nobj,binning,title)
     fig,ax = plt.subplots(1,1)
     Root2Plt_hist1d(h,ax)
+    # PltStatBox(h,ax)
     SaveOutput('n.png',outdir)
+    ax.set_yscale('log')
+    SaveOutput('n_log.png',outdir)
     # plt.savefig('n.png')
     plt.clf()
 
@@ -90,6 +110,8 @@ def main(args):
     fig,ax = plt.subplots(1,1)
     Root2Plt_hist1d(h,ax)
     SaveOutput('jet_pt.png',outdir)
+    ax.set_yscale('log')
+    SaveOutput('jet_pt_log.png',outdir)
     plt.clf()
 
     binning = (200,-2.5,2.5)
@@ -98,6 +120,8 @@ def main(args):
     fig,ax = plt.subplots(1,1)
     Root2Plt_hist1d(h,ax)
     SaveOutput('jet_eta.png',outdir)
+    ax.set_yscale('log')
+    SaveOutput('jet_eta_log.png',outdir)
     plt.clf()
 
     binning = (100,-np.pi,np.pi)
@@ -106,6 +130,8 @@ def main(args):
     fig,ax = plt.subplots(1,1)
     Root2Plt_hist1d(h,ax)
     SaveOutput('jet_phi.png',outdir)
+    ax.set_yscale('log')
+    SaveOutput('jet_phi_log.png',outdir)
     plt.clf()
 
     binning = (250,0.,250.)
@@ -114,6 +140,8 @@ def main(args):
     fig,ax = plt.subplots(1,1)
     Root2Plt_hist1d(h,ax)
     SaveOutput('jet_m.png',outdir)
+    ax.set_yscale('log')
+    SaveOutput('jet_m_log.png',outdir)
     plt.clf()
 
     binning = (200,0.,2000.)
@@ -122,6 +150,8 @@ def main(args):
     fig,ax = plt.subplots(1,1)
     Root2Plt_hist1d(h,ax)
     SaveOutput('jet_e.png',outdir)
+    ax.set_yscale('log')
+    SaveOutput('jet_e_log.png',outdir)
     plt.clf()
 
     plt.close()
