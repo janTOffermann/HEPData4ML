@@ -63,7 +63,7 @@ def PrepDelphesArrays(delphes_files):
         else: var_map[key]['pt'] = branch
     return delphes_arr,var_map
 
-def PrepDataBuffer(nentries_per_chunk,separate_truth_particles=False, n_separate=-1):
+def PrepDataBuffer(nentries_per_chunk,separate_truth_particles=False, n_separate=-1,final_state_indices=False):
     nentries_per_chunk = int(nentries_per_chunk)
     npars = GetNPars()
     n_constituents = npars['jet_n_par']
@@ -93,6 +93,17 @@ def PrepDataBuffer(nentries_per_chunk,separate_truth_particles=False, n_separate
         for i in range(n_separate):
             key = 'truth_Pmu_{}'.format(i)
             data[key] = np.zeros((nentries_per_chunk,4),dtype=np.dtype('f8'))
+
+    # We can optionally record the index of each Pmu with respect to all the four-momenta that were passed to jet clustering.
+    # This may be useful if we are trying to somehow trace certain information through our data generation pipeline,
+    # e.g. if we're trying to keep track of whether daughter particles of a particular decay are in a given jet.
+    # We'll keep this optional since, if we're not doing something like that, this extra info may be useless or even confusing.
+    # This uses zero-indexing, so we'll fill things with -1 to avoid any confusion.
+    #TODO: The filling with the -1's is done when filling the buffer with data. Otherwise the -1's get changed to 0's, I can't remember how/why.
+    if(final_state_indices):
+        key = 'final_state_idx'
+        data[key] = np.zeros((nentries_per_chunk,n_constituents),dtype=np.dtype('i4'))
+
     return data
 
 def PrepH5File(filename,nentries,data_buffer):
