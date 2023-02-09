@@ -73,3 +73,6 @@ def GetSignalFlag():
 
 def GetSplitSeed():
     return config['split_seed']
+
+def GetRecordIndices():
+    return config['record_final_state_indices']

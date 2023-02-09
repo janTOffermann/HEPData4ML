@@ -5,7 +5,7 @@ from util.generation import Generator
 from util.delphes import BuildDelphes, HepMC3ToDelphes
 from util.conversion import Processor, RemoveFailedFromHDF5, SplitHDF5, AddEventIndices, ConcatenateH5, MergeStatsInfo
 from util.config import GetDelphesConfig
-from util.vectorcalcs import BuildVectorCalcs, LoadVectorCalcs
+# from util.vectorcalcs import BuildVectorCalcs, LoadVectorCalcs
 
 def CompressHepMC(files, delete=True, cwd=None):
     for file in files:
@@ -33,8 +33,10 @@ def main(args):
     parser.add_argument('-h5', '--hdf5',type=int,help='Whether or not to produce final HDF5 files. If false, stops after HepMC or Delphes/ROOT file production.',default=1)
     parser.add_argument('-f', '--force',type=int,help='Whether or not to force generation -- if true, will possibly overwrite existing HepMC files in output directory.', default=0)
     parser.add_argument('-c', '--compress',type=int,help='Whether or not to compress HepMC files.',default=0)
-    parser.add_argument('-cd','--clean-delphes',type=int,help='Whether or not to clean up DELPHES/ROOT files.',default=0)
+    parser.add_argument('-cd','--clean_delphes',type=int,help='Whether or not to clean up DELPHES/ROOT files.',default=0)
     parser.add_argument('-rng','--rng',type=int,help='Pythia RNG seed. Will override the one provided in the config file.',default=None)
+    parser.add_argument('-npc', '--nentries_per_chunk',type=int,help='Number of entries to process per chunk, for jet clustering & conversion to HDF5.',default=1e4)
+    parser.add_argument('-pb','--progress_bar',type=int,help='Whether or not to print progress bar during event generation',default=1)
 
     args = vars(parser.parse_args())
 
@@ -53,6 +55,8 @@ def main(args):
     force = args['force']
     nbins = len(pt_bin_edges) - 1
     pythia_rng = args['rng']
+    nentries_per_chunk = args['nentries_per_chunk']
+    progress_bar = args['progress_bar']
 
     # Setting the verbosity for the HDF5 conversion.
     # If there are many events it might take a bit, so some printout
@@ -106,6 +110,8 @@ def main(args):
             generator.SetFilename(hep_file)
             generator.SetDiagnosticPlots(diagnostic_plots)
 
+            generator.SetProgressBar(progress_bar)
+
             hepfile_exists = pathlib.Path('{}/{}'.format(outdir,hep_file)).exists()
             generate = True
             if(hepfile_exists and not force):
@@ -153,7 +159,7 @@ def main(args):
     processor.SetDiagnosticPlots(diagnostic_plots)
     processor.SetSeparateTruthParticles(separate_truth_particles)
     processor.SetNSeparateTruthParticles(n_separate_truth_particles)
-    processor.Process(jet_files,truth_files,h5_file,verbosity=h5_conversion_verbosity)
+    processor.Process(jet_files,truth_files,h5_file,verbosity=h5_conversion_verbosity,nentries_per_chunk=nentries_per_chunk)
 
     if(use_delphes):
         if(delete_delphes):
@@ -184,11 +190,11 @@ def main(args):
     # Now also compress the truth files.
     if(compress_hepmc): CompressHepMC(truth_files,True,cwd=outdir)
 
-    # Remove any failed events (e.g. detector-level events with no jets passing cuts).
-    RemoveFailedFromHDF5(h5_file,cwd=outdir)
-
     # Add some event indices to our dataset.
     AddEventIndices(h5_file,cwd=outdir,copts=compression_opts)
+
+    # Remove any failed events (e.g. detector-level events with no jets passing cuts).
+    RemoveFailedFromHDF5(h5_file,cwd=outdir)
 
     # Now split the HDF5 file into training, testing and validation samples.
     split_ratio = (7,2,1) # TODO: This should be configurable.

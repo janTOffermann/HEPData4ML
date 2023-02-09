@@ -47,6 +47,11 @@ class Generator:
         self.process_codes = None
         self.xsecs = None
 
+        self.progress_bar = True
+
+    def SetProgressBar(self,flag):
+        self.progress_bar = flag
+
     def SetOutputDirectory(self,dir):
         self.outdir = dir
 
@@ -159,7 +164,7 @@ class Generator:
         f.Close()
         return
 
-    def GenerationLoop(self, nevents,filename,i_real = 1, nevents_disp=None,loop_number=0):
+    def GenerationLoop(self, nevents,i_real = 1, nevents_disp=None,loop_number=0):
         n_fail = 0
         if(nevents_disp is None): nevents_disp = nevents # number of events to display in progress bar
 
@@ -168,12 +173,11 @@ class Generator:
         # is written, and then copied to the "main" file before the next event is generated. This I/O might slow
         # down things, so we ultimately want to find some way to do a write with "append" functionality.
 
-        filename_truth = filename.replace('.hepmc','_truth.hepmc')
-        buffername = filename.replace('.hepmc','_buffer.hepmc')
+        filename_truth = self.filename_full.replace('.hepmc','_truth.hepmc')
+        buffername = self.filename_full.replace('.hepmc','_buffer.hepmc')
         buffername_truth = buffername.replace('.hepmc','_truth.hepmc')
 
         for i in range(nevents):
-            success = True
             self.pythia.Generate() # generate an event!
 
             # Get the truth-level particles, using our truth selector.
@@ -188,7 +192,6 @@ class Generator:
             # and it didn't give this, it means that something went wrong. In that case, we should
             # skip this event.
             if(not truth_selection_status):
-                success = False
                 n_fail += 1
                 continue
 
@@ -196,7 +199,6 @@ class Generator:
             final_state_indices = np.atleast_1d(np.array(self.final_state_selection(self.pythia),dtype=int))
             final_state_selection_status = self.final_state_selection.GetSelectionStatus()
             if(not final_state_selection_status):
-                success = False
                 n_fail += 1
                 continue
 
@@ -207,9 +209,37 @@ class Generator:
             # the selected truth-level particles.
             # ==========================================
 
-            # print(final_state_indices)
             if(self.event_selection is not None):
                 final_state_indices = self.event_selection(self.pythia, final_state_indices, truth_indices)
+
+            # ==========================================
+            # In some cases we may be interested in particles which are counted as both truth particles and final-state particles.
+            # For example, we may be using our "truth particles" list to store the stable daughter particles of a particular
+            # particle (like the stable daughters of a W boson decay).
+            # These particles may be interesting to keep track of if we're using Delphes -- the Delphes output contains information
+            # on the indices of particles that hit each detector element, and in practice we may want to be able to map between
+            # the detector hits and any (stable) particles we within among our truth particle array. To do this, we will ultimately
+            # need to determine these truth particles' indices w.r.t. the final_state_hepev that we create further below.
+            # ==========================================
+            final_state_truth_overlap = np.intersect1d(final_state_indices,truth_indices) # still gives indices w.r.t. the Pythia event
+
+            # When final_state_indices is written to final_state_hepev, the particles will be re-indexed in the order they're given.
+            # Note that HepMC3 uses 1-indexing!
+            fs_truth_overlap_hepmc3 = np.array([np.where(final_state_indices==x)[0] + 1 for x in final_state_truth_overlap]).flatten()
+            indices_max = 100 # TODO: Make this configurable
+            indices = np.zeros(indices_max,dtype=int)
+            l = np.minimum(indices_max,len(fs_truth_overlap_hepmc3))
+            indices[:l] = fs_truth_overlap_hepmc3[:l]
+
+            f = h5.File(self.fs_truth_overlap_filename,'a')
+            key = 'indices'
+            if(i_real == 1):
+                indices = np.expand_dims(indices,axis=0)
+                f.create_dataset(key,data=indices,compression='gzip',chunks=True,maxshape=(None,indices_max))
+            else:
+                f[key].resize(f[key].shape[0] + 1,axis=0)
+                f[key][-1] = indices
+            f.close()
 
             # ==========================================
             # Now lets create HepMC events -- one holding just the truth-level particles,
@@ -217,15 +247,15 @@ class Generator:
             # we make it easy to (later) determine which particles are passed to jet clustering.
             # ==========================================
             final_state_hepev = CreateHepMCEvent(self.pythia,final_state_indices,i_real) # internally will fetch momenta
-            if(len(truth_indices) > 0):
-                truth_hepev       = CreateHepMCEvent(self.pythia,truth_indices,      i_real)
+            if(len(truth_indices) > 0): # TODO: If this condition isn't met for whatever reason, will final-state and truth files' events not line up?
+                truth_hepev = CreateHepMCEvent(self.pythia,truth_indices, i_real)
 
             # With the HepMC events created, we write them to disk.
             # TODO: This is probably a bottleneck since it involves I/O, is there a clever way
             #       for us to chunk this part and write a bunch of HepMC events to a memory buffer first?
 
             # Write this event to the HepMC buffer file, then copy the buffer contents to the full HepMC file.
-            HepMCOutput(final_state_hepev,buffername,filename,loop_number,i,i_real,nevents,n_fail)
+            HepMCOutput(final_state_hepev,buffername,self.filename_full,loop_number,i,i_real,nevents,n_fail)
             if(len(truth_indices) > 0):
                 HepMCOutput(truth_hepev,buffername_truth,filename_truth,loop_number,i,i_real,nevents,n_fail)
 
@@ -236,7 +266,7 @@ class Generator:
                 # HistogramFinalStateCodes(arr,self.hist_fs_pdgid)
                 # HistogramFinalStateKinematics(arr,self.kinematic_hists)
 
-            qu.printProgressBarColor(i_real,nevents_disp, prefix=self.prefix, suffix=self.suffix, length=self.bl)
+            if(self.progress_bar): qu.printProgressBarColor(i_real,nevents_disp, prefix=self.prefix, suffix=self.suffix, length=self.bl)
 
             # Record this event's weight.
             self.weights[i_real-1] = self.pythia.GetEventWeight() # convert from 1-indexing to 0-indxing
@@ -258,13 +288,22 @@ class Generator:
     # and save them to a HepMC file.
     # We do perform event selection: Only certain particles are saved to the file to begin with.
     def Generate(self,nevents): # TODO: implement file chunking
-        filename = '{}/{}'.format(self.outdir,self.filename)
+        self.filename_full = '{}/{}'.format(self.outdir,self.filename)
+
+        # File for keeping track of any particle indices that correspond with particles saved in *both*
+        # our "final-state" and "truth" selections. Indices are stored with respect to how they appear
+        # in the final-state HEPMC3 files.
+        # May be useful for studying Delphes output, e.g. keeping track of which calorimeter towers were
+        # hit by stable daughters of a W-boson (which were selected by "final-state" and "truth" selectors).
+        self.fs_truth_overlap_filename = self.filename_full.replace('.hepmc','_final-state_truth_overlap_indices.h5')
+        try: sub.check_call(['rm',self.fs_truth_overlap_filename],stderr=sub.DEVNULL)
+        except: pass
 
         # Get the Fastjet banner out of the way
         tmp = InitFastJet()
         del tmp
 
-        qu.printProgressBarColor(0,nevents, prefix=self.prefix, suffix=self.suffix, length=self.bl)
+        if(self.progress_bar): qu.printProgressBarColor(0,nevents, prefix=self.prefix, suffix=self.suffix, length=self.bl)
 
         # Loop in such a way as to guarantee that we get as many events as requested.
         # This logic is required as events could technically fail selections, e.g. not have the
@@ -277,7 +316,6 @@ class Generator:
         while(n_fail > 0):
             n_success, n_fail = self.GenerationLoop(
                 nevents-n_success,
-                filename,
                 i_real=n_success+1,
                 nevents_disp = nevents,
                 loop_number = nloops
@@ -299,6 +337,7 @@ class Generator:
         f.create_dataset('cross_section',data=self.xsecs[:,0],compression=compression,compression_opts=copts)
         f.create_dataset('cross_section_uncertainty',data=self.xsecs[:,1],compression=compression,compression_opts=copts)
         f.close()
+
         # if(self.diagnostic_plots): self.OutputHistograms()
         return
 
