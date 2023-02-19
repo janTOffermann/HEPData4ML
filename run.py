@@ -37,6 +37,10 @@ def main(args):
     parser.add_argument('-rng','--rng',type=int,help='Pythia RNG seed. Will override the one provided in the config file.',default=None)
     parser.add_argument('-npc', '--nentries_per_chunk',type=int,help='Number of entries to process per chunk, for jet clustering & conversion to HDF5.',default=1e4)
     parser.add_argument('-pb','--progress_bar',type=int,help='Whether or not to print progress bar during event generation',default=1)
+    parser.add_argument('-sp','--split',type=int,default=1,help='Whether or not to split HDF5 file into training/validation/testing files.')
+    parser.add_argument('-tf','--train_fraction',type=float,default=0.7,help='Fraction of events to place in the training file.')
+    parser.add_argument('-vf','--val_fraction',type=float,default=0.2,help='Fraction of events to place in the validation file.')
+    parser.add_argument('-co','--compression_opts',type=int,default=7,help='Compression option for final HDF5 file (0-9). Higher value means more compression.')
 
     args = vars(parser.parse_args())
 
@@ -57,6 +61,15 @@ def main(args):
     pythia_rng = args['rng']
     nentries_per_chunk = args['nentries_per_chunk']
     progress_bar = args['progress_bar']
+    compression_opts = args['compression_opts']
+
+    split_files = args['split'] > 0
+    train_frac = args['train_fraction']
+    val_frac = args['val_fraction']
+    test_frac = 1. - train_frac - val_frac
+    if(test_frac < 0. and split_files):
+        print('Error: Requested training fraction and validation fraction sum to more than 1, this leaves no events for the test file.')
+        assert(False)
 
     # Setting the verbosity for the HDF5 conversion.
     # If there are many events it might take a bit, so some printout
@@ -128,7 +141,8 @@ def main(args):
             # Pass the HepMC file to Delphes. Will output a ROOT file.
             delphes_dir = BuildDelphes() # build Delphes if it does not yet exist
             hep_file_with_extension = '{}/{}'.format(outdir,hep_file)
-            delphesfile = HepMC3ToDelphes(hepmc_file = hep_file, delphes_dir = delphes_dir, cwd=outdir)
+            delphes_card = None # will default to the ATLAS card that is shipped with Delphes
+            delphesfile = HepMC3ToDelphes(hepmc_file = hep_file, delphes_dir = delphes_dir, cwd=outdir, delphes_card=delphes_card)
             jet_files.append(delphesfile)
 
             # We can now compress the HepMC file. Once it's compressed, we delete the original file to recover space.
@@ -172,17 +186,15 @@ def main(args):
         #Cleanup: Compress the HepMC files.
         if(compress_hepmc): CompressHepMC(jet_files,True,cwd=outdir)
 
-    compression_opts = 7
-
     # Combine the stats files.
     # TODO: Can we handle some of the stats file stuff under-the-hood? Or just access all the files
     # without making the aggregate stats file.
     stats_filename = 'stats.h5'
-    try: ConcatenateH5(stat_files,stats_filename,cwd=outdir,delete_inputs=True, copts=7)
+    try: ConcatenateH5(stat_files,stats_filename,cwd=outdir,delete_inputs=True, copts=9)
     except: pass # as long as the full stats file exists, it's okay if the individual ones were deleted already
 
     try:
-        MergeStatsInfo(h5_file,stats_filename,cwd=outdir,delete_stats_file=False, copts=7)
+        MergeStatsInfo(h5_file,stats_filename,cwd=outdir,delete_stats_file=False, copts=9)
     except:
         print('Warning: Stats information not found!')
         pass
@@ -196,9 +208,13 @@ def main(args):
     # Remove any failed events (e.g. detector-level events with no jets passing cuts).
     RemoveFailedFromHDF5(h5_file,cwd=outdir)
 
-    # Now split the HDF5 file into training, testing and validation samples.
-    split_ratio = (7,2,1) # TODO: This should be configurable.
-    SplitHDF5(h5_file, split_ratio,cwd=outdir,copts=compression_opts)
+    # TODO: Might want to think about offering the ability to split the HepMC3 and Delphes files too?
+    #       Could be useful for certain post-processing where we need to access those files, and we
+    #       want to work on the split files (insead of the full events.h5).
+    if(split_files):
+        # Now split the HDF5 file into training, testing and validation samples.
+        split_ratio = (train_frac,val_frac,test_frac)
+        SplitHDF5(h5_file, split_ratio,cwd=outdir,copts=compression_opts)
 
     # Optionally delete the full HDF5 file.
     delete_h5 = False # TODO: Make this configurable

@@ -221,21 +221,24 @@ class Generator:
             # the detector hits and any (stable) particles we within among our truth particle array. To do this, we will ultimately
             # need to determine these truth particles' indices w.r.t. the final_state_hepev that we create further below.
             # ==========================================
-            final_state_truth_overlap = np.intersect1d(final_state_indices,truth_indices) # still gives indices w.r.t. the Pythia event
+            final_state_truth_overlap = np.intersect1d(final_state_indices,truth_indices) # still gives indices w.r.t. the full Pythia event, not what we want to save.
 
             # When final_state_indices is written to final_state_hepev, the particles will be re-indexed in the order they're given.
-            # Note that HepMC3 uses 1-indexing!
-            fs_truth_overlap_hepmc3 = np.array([np.where(final_state_indices==x)[0] + 1 for x in final_state_truth_overlap]).flatten()
-            indices_max = 100 # TODO: Make this configurable
-            indices = np.zeros(indices_max,dtype=int)
-            l = np.minimum(indices_max,len(fs_truth_overlap_hepmc3))
-            indices[:l] = fs_truth_overlap_hepmc3[:l]
+            # Note that HepMC3 uses 1-indexing, we will save these with 1-indexing too.
+            fs_truth_overlap_wrt_fs    = np.array([np.where(final_state_indices==x)[0] + 1 for x in final_state_truth_overlap]).flatten()
+            fs_truth_overlap_wrt_truth = np.array([np.where(truth_indices==x)[0] + 1 for x in final_state_truth_overlap]).flatten()
+
+            indices_max = 100 # TODO: Make this configurable!
+            indices = np.zeros((indices_max,2),dtype=int) # order will be (index w.r.t. final-state HepMC file, index w.r.t. truth-selection HepMC file)
+            l = np.minimum(indices_max,len(fs_truth_overlap_wrt_fs))
+            indices[:l,0] = fs_truth_overlap_wrt_fs[:l]
+            indices[:l,1] = fs_truth_overlap_wrt_truth[:l]
 
             f = h5.File(self.fs_truth_overlap_filename,'a')
             key = 'indices'
             if(i_real == 1):
                 indices = np.expand_dims(indices,axis=0)
-                f.create_dataset(key,data=indices,compression='gzip',chunks=True,maxshape=(None,indices_max))
+                f.create_dataset(key,data=indices,compression='gzip',chunks=True,maxshape=(None,indices_max,2))
             else:
                 f[key].resize(f[key].shape[0] + 1,axis=0)
                 f[key][-1] = indices
@@ -291,9 +294,11 @@ class Generator:
         self.filename_full = '{}/{}'.format(self.outdir,self.filename)
 
         # File for keeping track of any particle indices that correspond with particles saved in *both*
-        # our "final-state" and "truth" selections. Indices are stored with respect to how they appear
-        # in the final-state HEPMC3 files.
-        # May be useful for studying Delphes output, e.g. keeping track of which calorimeter towers were
+        # our "final-state" and "truth" selections. Indices are stored in two ways:
+        #   1) with respect to how they appear in the final-state HepMC3 files, and
+        #   2) with respect to how they appear in the truth selection HepMC3 files.
+        #
+        # This may be useful for studying Delphes output, e.g. keeping track of which calorimeter towers were
         # hit by stable daughters of a W-boson (which were selected by "final-state" and "truth" selectors).
         self.fs_truth_overlap_filename = self.filename_full.replace('.hepmc','_final-state_truth_overlap_indices.h5')
         try: sub.check_call(['rm',self.fs_truth_overlap_filename],stderr=sub.DEVNULL)
