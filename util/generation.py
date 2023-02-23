@@ -37,7 +37,9 @@ class Generator:
 
         self.SetHistFilename('hists.root')
         self.SetFilename('events.hepmc')
+        self.filename_full = '{}/{}'.format(self.outdir,self.filename)
         self.stats_filename = 'stats.h5'
+        self.SetIndexOverlapFilename() # will give a default name
 
         self.diagnostic_plots = True
         self.InitializeHistograms()
@@ -61,15 +63,19 @@ class Generator:
     def SetHistFilename(self,name):
         self.hist_filename = name
 
-    def SetFilename(self,name, truth=True):
+    def SetFilename(self,name):
         if('.hepmc' not in name):
             name = '{}.hepmc'.format(name)
         self.filename = name
-        if(truth):
-            self.SetTruthFilename(name.replace('.hepmc','_truth.hepmc'))
+        self.SetTruthFilename()
+        self.SetIndexOverlapFilename(None)
         return
 
-    def SetTruthFilename(self,name):
+    def SetTruthFilename(self,name=None):
+        if(name is None):
+            self.truth_filename = self.filename.replace('.hepmc','_truth.hepmc')
+            return
+
         if('.hepmc' not in name):
             name = '{}.hepmc'.format(name)
         self.truth_filename = name
@@ -89,6 +95,14 @@ class Generator:
 
     def GetStatsFilename(self):
         return self.stats_filename
+
+    def SetIndexOverlapFilename(self,name=None):
+        if(name is None): self.fs_truth_overlap_filename = self.filename.replace('.hepmc','_final-state_truth_overlap_indices.h5')
+        else: self.fs_truth_overlap_filename = name
+        return
+
+    def GetIndexOverlapFilename(self):
+        return self.fs_truth_overlap_filename
 
     def ConfigPythia(self):
         """
@@ -291,7 +305,6 @@ class Generator:
     # and save them to a HepMC file.
     # We do perform event selection: Only certain particles are saved to the file to begin with.
     def Generate(self,nevents): # TODO: implement file chunking
-        self.filename_full = '{}/{}'.format(self.outdir,self.filename)
 
         # File for keeping track of any particle indices that correspond with particles saved in *both*
         # our "final-state" and "truth" selections. Indices are stored in two ways:
@@ -300,8 +313,9 @@ class Generator:
         #
         # This may be useful for studying Delphes output, e.g. keeping track of which calorimeter towers were
         # hit by stable daughters of a W-boson (which were selected by "final-state" and "truth" selectors).
-        self.fs_truth_overlap_filename = self.filename_full.replace('.hepmc','_final-state_truth_overlap_indices.h5')
-        try: sub.check_call(['rm',self.fs_truth_overlap_filename],stderr=sub.DEVNULL)
+        fs_truth_overlap_filename_full = '{}/{}'.format(self.outdir,self.fs_truth_overlap_filename)
+        # self.fs_truth_overlap_filename = self.filename_full.replace('.hepmc','_final-state_truth_overlap_indices.h5')
+        try: sub.check_call(['rm',fs_truth_overlap_filename_full],stderr=sub.DEVNULL)
         except: pass
 
         # Get the Fastjet banner out of the way

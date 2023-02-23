@@ -3,17 +3,7 @@ import numpy as np
 import h5py as h5
 import argparse as ap
 
-def main(args):
-    parser = ap.ArgumentParser()
-    parser.add_argument('-i', '--input',   nargs='+', help='Input file pattern (or a list of patterns). Each pattern can also be provided as a comma-separated string of filenames.', required=True)
-    parser.add_argument('-o', '--output', type=str, help='Output file.', default=None)
-    parser.add_argument('-c', '--compression',type=int,help='Compression level (0-10).',default=7)
-    args = vars(parser.parse_args())
-
-    input_patterns = args['input']
-    output = args['output']
-    copts = args['compression']
-
+def concatenate(input_patterns,output,copts):
     # Determine what are the input files.
     input_files = []
     for pattern in input_patterns:
@@ -51,6 +41,20 @@ def main(args):
 
     for file in infiles:
         file.close()
+    return
+
+def main(args):
+    parser = ap.ArgumentParser()
+    parser.add_argument('-i', '--input',   nargs='+', help='Input file pattern (or a list of patterns). Each pattern can also be provided as a comma-separated string of filenames.', required=True)
+    parser.add_argument('-o', '--output', type=str, help='Output file.', default=None)
+    parser.add_argument('-c', '--compression',type=int,help='Compression level (0-10).',default=7)
+    args = vars(parser.parse_args())
+
+    input_patterns = args['input']
+    output = args['output']
+    copts = args['compression']
+
+    concatenate(input_patterns,output,copts)
 
 if __name__ == '__main__':
     main(sys.argv)
