@@ -126,7 +126,7 @@ class Tracer:
         self.energy_ratio_truth = energy_ratio_truth
         return
 
-def Process(h5_file,delphes_file,indices_file,truth_file,verbose=False):
+def Process(h5_file,delphes_file,indices_file,truth_file,output_file=None,verbose=False):
     tracer = Tracer()
     tracer.SetH5EventFile(h5_file)
     tracer.SetDelphesFile(delphes_file)
@@ -139,14 +139,23 @@ def Process(h5_file,delphes_file,indices_file,truth_file,verbose=False):
     # Since the numerator is total true energy, and not deposited/measured energy, this ratio can be larger than 1!
     energy_ratio_truth = tracer.GetEnergyRatioTruth()
 
-    h5_file_new = h5_file.replace('.h5','_proc.h5')
-    sub.check_call(['cp',h5_file,h5_file_new])
-    f = h5.File(h5_file_new,'a')
+    replace_h5 = False
+    if(output_file is None):
+        output_file = h5_file.replace('.h5','_proc.h5')
+
+    if(output_file == h5_file):
+        replace = True
+
+    if(not replace):
+        sub.check_call(['cp',h5_file,output_file])
+
+    f = h5.File(output_file,'a')
     key = 'energy_ratio_truth'
     copts = 7
     d = f.create_dataset(key,data=energy_ratio_truth,compression='gzip',compression_opts=copts)
     f.close()
-    return h5_file_new
+
+    return output_file
 
 # Main function lets this be run as an executable, which may be a useful feature to have.
 # Ideally this is set up so that it can be automatically run by the main generation script (run.py).

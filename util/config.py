@@ -57,6 +57,9 @@ def GetJetConfig():
 def GetDelphesConfig():
     return config['delphes']
 
+def GetDelphesCard():
+    return config['delphes_card']
+
 def GetNPars():
     return_dict = {}
     for key in ['jet_n_par','n_truth']: return_dict[key] = config[key]
@@ -76,3 +79,6 @@ def GetSplitSeed():
 
 def GetRecordIndices():
     return config['record_final_state_indices']
+
+def GetPostProcessing():
+    return config['post_processing']

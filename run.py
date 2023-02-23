@@ -4,7 +4,8 @@ import subprocess as sub
 from util.generation import Generator
 from util.delphes import BuildDelphes, HepMC3ToDelphes
 from util.conversion import Processor, RemoveFailedFromHDF5, SplitHDF5, AddEventIndices, ConcatenateH5, MergeStatsInfo
-from util.config import GetDelphesConfig
+from util.config import GetDelphesConfig, GetDelphesCard
+from util.tools.concat import concatenate
 # from util.vectorcalcs import BuildVectorCalcs, LoadVectorCalcs
 
 def CompressHepMC(files, delete=True, cwd=None):
@@ -41,6 +42,7 @@ def main(args):
     parser.add_argument('-tf','--train_fraction',type=float,default=0.7,help='Fraction of events to place in the training file.')
     parser.add_argument('-vf','--val_fraction',type=float,default=0.2,help='Fraction of events to place in the validation file.')
     parser.add_argument('-co','--compression_opts',type=int,default=7,help='Compression option for final HDF5 file (0-9). Higher value means more compression.')
+    parser.add_argument('-separate_h5','--separate_h5',type=int,default=0,help='Whether or not to make separate HDF5 files for each pT bin.')
 
     args = vars(parser.parse_args())
 
@@ -62,6 +64,7 @@ def main(args):
     nentries_per_chunk = args['nentries_per_chunk']
     progress_bar = args['progress_bar']
     compression_opts = args['compression_opts']
+    separate_h5 = args['separate_h5'] > 0
 
     split_files = args['split'] > 0
     train_frac = args['train_fraction']
@@ -85,6 +88,7 @@ def main(args):
     truth_files = []
     hist_files = []
     stat_files = []
+    final_state_truth_overlap_indices_files = [] # only used in certain cases, these files record indices of particles that show up in both truth and final-state selections (indices w.r.t. final-state HepMC files)
 
     # Prepare the output directory.
     if(outdir is None): outdir = os.getcwd()
@@ -105,45 +109,53 @@ def main(args):
         pt_min = pt_bin_edges[i]
         pt_max = pt_bin_edges[i+1]
         hep_file = 'events_{}-{}.hepmc'.format(pt_min,pt_max)
-        if(do_generation):
-            if(verbose and i == 0): print('Running Pythia8 event generation.')
-            if(i == 0 and pythia_rng is not None):
-                print('\tSetting Pythia RNG seed to {}. (overriding config)'.format(pythia_rng))
-            generator = Generator(pt_min,pt_max, pythia_rng)
-            generator.SetOutputDirectory(outdir)
+        # if(do_generation):
+        if(verbose and i == 0 and do_generation): print('Running Pythia8 event generation.')
+        if(i == 0 and pythia_rng is not None and do_generation):
+            print('\tSetting Pythia RNG seed to {}. (overriding config)'.format(pythia_rng))
+        generator = Generator(pt_min,pt_max, pythia_rng)
+        generator.SetOutputDirectory(outdir)
 
-            hist_filename = 'hists_{}.root'.format(i)
-            hist_files.append(hist_filename)
-            generator.SetHistFilename(hist_filename)
+        hist_filename = 'hists_{}.root'.format(i)
+        hist_files.append(hist_filename)
+        generator.SetHistFilename(hist_filename)
 
-            stat_filename = 'stats_{}.h5'.format(i)
-            stat_files.append(stat_filename)
-            generator.SetStatsFilename(stat_filename)
+        stat_filename = 'stats_{}.h5'.format(i)
+        stat_files.append(stat_filename)
+        generator.SetStatsFilename(stat_filename)
 
-            generator.SetFilename(hep_file)
-            generator.SetDiagnosticPlots(diagnostic_plots)
+        generator.SetFilename(hep_file)
+        generator.SetDiagnosticPlots(diagnostic_plots)
 
-            generator.SetProgressBar(progress_bar)
+        generator.SetProgressBar(progress_bar)
 
-            hepfile_exists = pathlib.Path('{}/{}'.format(outdir,hep_file)).exists()
-            generate = True
-            if(hepfile_exists and not force):
-                print('\tHepMC3 file {}/{} already found, skipping its generation.'.format(outdir,hep_file))
-                generate = False
-            if(generate): generator.Generate(nevents_per_bin)
+        hepfile_exists = pathlib.Path('{}/{}'.format(outdir,hep_file)).exists()
+        generate = True
+        if(not do_generation):
+            generate = False
+        elif(hepfile_exists and not force):
+            print('\tHepMC3 file {}/{} already found, skipping its generation.'.format(outdir,hep_file))
+            generate = False
+
+        if(generate): generator.Generate(nevents_per_bin)
 
         # Extract the truth-level particles from the full HepMC file.
-        truthfile = hep_file.replace('.hepmc','_truth.hepmc') # TODO: Should be returned by Generate()
+        truthfile = generator.GetTruthFilename()
+        # truthfile = hep_file.replace('.hepmc','_truth.hepmc') # TODO: Should be returned by Generate()
         truth_files.append(truthfile)
+
+        overlap_index_file = generator.GetIndexOverlapFilename()
+        final_state_truth_overlap_indices_files.append(overlap_index_file)
 
         if(use_delphes): # Case 1: Using Delphes
             if(verbose and i == 0): print('Running Delphes on HepMC files.')
             # Pass the HepMC file to Delphes. Will output a ROOT file.
             delphes_dir = BuildDelphes() # build Delphes if it does not yet exist
             hep_file_with_extension = '{}/{}'.format(outdir,hep_file)
-            delphes_card = None # will default to the ATLAS card that is shipped with Delphes
-            delphesfile = HepMC3ToDelphes(hepmc_file = hep_file, delphes_dir = delphes_dir, cwd=outdir, delphes_card=delphes_card)
-            jet_files.append(delphesfile)
+            delphes_card = GetDelphesCard() # will default to the ATLAS card that is shipped with Delphes
+            delphes_file = hep_file.replace('.hepmc','.root')
+            delphes_file = HepMC3ToDelphes(hepmc_file=hep_file, output_file=delphes_file, delphes_dir=delphes_dir, cwd=outdir, delphes_card=delphes_card)
+            jet_files.append(delphes_file)
 
             # We can now compress the HepMC file. Once it's compressed, we delete the original file to recover space.
             if(compress_hepmc): CompressHepMC([hep_file_with_extension],True)
@@ -165,6 +177,8 @@ def main(args):
         return
 
     # Now put everything into an HDF5 file.
+    # We can optionally package things into separate HDF5 files, one per pT-hat bin, and then concatenate those later.
+    # This could be useful for certain use cases.
     if(verbose): print('\nRunning jet clustering and producing final HDF5 output.\n')
     processor = Processor(use_delphes)
     processor.SetVerbosity(verbose)
@@ -173,7 +187,42 @@ def main(args):
     processor.SetDiagnosticPlots(diagnostic_plots)
     processor.SetSeparateTruthParticles(separate_truth_particles)
     processor.SetNSeparateTruthParticles(n_separate_truth_particles)
-    processor.Process(jet_files,truth_files,h5_file,verbosity=h5_conversion_verbosity,nentries_per_chunk=nentries_per_chunk)
+
+    if(not separate_h5):
+        # The simple way to run this code -- it immediately makes a single HDF5 file with all events, from all pT-binned HepMC/Delphes files,
+        # and this file will optionally be split (in a later step) into training, testing and validation samples.
+        processor.Process(jet_files,truth_files,h5_file,verbosity=h5_conversion_verbosity,nentries_per_chunk=nentries_per_chunk)
+    else:
+        # Slightly more complex way of running things -- we first create pT-binned HDF5 files, corresponding with the binning of the
+        # HepMC/Delphes files. These binned files are then concatenatd into a single HDF5 file with all events.
+        # Making the binned files first may allow us to (more easily) run some algorithms where we may want to compare across
+        # the HepMC/Delphes and HDF5 files, since they are all binned it'll be easy to match events across files.
+        h5_files = []
+        print('\tProducing separate HDF5 files for each pT bin, and then concatenating these.')
+        delete_individual_h5 = True
+        nentries_per_chunk = int(nentries_per_chunk/nbins)
+        for i in range(nbins):
+            pt_min = pt_bin_edges[i]
+            pt_max = pt_bin_edges[i+1]
+            jet_file = [jet_files[i]]
+            truth_file = [truth_files[i]]
+            h5_file_individual = h5_file.replace('.h5','_{}-{}.h5'.format(pt_min,pt_max))
+            processor.Process(jet_file,truth_file,h5_file_individual,verbosity=h5_conversion_verbosity,nentries_per_chunk=nentries_per_chunk)
+
+            # To each HDF5 event file, we will add event indices. These may be useful/necessary for the post-processing step.
+            # We will remove these indices when concatenating files, since as one of our last steps we'll add indices again
+            # but with respect to the full event listing (not just w.r.t. events in each generation pT bin).
+            AddEventIndices(h5_file_individual,cwd=outdir,copts=compression_opts)
+
+            # Optional post-processing. Any post-processing steps have been configured in the config file, config/config.py.
+            processor.PostProcess(jet_file,truth_file,[h5_file_individual],[final_state_truth_overlap_indices_files[i]])
+
+            h5_files.append('/'.join((outdir,h5_file_individual)))
+
+        print('\t\tConcatenating HDF5 files.')
+        ConcatenateH5(h5_files,'/'.join((outdir,h5_file)),copts=compression_opts,delete_inputs=delete_individual_h5,ignore_keys=['event_idx'])
+
+        # Here, we can optionally do our "Delphes tracing".
 
     if(use_delphes):
         if(delete_delphes):
@@ -190,7 +239,8 @@ def main(args):
     # TODO: Can we handle some of the stats file stuff under-the-hood? Or just access all the files
     # without making the aggregate stats file.
     stats_filename = 'stats.h5'
-    try: ConcatenateH5(stat_files,stats_filename,cwd=outdir,delete_inputs=True, copts=9)
+    delete_individual_stats = False
+    try: ConcatenateH5(stat_files,stats_filename,cwd=outdir,delete_inputs=delete_individual_stats, copts=9)
     except: pass # as long as the full stats file exists, it's okay if the individual ones were deleted already
 
     try:
@@ -211,10 +261,19 @@ def main(args):
     # TODO: Might want to think about offering the ability to split the HepMC3 and Delphes files too?
     #       Could be useful for certain post-processing where we need to access those files, and we
     #       want to work on the split files (insead of the full events.h5).
+    #       Before splitting those, we'd want to effectively join them together first, they are currently
+    #       split by pT bin.
     if(split_files):
         # Now split the HDF5 file into training, testing and validation samples.
         split_ratio = (train_frac,val_frac,test_frac)
-        SplitHDF5(h5_file, split_ratio,cwd=outdir,copts=compression_opts)
+        print("Splitting HDF5 file {} into training, validation and testing samples:".format('/'.join((outdir,h5_file))))
+        split_ratio_sum = train_frac + val_frac + test_frac
+        train_name = 'train.h5'
+        val_name = 'valid.h5'
+        test_name = 'test.h5'
+        for name,frac in zip(([train_name,val_name,test_name],[train_frac,val_frac,test_frac])):
+            print('\t {} \t (fraction of events = {:.2e})'.format(name,frac))
+        SplitHDF5(h5_file, split_ratio,cwd=outdir,copts=compression_opts, train_name=train_name,val_name=val_name,test_name=test_name)
 
     # Optionally delete the full HDF5 file.
     delete_h5 = False # TODO: Make this configurable

@@ -3,13 +3,14 @@ import numpy as np
 import h5py as h5
 import ROOT as rt
 import subprocess as sub
-from util.config import GetNPars, GetJetConfig, GetInvisiblesFlag, GetSignalFlag, GetTruthSelection, GetSplitSeed, GetRecordIndices
+from util.config import GetNPars, GetJetConfig, GetInvisiblesFlag, GetSignalFlag, GetTruthSelection, GetSplitSeed, GetRecordIndices, GetPostProcessing
 from util.calcs import DeltaR2, EPxPyPzToPtEtaPhiM, EPzToRap, PtEtaPhiMToPxPyPzE, PtEtaPhiMToEPxPyPz, AdjustPhi, EPxPyPzToM
 from util.fastjet import BuildFastjet
 from util.qol_utils.qol_util import printProgressBarColor, RN
 from util.qol_utils.pdg import pdg_plotcodes, pdg_names, FillPdgHist
 from util.conv_utils.utils import ExtractHepMCParticles, InitFastJet, PrepDataBuffer, ExtractHepMCEvents,PrepDelphesArrays, PrepH5File, PrepIndexRanges
 from util.particle_selection.algos import IsNeutrino
+from util.post_processing.tracing import Process as DelphesTracingProcess
 
 # --- FASTJET IMPORT ---
 # TODO: Can this be done more nicely?
@@ -44,10 +45,24 @@ class Processor:
         self.jets = None
         self.jets_filtered = None
 
-        self.SetRecordFinalStateIndices(GetRecordIndices())
+        self.SetRecordFinalStateIndices(False)
+        self.post_processing = GetPostProcessing()
+        self.SetPostProcessing(self.post_processing)
 
     def SetRecordFinalStateIndices(self,flag):
         self.record_final_state_indices = flag
+
+    def SetPostProcessing(self,post_proc=None):
+        if(post_proc is None): post_proc = GetPostProcessing()
+
+        # Determine whether or not to generate files containing indices
+        # of particles that were both in the truth and final-state selections.
+        # Useful for things like particle daughter tracing.
+        # TODO: There might be a neater way to handle this.
+        for option in ['TruthAndFinalStateIndices', 'DelphesTracing']:
+            if(option in post_proc):
+                self.SetRecordFinalStateIndices(True)
+                break
 
     def SetStatsFile(self,filename):
         self.stats_file = filename
@@ -538,11 +553,32 @@ class Processor:
                 self.jet_diff_hists_2d['dm'].Fill(jet_m,delta_m)
                 self.jet_diff_hists_2d['dpt'].Fill(jet_pt,delta_pt)
                 self.jet_diff_hists_2d['det'].Fill(jet_et,delta_et)
-
         return
 
+    # TODO: A little ugly, but based on certain strings this will run various algorithms.
+    def PostProcess(self,final_state_files, truth_files=None, h5_files=None, indices_files=None):
+        if('DelphesTracing' in self.post_processing):
+            self.__DelphesTracing(final_state_files,truth_files,h5_files,indices_files)
+        return
+
+    def __DelphesTracing(self,final_state_files,truth_files,h5_files,indices_files):
+        nfiles = len(final_state_files)
+        assert(nfiles == len(truth_files))
+        assert(nfiles == len(h5_files))
+        assert(nfiles == len(indices_files))
+
+        for i in range(nfiles):
+            fs_file = '{}/{}'.format(self.outdir,final_state_files[i])
+            truth_file = '{}/{}'.format(self.outdir,truth_files[i])
+            h5_file = '{}/{}'.format(self.outdir,h5_files[i])
+            idx_file = '{}/{}'.format(self.outdir,indices_files[i])
+
+            # Sanity check: Make sure that the final-state file is actually a Delphes/ROOT file.
+            assert('.root' in fs_file)
+            DelphesTracingProcess(h5_file,fs_file,idx_file,truth_file,output_file=h5_file)
+
 # Generic function for concatenating HDF5 files.
-def ConcatenateH5(input_files,output_file,cwd=None,delete_inputs=False, compression='gzip', copts=7):
+def ConcatenateH5(input_files,output_file,cwd=None,delete_inputs=False, compression='gzip', copts=7,ignore_keys=None):
     if(cwd is not None):
         input_files = ['{}/{}'.format(cwd,x) for x in input_files]
     infiles = [h5.File(f,'r') for f in input_files]
@@ -550,6 +586,9 @@ def ConcatenateH5(input_files,output_file,cwd=None,delete_inputs=False, compress
     if(cwd is not None):
         output_file = '{}/{}'.format(cwd,output_file)
     outfile = h5.File(output_file,'w')
+
+    if(ignore_keys is not None):
+        keys = [k for k in keys if k not in ignore_keys]
 
     for key in keys:
         data = np.concatenate([f[key] for f in infiles],axis=0)
@@ -627,13 +666,18 @@ def SplitHDF5(h5_file, split_ratio = (7,2,1), train_name=None, val_name=None, te
 
     if(train_name is None):
         train_name = 'train.h5'
-        if(file_dir != ''): train_name = '{}/{}'.format(file_dir,train_name)
+        # if(file_dir != ''): train_name = '{}/{}'.format(file_dir,train_name)
     if(val_name is None):
         val_name   =   'valid.h5'
-        if(file_dir != ''): val_name = '{}/{}'.format(file_dir,val_name)
+        # if(file_dir != ''): val_name = '{}/{}'.format(file_dir,val_name)
     if(test_name is None):
         test_name  =  'test.h5'
-        if(file_dir != ''): test_name = '{}/{}'.format(file_dir,test_name)
+        # if(file_dir != ''): test_name = '{}/{}'.format(file_dir,test_name)
+
+    if(cwd is not None):
+        train_name = '{}/{}'.format(cwd,train_name)
+        val_name = '{}/{}'.format(cwd,val_name)
+        test_name = '{}/{}'.format(cwd,test_name)
 
     f = h5.File(h5_file,'r')
     keys = list(f.keys())

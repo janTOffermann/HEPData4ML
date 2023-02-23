@@ -13,7 +13,8 @@ config = {
     'isr' : False,
     'fsr' : False,
     'delphes' : True,
-    'rng' : 1, # Pythia RNG seed
+    'delphes_card' : None, # path to the Delphes card to use. If None, will use the ATLAS Delphes card that ships with Delphes
+    'rng' : 100, # Pythia RNG seed
     'jet_radius': 0.8,
     'jet_min_pt': 15., #GeV
     'jet_max_eta': 2., # absolute value eta cut
@@ -25,6 +26,10 @@ config = {
     'invisibles' : False, # if False, invisible particles in the final state will be discarded
     'jet_selection':jetsel.GetNearestJet(truth_code=6,max_dr=0.8),
     'signal_flag' : 1, # What to provide as the "signal_flag" for these events. (relevant if combining datasets). Must be >= 0.
+    'post_processing': [
+        'DelphesTracing'
+        # options are "None", "TruthAndFinalStateIndices", or "DelphesTracing"
+    ],
     'record_final_state_indices' : True, # Whether or not to record jet constituents' indices w.r.t. the order they were passed to jet clustering (order of particles in HepMC file, or order of Delphes objects if using Delphes).
     'split_seed' : 1 # seed to be used for the RNG when splitting dataset into train/test/validation samples
 }

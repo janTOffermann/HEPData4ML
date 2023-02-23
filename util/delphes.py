@@ -52,10 +52,15 @@ def HepMC3ToDelphes(hepmc_file, output_file=None, delphes_card=None, delphes_dir
     if(cwd is not None):
         hepmc_file = '{}/{}'.format(cwd,hepmc_file)
 
+    if(output_file is not None and cwd is not None):
+        output_file = '{}/{}'.format(cwd,output_file)
+
     # default to using HepMC filename for ROOT output
     if(output_file is None):
         output_file = hepmc_file.replace('.hepmc','.root')
-        if(cwd is not None): output_file_nodir = hepmc_file_nodir.replace('.hepmc','.root')
+
+    if(cwd is not None): output_file_nodir = hepmc_file_nodir.replace('.hepmc','.root')
+    else: output_file_nodir = output_file.split('/')[-1]
 
     # check if the output file already exists (i.e. look for file with same name)
     if(pathlib.Path(output_file).exists() and not force):
