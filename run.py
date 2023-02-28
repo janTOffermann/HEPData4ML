@@ -3,7 +3,7 @@ import argparse as ap
 import subprocess as sub
 from util.generation import Generator
 from util.delphes import BuildDelphes, HepMC3ToDelphes
-from util.conversion import Processor, RemoveFailedFromHDF5, SplitHDF5, AddEventIndices, ConcatenateH5, MergeStatsInfo
+from util.conversion import Processor, RemoveFailedFromHDF5, SplitH5, AddEventIndices, ConcatenateH5, MergeStatsInfo
 from util.config import GetDelphesConfig, GetDelphesCard
 from util.tools.concat import concatenate
 # from util.vectorcalcs import BuildVectorCalcs, LoadVectorCalcs
@@ -42,7 +42,7 @@ def main(args):
     parser.add_argument('-tf','--train_fraction',type=float,default=0.7,help='Fraction of events to place in the training file.')
     parser.add_argument('-vf','--val_fraction',type=float,default=0.2,help='Fraction of events to place in the validation file.')
     parser.add_argument('-co','--compression_opts',type=int,default=7,help='Compression option for final HDF5 file (0-9). Higher value means more compression.')
-    parser.add_argument('-separate_h5','--separate_h5',type=int,default=0,help='Whether or not to make separate HDF5 files for each pT bin.')
+    parser.add_argument('-separate_h5','--separate_h5',type=int,default=1,help='Whether or not to make separate HDF5 files for each pT bin.')
 
     args = vars(parser.parse_args())
 
@@ -191,6 +191,8 @@ def main(args):
     if(not separate_h5):
         # The simple way to run this code -- it immediately makes a single HDF5 file with all events, from all pT-binned HepMC/Delphes files,
         # and this file will optionally be split (in a later step) into training, testing and validation samples.
+        print('\tProducing a single HDF5 file, from all the HepMC or Delphes/ROOT files.')
+        print('\tWarning: This will skip any requested post-processing steps. If you want these, re-run with "-separate_h5 1".')
         processor.Process(jet_files,truth_files,h5_file,verbosity=h5_conversion_verbosity,nentries_per_chunk=nentries_per_chunk)
     else:
         # Slightly more complex way of running things -- we first create pT-binned HDF5 files, corresponding with the binning of the
@@ -207,6 +209,7 @@ def main(args):
             jet_file = [jet_files[i]]
             truth_file = [truth_files[i]]
             h5_file_individual = h5_file.replace('.h5','_{}-{}.h5'.format(pt_min,pt_max))
+            processor.SetProgressBarPrefix('\tClustering jets & preparing data for pT bin [{},{}]:'.format(pt_min,pt_max))
             processor.Process(jet_file,truth_file,h5_file_individual,verbosity=h5_conversion_verbosity,nentries_per_chunk=nentries_per_chunk)
 
             # To each HDF5 event file, we will add event indices. These may be useful/necessary for the post-processing step.
@@ -219,10 +222,8 @@ def main(args):
 
             h5_files.append('/'.join((outdir,h5_file_individual)))
 
-        print('\t\tConcatenating HDF5 files.')
-        ConcatenateH5(h5_files,'/'.join((outdir,h5_file)),copts=compression_opts,delete_inputs=delete_individual_h5,ignore_keys=['event_idx'])
-
-        # Here, we can optionally do our "Delphes tracing".
+        print('\n\tConcatenating HDF5 files. Will drop the "event_idx" key, this was used internally for any post-processing steps.\n\tIndices will be recomputed and added at the end.')
+        ConcatenateH5(h5_files,'/'.join((outdir,h5_file)),copts=compression_opts,delete_inputs=delete_individual_h5,ignore_keys=['event_idx'],verbose=True)
 
     if(use_delphes):
         if(delete_delphes):
@@ -253,9 +254,11 @@ def main(args):
     if(compress_hepmc): CompressHepMC(truth_files,True,cwd=outdir)
 
     # Add some event indices to our dataset.
+    print('\tAdding event indices to file {}.'.format('/'.join((outdir,h5_file))))
     AddEventIndices(h5_file,cwd=outdir,copts=compression_opts)
 
     # Remove any failed events (e.g. detector-level events with no jets passing cuts).
+    print('\tRemoving any failed events from file {}. These may be events where there weren\'t any jets passing the requested cuts.'.format('/'.join((outdir,h5_file))))
     RemoveFailedFromHDF5(h5_file,cwd=outdir)
 
     # TODO: Might want to think about offering the ability to split the HepMC3 and Delphes files too?
@@ -266,14 +269,12 @@ def main(args):
     if(split_files):
         # Now split the HDF5 file into training, testing and validation samples.
         split_ratio = (train_frac,val_frac,test_frac)
-        print("Splitting HDF5 file {} into training, validation and testing samples:".format('/'.join((outdir,h5_file))))
+        print("\tSplitting HDF5 file {} into training, validation and testing samples:".format('/'.join((outdir,h5_file))))
         split_ratio_sum = train_frac + val_frac + test_frac
         train_name = 'train.h5'
         val_name = 'valid.h5'
         test_name = 'test.h5'
-        for name,frac in zip(([train_name,val_name,test_name],[train_frac,val_frac,test_frac])):
-            print('\t {} \t (fraction of events = {:.2e})'.format(name,frac))
-        SplitHDF5(h5_file, split_ratio,cwd=outdir,copts=compression_opts, train_name=train_name,val_name=val_name,test_name=test_name)
+        SplitH5(h5_file, split_ratio,cwd=outdir,copts=compression_opts, train_name=train_name,val_name=val_name,test_name=test_name,verbose=True)
 
     # Optionally delete the full HDF5 file.
     delete_h5 = False # TODO: Make this configurable

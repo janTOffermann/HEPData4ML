@@ -33,11 +33,10 @@ class Generator:
         self.suffix = 'Complete'
         self.bl = 50
 
-        self.outdir = None
+        self.SetOutputDirectory()
 
         self.SetHistFilename('hists.root')
         self.SetFilename('events.hepmc')
-        self.filename_full = '{}/{}'.format(self.outdir,self.filename)
         self.stats_filename = 'stats.h5'
         self.SetIndexOverlapFilename() # will give a default name
 
@@ -51,10 +50,18 @@ class Generator:
 
         self.progress_bar = True
 
+    def SetDefaultFilenames(self,outdir=None):
+        self.SetOutputDirectory(dir)
+        self.SetFilename('events.hepmc')
+        self.SetHistFilename('hists.root')
+        self.stats_filename = 'stats.h5'
+        self.SetIndexOverlapFilename()
+
     def SetProgressBar(self,flag):
         self.progress_bar = flag
 
-    def SetOutputDirectory(self,dir):
+    def SetOutputDirectory(self,dir=None):
+        if(dir is None): dir = os.getcwd()
         self.outdir = dir
 
     def SetDiagnosticPlots(self,flag):
@@ -187,8 +194,9 @@ class Generator:
         # is written, and then copied to the "main" file before the next event is generated. This I/O might slow
         # down things, so we ultimately want to find some way to do a write with "append" functionality.
 
-        filename_truth = self.filename_full.replace('.hepmc','_truth.hepmc')
-        buffername = self.filename_full.replace('.hepmc','_buffer.hepmc')
+        filename_full = '{}/{}'.format(self.outdir,self.filename)
+        filename_truth = filename_full.replace('.hepmc','_truth.hepmc')
+        buffername = filename_full.replace('.hepmc','_buffer.hepmc')
         buffername_truth = buffername.replace('.hepmc','_truth.hepmc')
 
         for i in range(nevents):
@@ -248,7 +256,8 @@ class Generator:
             indices[:l,0] = fs_truth_overlap_wrt_fs[:l]
             indices[:l,1] = fs_truth_overlap_wrt_truth[:l]
 
-            f = h5.File(self.fs_truth_overlap_filename,'a')
+            fs_truth_overlap_filename_full = '{}/{}'.format(self.outdir,self.fs_truth_overlap_filename)
+            f = h5.File(fs_truth_overlap_filename_full,'a')
             key = 'indices'
             if(i_real == 1):
                 indices = np.expand_dims(indices,axis=0)
@@ -272,7 +281,7 @@ class Generator:
             #       for us to chunk this part and write a bunch of HepMC events to a memory buffer first?
 
             # Write this event to the HepMC buffer file, then copy the buffer contents to the full HepMC file.
-            HepMCOutput(final_state_hepev,buffername,self.filename_full,loop_number,i,i_real,nevents,n_fail)
+            HepMCOutput(final_state_hepev,buffername,filename_full,loop_number,i,i_real,nevents,n_fail)
             if(len(truth_indices) > 0):
                 HepMCOutput(truth_hepev,buffername_truth,filename_truth,loop_number,i,i_real,nevents,n_fail)
 
@@ -314,7 +323,6 @@ class Generator:
         # This may be useful for studying Delphes output, e.g. keeping track of which calorimeter towers were
         # hit by stable daughters of a W-boson (which were selected by "final-state" and "truth" selectors).
         fs_truth_overlap_filename_full = '{}/{}'.format(self.outdir,self.fs_truth_overlap_filename)
-        # self.fs_truth_overlap_filename = self.filename_full.replace('.hepmc','_final-state_truth_overlap_indices.h5')
         try: sub.check_call(['rm',fs_truth_overlap_filename_full],stderr=sub.DEVNULL)
         except: pass
 

@@ -25,7 +25,7 @@ class Processor:
     def __init__(self, use_delphes=False):
         self.delphes = use_delphes
 
-        self.prefix_level1 = '\tClustering jets & preparing data:'
+        self.SetProgressBarPrefix('\tClustering jets & preparing data:')
         self.suffix = 'Complete'
         self.bl = 50
         self.verbose = False
@@ -48,6 +48,9 @@ class Processor:
         self.SetRecordFinalStateIndices(False)
         self.post_processing = GetPostProcessing()
         self.SetPostProcessing(self.post_processing)
+
+    def SetProgressBarPrefix(self,text):
+        self.prefix_level1 = text
 
     def SetRecordFinalStateIndices(self,flag):
         self.record_final_state_indices = flag
@@ -257,9 +260,6 @@ class Processor:
             # For each event we must combine tracks and neutral hadrons, perform jet clustering on them,
             # select a single jet (based on user criteria), and select that jet's leading constituents.
             for j in range(ranges[i]):
-
-                # print(j)
-
                 data['is_signal'][j] = GetSignalFlag()
 
                 if(self.delphes):
@@ -572,13 +572,14 @@ class Processor:
             truth_file = '{}/{}'.format(self.outdir,truth_files[i])
             h5_file = '{}/{}'.format(self.outdir,h5_files[i])
             idx_file = '{}/{}'.format(self.outdir,indices_files[i])
-
             # Sanity check: Make sure that the final-state file is actually a Delphes/ROOT file.
             assert('.root' in fs_file)
+            print('\t\tRunning the "DelphesTracing" post-processing step on {}.'.format(h5_file))
+
             DelphesTracingProcess(h5_file,fs_file,idx_file,truth_file,output_file=h5_file)
 
 # Generic function for concatenating HDF5 files.
-def ConcatenateH5(input_files,output_file,cwd=None,delete_inputs=False, compression='gzip', copts=7,ignore_keys=None):
+def ConcatenateH5(input_files,output_file,cwd=None,delete_inputs=False, compression='gzip', copts=9,ignore_keys=None,verbose=False):
     if(cwd is not None):
         input_files = ['{}/{}'.format(cwd,x) for x in input_files]
     infiles = [h5.File(f,'r') for f in input_files]
@@ -587,8 +588,19 @@ def ConcatenateH5(input_files,output_file,cwd=None,delete_inputs=False, compress
         output_file = '{}/{}'.format(cwd,output_file)
     outfile = h5.File(output_file,'w')
 
+    if(verbose):
+        print('\n\t' + 21*"#")
+        print("\t### ConcatenateH5 ###")
+        for i,infile in enumerate(input_files):
+            print('\t  Input {}:\t{}'.format(i,infile))
+        print('\tOutput:\t{}'.format(output_file))
+
     if(ignore_keys is not None):
         keys = [k for k in keys if k not in ignore_keys]
+        if(verbose):
+            print('\tExcluding the following keys from concatenation, these will be dropped:')
+            for k in ignore_keys:
+                print('\t\t{}'.format(k))
 
     for key in keys:
         data = np.concatenate([f[key] for f in infiles],axis=0)
@@ -598,6 +610,11 @@ def ConcatenateH5(input_files,output_file,cwd=None,delete_inputs=False, compress
 
     for f in infiles:
         f.close()
+
+    if(verbose):
+        if(delete_inputs):
+            print('\tDeleting input files.')
+        print('\t' + 21*"#" + '\n')
 
     if(delete_inputs):
         for f in input_files:
@@ -660,24 +677,29 @@ def AddEventIndices(h5_file, cwd=None, copts=7):
     f.create_dataset('event_idx',data=event_indices, compression='gzip', compression_opts=copts)
 
 # Split an HDF5 file into training, testing and validation samples.
-def SplitHDF5(h5_file, split_ratio = (7,2,1), train_name=None, val_name=None, test_name=None, cwd=None, copts=7):
+def SplitH5(h5_file, split_ratio = (7,2,1), train_name=None, val_name=None, test_name=None, cwd=None, copts=9,verbose=False):
     if(cwd is not None): h5_file = '{}/{}'.format(cwd,h5_file)
     file_dir = '/'.join(h5_file.split('/')[:-1])
 
     if(train_name is None):
         train_name = 'train.h5'
-        # if(file_dir != ''): train_name = '{}/{}'.format(file_dir,train_name)
     if(val_name is None):
         val_name   =   'valid.h5'
-        # if(file_dir != ''): val_name = '{}/{}'.format(file_dir,val_name)
     if(test_name is None):
         test_name  =  'test.h5'
-        # if(file_dir != ''): test_name = '{}/{}'.format(file_dir,test_name)
 
     if(cwd is not None):
         train_name = '{}/{}'.format(cwd,train_name)
         val_name = '{}/{}'.format(cwd,val_name)
         test_name = '{}/{}'.format(cwd,test_name)
+
+    if(verbose):
+        print("\n\t###############")
+        print('\t### SplitH5 ###')
+        print('\tInput: {}'.format(h5_file))
+        print('\tOutputs:')
+        for (name,frac) in zip((train_name,val_name,test_name),split_ratio):
+            print('\t\t {} \t (fraction of events = {:.2e})'.format(name,frac))
 
     f = h5.File(h5_file,'r')
     keys = list(f.keys())
@@ -694,7 +716,10 @@ def SplitHDF5(h5_file, split_ratio = (7,2,1), train_name=None, val_name=None, te
     diff = np.sum(n) - N
     n[-1] -= diff
 
-    rng = np.random.default_rng(GetSplitSeed())
+    seed = GetSplitSeed()
+    rng = np.random.default_rng(seed)
+    if(verbose):
+        print('\tSplitting using seed: {}'.format(seed))
     index_list = np.array(range(N),dtype=int)
     rng.shuffle(index_list,axis=0)
     indices = []
@@ -714,4 +739,7 @@ def SplitHDF5(h5_file, split_ratio = (7,2,1), train_name=None, val_name=None, te
                 g.create_dataset(key, data=f[key][:][indices[i]],compression='gzip', compression_opts=copts)
         g.close()
     f.close()
+
+    if(verbose):
+        print("\t###############\n")
     return
