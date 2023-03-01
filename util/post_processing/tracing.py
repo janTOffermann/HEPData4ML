@@ -144,9 +144,9 @@ def Process(h5_file,delphes_file,indices_file,truth_file,output_file=None,verbos
         output_file = h5_file.replace('.h5','_proc.h5')
 
     if(output_file == h5_file):
-        replace = True
+        replace_h5 = True
 
-    if(not replace):
+    if(not replace_h5):
         sub.check_call(['cp',h5_file,output_file])
 
     f = h5.File(output_file,'a')
