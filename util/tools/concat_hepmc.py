@@ -19,7 +19,7 @@ def concatenate(input_patterns,output):
         else:
             input_files += [pattern]
 
-    # input_files.sort()
+    input_files.sort()
     print('Concatenating files:')
     for i,file in enumerate(input_files):
         print('\t{}: {}'.format(i,file))
