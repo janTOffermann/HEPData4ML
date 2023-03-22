@@ -63,7 +63,7 @@ def PrepDelphesArrays(delphes_files):
         else: var_map[key]['pt'] = branch
     return delphes_arr,var_map
 
-def PrepDataBuffer(nentries_per_chunk,separate_truth_particles=False, n_separate=-1,final_state_indices=False):
+def PrepDataBuffer(nentries_per_chunk,separate_truth_particles=False, n_separate=-1,final_state_indices=False, full_final_state=False):
     nentries_per_chunk = int(nentries_per_chunk)
     npars = GetNPars()
     n_constituents = npars['jet_n_par']
@@ -103,6 +103,11 @@ def PrepDataBuffer(nentries_per_chunk,separate_truth_particles=False, n_separate
     if(final_state_indices):
         key = 'final_state_idx'
         data[key] = np.zeros((nentries_per_chunk,n_constituents),dtype=np.dtype('i4'))
+
+    if(full_final_state): # This is really only for debugging purposes! We truncate to a fixed length.
+        key = 'Pmu_full_final_state'
+        n_max = 400
+        data[key] = np.zeros((nentries_per_chunk,n_max,4),dtype=np.dtype('f8'))
 
     return data
 
