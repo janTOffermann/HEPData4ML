@@ -12,14 +12,14 @@ from util.conv_utils.utils import InitFastJet
 import util.qol_utils.qol_util as qu
 
 class Generator:
-    def __init__(self, pt_min, pt_max, pythia_rng=None):
+    def __init__(self, pt_min, pt_max, pythia_rng=None, pythia_config_file=None):
         self.pt_min = pt_min
         self.pt_max = pt_max
 
         # Create our Pythia wrapper.
         self.pythia = PythiaWrapper()
         self.pythia_rng = pythia_rng
-        self.ConfigPythia()
+        self.ConfigPythia(config_file=pythia_config_file)
 
         # Configure our particle selectors and event filters.
         self.event_selection = GetEventSelection()
@@ -49,6 +49,11 @@ class Generator:
         self.xsecs = None
 
         self.progress_bar = True
+
+    def SetPythiaConfigFile(self,file=None):
+        self.pythia_config_file = file
+        if(file is None):
+            self.pythia_config_file = GetPythiaConfigFile() # picked up from dictionary in config/config.py
 
     def SetDefaultFilenames(self,outdir=None):
         self.SetOutputDirectory(dir)
@@ -111,13 +116,13 @@ class Generator:
     def GetIndexOverlapFilename(self):
         return self.fs_truth_overlap_filename
 
-    def ConfigPythia(self):
+    def ConfigPythia(self,config_file=None):
         """
         Prepare and apply Pythia configuration. This turns our settings (from our config file)
         into a list of strings ready to be input to Pythia8.
         """
         self.pythia_config = GetPythiaConfig(self.pt_min,self.pt_max)
-        self.pythia_config_file = GetPythiaConfigFile()
+        self.SetPythiaConfigFile(file=config_file)
 
         # Optionally set the Pythia RNG seed to something other than what's in the config.
         # TODO: Can we make this more tidy?

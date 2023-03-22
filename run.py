@@ -5,9 +5,8 @@ from util.generation import Generator
 from util.delphes import BuildDelphes, HepMC3ToDelphes
 from util.conversion import Processor, RemoveFailedFromHDF5, SplitH5, AddEventIndices, ConcatenateH5, MergeStatsInfo
 from util.config import GetDelphesConfig, GetDelphesCard
-from util.tools.concat import concatenate
-# from util.vectorcalcs import BuildVectorCalcs, LoadVectorCalcs
 
+# TODO: We might want to move this to somewhere in the util library, to clean up this file.
 def CompressHepMC(files, delete=True, cwd=None):
     for file in files:
         compress_file = file.replace('.hepmc','.tar.bz2')
@@ -43,6 +42,8 @@ def main(args):
     parser.add_argument('-vf','--val_fraction',type=float,default=0.2,help='Fraction of events to place in the validation file.')
     parser.add_argument('-co','--compression_opts',type=int,default=7,help='Compression option for final HDF5 file (0-9). Higher value means more compression.')
     parser.add_argument('-separate_h5','--separate_h5',type=int,default=1,help='Whether or not to make separate HDF5 files for each pT bin.')
+    parser.add_argument('-pc','--pythia_config',type=str,default=None,help='Path to Pythia configuration template (for setting the process).')
+    parser.add_argument('-debug','--debug',type=int,default=0,help='If > 0, will record the full final-state (i.e. before jet clustering/selection) in a separate key.')
 
     args = vars(parser.parse_args())
 
@@ -65,6 +66,8 @@ def main(args):
     progress_bar = args['progress_bar']
     compression_opts = args['compression_opts']
     separate_h5 = args['separate_h5'] > 0
+    pythia_config = args['pythia_config']
+    debug = args['debug'] > 0
 
     split_files = args['split'] > 0
     train_frac = args['train_fraction']
@@ -99,6 +102,22 @@ def main(args):
     # BuildVectorCalcs(force=False) # Set True to make sure the library is explicitly rebuilt.
     # LoadVectorCalcs()
 
+    if(do_generation):
+        if(verbose):
+            print('\n=================================')
+            print('Running Pythia8 event generation.')
+            print('=================================\n')
+
+        if(pythia_rng is not None):
+            print('\tSetting Pythia RNG seed to {}. (overriding config)'.format(pythia_rng))
+        if(pythia_config is not None):
+            print('\tSetting Pythia process configuration from {}. (overriding config)'.format(pythia_config))
+
+        if(verbose):
+            print('\tenerating {} events per \\hat{p_T} bin, with the following bin edges (in GeV):')
+            for bin_edge in pt_bin_edges:
+                print('\t\t{}'.format(bin_edge))
+
     for i in range(nbins):
         # Generate a HepMC file containing our events. The generation already performs filtering
         # before writing, so that we just save final-state particles & some selected truth particles.
@@ -109,11 +128,8 @@ def main(args):
         pt_min = pt_bin_edges[i]
         pt_max = pt_bin_edges[i+1]
         hep_file = 'events_{}-{}.hepmc'.format(pt_min,pt_max)
-        # if(do_generation):
-        if(verbose and i == 0 and do_generation): print('Running Pythia8 event generation.')
-        if(i == 0 and pythia_rng is not None and do_generation):
-            print('\tSetting Pythia RNG seed to {}. (overriding config)'.format(pythia_rng))
-        generator = Generator(pt_min,pt_max, pythia_rng)
+
+        generator = Generator(pt_min,pt_max, pythia_rng,pythia_config_file=pythia_config)
         generator.SetOutputDirectory(outdir)
 
         hist_filename = 'hists_{}.root'.format(i)
@@ -181,12 +197,12 @@ def main(args):
     # This could be useful for certain use cases.
     if(verbose): print('\nRunning jet clustering and producing final HDF5 output.\n')
     processor = Processor(use_delphes)
-    processor.SetVerbosity(verbose)
     processor.SetOutputDirectory(outdir)
     processor.SetHistFilename(hist_filename)
     processor.SetDiagnosticPlots(diagnostic_plots)
     processor.SetSeparateTruthParticles(separate_truth_particles)
     processor.SetNSeparateTruthParticles(n_separate_truth_particles)
+    processor.SetRecordFullFinalState(debug)
 
     if(not separate_h5):
         # The simple way to run this code -- it immediately makes a single HDF5 file with all events, from all pT-binned HepMC/Delphes files,
