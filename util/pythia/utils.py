@@ -9,13 +9,12 @@ class PythiaWrapper:
     Also adds new functionality!
     """
 
-    def __init__(self):
+    def __init__(self,verbose=False):
         self.pythia = pyth8.Pythia('',False)
         self.config_dict = {}
 
         self.event = None
-
-        self.verbose = False
+        self.verbose = verbose
 
     def SetVerbose(self,flag):
         self.verbose = flag

@@ -17,10 +17,11 @@ import subprocess as sub
 import argparse as ap
 
 class Tracer:
-    def __init__(self):
+    def __init__(self,verbose=False):
         self.status = False
-        self.SetVerbosity(False)
+        self.SetVerbosity(verbose)
         self.energy_ratio_truth = None
+        self.print_prefix = '\n\tTracer'
         return
 
     def SetH5EventFile(self,file):
@@ -40,6 +41,9 @@ class Tracer:
 
     def GetEnergyRatioTruth(self):
         return self.energy_ratio_truth
+
+    def RequiresIndexing(self):
+        return True
 
     # Reads in files, places relevant information in memory.
     def Initialize(self):
@@ -95,36 +99,75 @@ class Tracer:
             print('Error: Tracer not properly configured.')
             return
 
-        if(self.verbose): print('Process: Number of events = {} .'.format(self.nevents))
+        if(self.verbose):
+            print('{}.Process: Number of events = {}'.format(self.print_prefix,self.nevents))
         energy_ratio_truth = np.zeros((self.nevents,self.nobj_max))
 
         for i in range(self.nevents):
-            unfiltered_event_idx = self.event_indices[i] # there may be more events in Delphes file than the final h5 file, since some Delphes outputs may have failed jet cuts and those events got discarded.
-            daughter_idxs = np.trim_zeros(self.daughter_indices[unfiltered_event_idx,:,0]) # Note: These indices are using 1-indexing! This is how indexing is done within HepMC3.
-            daughter_idxs_truth = np.trim_zeros(self.daughter_indices[unfiltered_event_idx,:,1]) # Same as above, but w.r.t. the truth HepMC3 file.
+            event_idx = self.event_indices[i] # there may be more events in Delphes file than the final h5 file, since some Delphes outputs may have failed jet cuts and those events got discarded.
+            daughter_idxs = np.trim_zeros(self.daughter_indices[event_idx,:,0]) # Note: These indices are using 1-indexing! This is how indexing is done within HepMC3.
+            daughter_idxs_truth = np.trim_zeros(self.daughter_indices[event_idx,:,1]) # Same as above, but w.r.t. the truth HepMC3 file.
 
             # Get the list of selected towers and their energies.
-            towers = self.indices_delphes[unfiltered_event_idx] # all towers for event i, not just those we selected via jet clustering!
+            towers = self.indices_delphes[event_idx] # all towers for event i, not just those we selected via jet clustering!
             selected_towers = towers[ self.selected_tower_indices[i,:self.nobj[i]]]
-            tower_energies = self.energies_delphes[unfiltered_event_idx]
+            tower_energies = self.energies_delphes[event_idx]
             selected_tower_energies = tower_energies[ self.selected_tower_indices[i,:self.nobj[i]]]
 
             # Fetch the daughter particles' energies from the truth HepMC3 file.
-            truth_event = self.truth_events[unfiltered_event_idx]
+            truth_event = self.truth_events[event_idx]
             truth_particles = truth_event.particles
             truth_energies = np.array([x.momentum.e for x in truth_particles],dtype=float)
             selected_truth_energies = truth_energies[daughter_idxs_truth - 1] # daughter_idxs_truth is 1-indexed, but here we need to use 0-indexing based on how this array has been made
 
+            if(self.verbose):
+                print('\t\tEvent = {}, event_idx = {}, len(towers) = {}, len(selected_towers) = {}'.format(i,event_idx,len(towers),len(selected_towers)))
+                # print('daughter_idxs_truth = ',daughter_idxs_truth)
+
             for j,tower in enumerate(selected_towers): # Loop over towers that are in the selected jet
+                if(self.verbose):
+                    print('\t\t  Tower energy = {}'.format(selected_tower_energies[j]))
                 daughter_energy_sum = 0.
                 contained_particles = np.array(tower['refs'],dtype=int) - 1 # TODO: Should triple-check the indexing style (0 vs. 1).
                 for k,idx in enumerate(contained_particles): # Loop over particles contained by this tower
                     if(idx in daughter_idxs):
+                        if(self.verbose):
+                            print('\t\t\t Daughter with idx = {}.'.format(idx))
                         idx2 = np.where(daughter_idxs == idx)[0][0] # sort of inelegant, but this should always work by construction
                         daughter_energy_sum += selected_truth_energies[idx2]
+                        if(self.verbose):
+                            print('\t\t\t   energy += {}\t({}).'.format(selected_truth_energies[idx2], idx2))
+
+
                 energy_ratio_truth[i,j] = daughter_energy_sum / selected_tower_energies[j]
         self.energy_ratio_truth = energy_ratio_truth
         return
+
+    def __call__(self, delphes_file,truth_file,h5_file,indices_file,output_file=None,verbose=None, copts=9, key='energy_ratio_truth'):
+        print(h5_file)
+        self.SetH5EventFile(h5_file)
+        self.SetDelphesFile(delphes_file)
+        self.SetIndicesFile(indices_file)
+        self.SetTruthHepMCFile(truth_file)
+        if(verbose is not None): self.SetVerbosity(verbose)
+        self.Process()
+
+        # Get the ratio of true daughter particle energy, versus the total energy deposited in the Delphes Tower.
+        # Since the numerator is total true energy, and not deposited/measured energy, this ratio can be larger than 1!
+        energy_ratio_truth = self.GetEnergyRatioTruth()
+
+        replace_h5 = True
+        if(output_file is None):
+            output_file = h5_file.replace('.h5','_proc.h5')
+
+        if(not replace_h5):
+            sub.check_call(['cp',h5_file,output_file])
+
+        f = h5.File(output_file,'a')
+        d = f.create_dataset(key,data=energy_ratio_truth,compression='gzip',compression_opts=copts)
+        f.close()
+        return output_file
+
 
 def Process(h5_file,delphes_file,indices_file,truth_file,output_file=None,verbose=False):
     tracer = Tracer()

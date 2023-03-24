@@ -35,7 +35,7 @@ def main(args):
     parser.add_argument('-c', '--compress',type=int,help='Whether or not to compress HepMC files.',default=0)
     parser.add_argument('-cd','--clean_delphes',type=int,help='Whether or not to clean up DELPHES/ROOT files.',default=0)
     parser.add_argument('-rng','--rng',type=int,help='Pythia RNG seed. Will override the one provided in the config file.',default=None)
-    parser.add_argument('-npc', '--nentries_per_chunk',type=int,help='Number of entries to process per chunk, for jet clustering & conversion to HDF5.',default=1e4)
+    parser.add_argument('-npc', '--nentries_per_chunk',type=int,help='Number of entries to process per chunk, for jet clustering & conversion to HDF5.',default=int(1e4))
     parser.add_argument('-pb','--progress_bar',type=int,help='Whether or not to print progress bar during event generation',default=1)
     parser.add_argument('-sp','--split',type=int,default=1,help='Whether or not to split HDF5 file into training/validation/testing files.')
     parser.add_argument('-tf','--train_fraction',type=float,default=0.7,help='Fraction of events to place in the training file.')
@@ -96,11 +96,18 @@ def main(args):
     # Prepare the output directory.
     if(outdir is None): outdir = os.getcwd()
     else: os.makedirs(outdir,exist_ok=True)
-    # h5_file = '{}/{}'.format(outdir,h5_file)
 
-    # # Prepare our custom ROOT library, that is used to do coordinate conversions and other 4-vector calcs.
-    # BuildVectorCalcs(force=False) # Set True to make sure the library is explicitly rebuilt.
-    # LoadVectorCalcs()
+    # Create a log file in the output directory, detailing the command line arguments.
+    logfile = outdir + '/command_options.txt'
+    with open(logfile,'w') as f:
+        for key,val in args.items():
+            if(val == True): val = 1
+            elif(val == False): val = 0
+            f.write('{} = {}\n'.format(key,val))
+
+    # Also copy the configuration file, it is currently always config/config.py.
+    comm = ['cp','config/config.py','{}/config.py'.format(outdir)]
+    sub.check_call(comm)
 
     if(do_generation):
         if(verbose):
@@ -114,7 +121,7 @@ def main(args):
             print('\tSetting Pythia process configuration from {}. (overriding config)'.format(pythia_config))
 
         if(verbose):
-            print('\tenerating {} events per \\hat{p_T} bin, with the following bin edges (in GeV):')
+            print('\tGenerating {} events per \\hat{p_T} bin, with the following bin edges (in GeV):')
             for bin_edge in pt_bin_edges:
                 print('\t\t{}'.format(bin_edge))
 
@@ -124,7 +131,6 @@ def main(args):
 
         # If the user has opted not to do generation, the HepMC3 files must already exist (and have the right names).
         # TODO: Make the no-generation option more flexible, to pick up any existing HepMC3 files in the cwd.
-
         pt_min = pt_bin_edges[i]
         pt_max = pt_bin_edges[i+1]
         hep_file = 'events_{}-{}.hepmc'.format(pt_min,pt_max)
@@ -157,7 +163,6 @@ def main(args):
 
         # Extract the truth-level particles from the full HepMC file.
         truthfile = generator.GetTruthFilename()
-        # truthfile = hep_file.replace('.hepmc','_truth.hepmc') # TODO: Should be returned by Generate()
         truth_files.append(truthfile)
 
         overlap_index_file = generator.GetIndexOverlapFilename()
@@ -217,7 +222,7 @@ def main(args):
         # the HepMC/Delphes and HDF5 files, since they are all binned it'll be easy to match events across files.
         h5_files = []
         print('\tProducing separate HDF5 files for each pT bin, and then concatenating these.')
-        delete_individual_h5 = True
+        delete_individual_h5 = False
         nentries_per_chunk = int(nentries_per_chunk/nbins)
         for i in range(nbins):
             pt_min = pt_bin_edges[i]
@@ -226,6 +231,7 @@ def main(args):
             truth_file = [truth_files[i]]
             h5_file_individual = h5_file.replace('.h5','_{}-{}.h5'.format(pt_min,pt_max))
             processor.SetProgressBarPrefix('\tClustering jets & preparing data for pT bin [{},{}]:'.format(pt_min,pt_max))
+
             processor.Process(jet_file,truth_file,h5_file_individual,verbosity=h5_conversion_verbosity,nentries_per_chunk=nentries_per_chunk)
 
             # To each HDF5 event file, we will add event indices. These may be useful/necessary for the post-processing step.

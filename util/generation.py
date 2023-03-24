@@ -12,12 +12,12 @@ from util.conv_utils.utils import InitFastJet
 import util.qol_utils.qol_util as qu
 
 class Generator:
-    def __init__(self, pt_min, pt_max, pythia_rng=None, pythia_config_file=None):
+    def __init__(self, pt_min, pt_max, pythia_rng=None, pythia_config_file=None, verbose=False):
         self.pt_min = pt_min
         self.pt_max = pt_max
 
         # Create our Pythia wrapper.
-        self.pythia = PythiaWrapper()
+        self.pythia = PythiaWrapper(verbose=verbose)
         self.pythia_rng = pythia_rng
         self.ConfigPythia(config_file=pythia_config_file)
 

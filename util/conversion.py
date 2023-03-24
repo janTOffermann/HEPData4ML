@@ -46,8 +46,7 @@ class Processor:
         self.jets_filtered = None
 
         self.SetRecordFinalStateIndices(False)
-        self.post_processing = GetPostProcessing()
-        self.SetPostProcessing(self.post_processing)
+        self.SetPostProcessing()
 
         self.SetRecordFullFinalState(False) # by default we don't want this, it may significantly increase filesize!
 
@@ -75,13 +74,16 @@ class Processor:
 
     def SetPostProcessing(self,post_proc=None):
         if(post_proc is None): post_proc = GetPostProcessing()
+        self.post_processing = post_proc
 
         # Determine whether or not to generate files containing indices
         # of particles that were both in the truth and final-state selections.
         # Useful for things like particle daughter tracing.
         # TODO: There might be a neater way to handle this.
-        for option in ['TruthAndFinalStateIndices', 'DelphesTracing']:
-            if(option in post_proc):
+        self.SetRecordFinalStateIndices(False)
+        for p in post_proc:
+            if(p is None): continue
+            if(p.RequiresIndexing()):
                 self.SetRecordFinalStateIndices(True)
                 break
 
@@ -600,8 +602,25 @@ class Processor:
 
     # TODO: A little ugly, but based on certain strings this will run various algorithms.
     def PostProcess(self,final_state_files, truth_files=None, h5_files=None, indices_files=None):
-        if('DelphesTracing' in self.post_processing):
-            self.__DelphesTracing(final_state_files,truth_files,h5_files,indices_files)
+        nfiles = len(final_state_files)
+        if(truth_files is not None): assert(nfiles == len(truth_files)) # TODO: may have to rework some of this logic
+        if(h5_files is not None): assert(nfiles == len(h5_files))
+        if(indices_files is not None): assert(nfiles == len(indices_files))
+
+        for post_proc in self.post_processing:
+            if(post_proc is None): continue
+            for i in range(nfiles):
+                truth_file = None
+                h5_file = None
+                idx_file = None
+                fs_file = '{}/{}'.format(self.outdir,final_state_files[i])
+                if(truth_files is not None): truth_file = '{}/{}'.format(self.outdir,truth_files[i])
+                if(h5_files is not None): h5_file = '{}/{}'.format(self.outdir,h5_files[i])
+                if(indices_files is not None): idx_file = '{}/{}'.format(self.outdir,indices_files[i])
+                post_proc(fs_file,truth_file,h5_file,idx_file)
+
+        # if('DelphesTracing' in self.post_processing):
+        #     self.__DelphesTracing(final_state_files,truth_files,h5_files,indices_files)
         return
 
     def __DelphesTracing(self,final_state_files,truth_files,h5_files,indices_files):

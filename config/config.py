@@ -2,7 +2,9 @@ import util.jet_selection as jetsel
 import util.particle_selection.particle_selection as parsel
 import util.particle_selection.selection_algos as algos
 import util.event_selection as eventsel
+import util.post_processing.tracing as tracing
 import config.selectors as s
+
 
 selections = s.selections
 
@@ -16,18 +18,21 @@ config = {
     'delphes_card' : None, # path to the Delphes card to use. If None, will use the ATLAS Delphes card that ships with Delphes
     'rng' : 100, # Pythia RNG seed
     'jet_radius': 0.8,
-    'jet_min_pt': 15., #GeV
-    'jet_max_eta': 2., # absolute value eta cut
+    'jet_min_pt': 15., #GeV # 15
+    'jet_max_eta': 2., # absolute value eta cut # 2.
     'jet_n_par': 200, # max number of jet constituents to save per jet
     'n_truth' : 3 + 2 + 200, # max number of truth particles to save per jet
     'truth_selection' : selections['t->Wb w/ qq and daughters'],
     'final_state_selection': parsel.AlgoSelection(algos.SelectFinalState(),200),
     'event_selection' : eventsel.TruthDistanceSelection(distance=2.4, n_truth=3), # filters an event to remove some final-state particles, primarily for lowering HepMC file-size. Ideally does not affect the final output.
-    'invisibles' : False, # if False, invisible particles in the final state will be discarded
-    'jet_selection':jetsel.GetNearestJet(truth_code=6,max_dr=0.8),
+    'invisibles' : False, # if False, invisible particles in the final-state selection (neutrinos) will be discarded. If true, they may be input to jet clustering!
+    # 'jet_selection':jetsel.GetNearestJet(truth_code=6,max_dr=0.8),
+    'jet_selection':jetsel.GetNearestJetWithContainment(6,0.8,5,-1),
     'signal_flag' : 1, # What to provide as the "signal_flag" for these events. (relevant if combining datasets). Must be >= 0.
     'post_processing': [
-        'DelphesTracing'
+        # 'DelphesTracing',
+        tracing.Tracer(verbose=False)
+        # 'DelphesTracing'
         # options are "None", "TruthAndFinalStateIndices", or "DelphesTracing"
     ],
     'record_final_state_indices' : True, # Whether or not to record jet constituents' indices w.r.t. the order they were passed to jet clustering (order of particles in HepMC file, or order of Delphes objects if using Delphes).
