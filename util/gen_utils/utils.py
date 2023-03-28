@@ -1,36 +1,48 @@
 import numpy as np
 import subprocess as sub
 import pyhepmc as hep
-from util.hepmc import RestructureParticleArray
 from util.particle_selection.algos import IsNeutrino
 from util.calcs import PxPyPzEToPtEtaPhiM
-from util.qol_utils.pdg import pdg_names, pdg_plotcodes, FillPdgHist
+from util.qol_utils.pdg import FillPdgHist
 
 # --- Various utility functions for the class --
-def CreateHepMCEvent(pythia_wrapper, particle_indices, event_number):
-    hepev = hep.GenEvent()
-    hepev.event_number = event_number
 
+def _extract_particle_momenta(pythia_wrapper, particle_indices):
     momentum = pythia_wrapper.GetPxPyPzE(particle_indices)
     pdgid = pythia_wrapper.GetPdgId(particle_indices)
     status = pythia_wrapper.GetStatus(particle_indices, hepmc=True)
+    return momentum, pdgid, status
 
+def CreateHepMCEvent(pythia_wrapper, particle_indices, event_number):
+    hepev = hep.GenEvent()
+    hepev.event_number = event_number
+    momentum,pdgid,status = _extract_particle_momenta(pythia_wrapper,particle_indices)
     for j, pmu in enumerate(momentum):
         par = hep.GenParticle(momentum=pmu, pid=pdgid[j], status=status[j])
         hepev.add_particle(par)
     return hepev
 
-def Write2HepMCBuffer(buffername,hepev):
-    with hep.io.WriterAscii(buffername) as f:
-        f.write_event(hepev)
+def AddToHepMCEvent(pythia_wrapper, particle_indices, hepev):
+    momentum,pdgid,status = _extract_particle_momenta(pythia_wrapper,particle_indices)
+    for j, pmu in enumerate(momentum):
+        par = hep.GenParticle(momentum=pmu, pid=pdgid[j], status=status[j])
+        hepev.add_particle(par)
     return
 
-def CopyHepMCBuffer2File(buffername,filename,loop_number,i,i_real,nevents,n_fail):
+def Write2HepMCBuffer(buffername,hepev_list):
+    if(type(hepev_list) is not list): hepev_list = [hepev_list]
+    with hep.io.WriterAscii(buffername) as f:
+        for hepev in hepev_list:
+            f.write_event(hepev)
+    return
+
+def CopyHepMCBuffer2File(buffername,filename,header=False,footer=False):
     # For speed, we do this using Unix commands (though it seems a bit hacky).
-    upper_trim = 3
-    lower_trim = 3 # 2 if using Unix head (?)
-    if(loop_number == 0 and i_real == 1): upper_trim = 0
-    elif(i == nevents-1 and n_fail == 0): lower_trim = 0
+
+    # We need to determine whether or not to include the HepMC header/footer,
+    # which will always be in the buffer file.
+    upper_trim = 0 if header else 3
+    lower_trim = 0 if footer else 3 # 2 if using Unix head (?)
     comm1 = 'tail -n +{} {}'.format(upper_trim, buffername).split(' ')
 
     proc = sub.Popen(comm1,stdout=sub.PIPE,text=True)
@@ -40,9 +52,9 @@ def CopyHepMCBuffer2File(buffername,filename,loop_number,i,i_real,nevents,n_fail
     with open(filename,'a') as f:
         f.writelines(line + '\n' for line in proc_out)
 
-def HepMCOutput(hepev,buffername,filename,loop_number,i,i_real,nevents,n_fail):
-    Write2HepMCBuffer(buffername,hepev) # write the given event to a buffer f ile
-    CopyHepMCBuffer2File(buffername,filename,loop_number,i,i_real,nevents,n_fail) # copy buffer file into the full file
+def HepMCOutput(hepev_list,buffername,filename,header=False,footer=False):
+    Write2HepMCBuffer(buffername,hepev_list) # write the given event(s) to a buffer f ile
+    CopyHepMCBuffer2File(buffername,filename,header,footer) # copy buffer file into the full file
     return
 
 # -- plotting functionality below --

@@ -39,6 +39,8 @@ class Generator:
         self.SetFilename('events.hepmc')
         self.stats_filename = 'stats.h5'
         self.SetIndexOverlapFilename() # will give a default name
+        self.filename_full = None
+        self.filename_truth_full = None
 
         self.diagnostic_plots = True
         self.InitializeHistograms()
@@ -49,6 +51,17 @@ class Generator:
         self.xsecs = None
 
         self.progress_bar = True
+
+        self.loop_number = 0 # used for keeping track of successful generation loops
+        self.nevents = None # number of events requested, will be set in generation function
+
+        self.hepev_buffer_fs = [] # list containing HepMC events, to be written to a file
+        self.hepev_buffer_truth = []
+        self.SetBufferSize(100)
+        self.buffername = None
+        self.buffername_truth = None
+        self.nevents_success = 0 # number of events successfully generated
+        self.nevents_failed = 0 # number of events that failed (failure to pass basic cuts)
 
     def SetPythiaConfigFile(self,file=None):
         self.pythia_config_file = file
@@ -190,19 +203,35 @@ class Generator:
         f.Close()
         return
 
-    def GenerationLoop(self, nevents,i_real = 1, nevents_disp=None,loop_number=0):
+    def SetBufferSize(self,size=100):
+        self.buffer_size = size
+
+    def ClearEventBuffers(self):
+        self.hepev_buffer_fs.clear()
+        self.hepev_buffer_truth.clear()
+
+    def FillEventBuffers(self,hepev_fs,hepev_truth=None):
+        self.hepev_buffer_fs.append(hepev_fs)
+        if(hepev_truth is not None): self.hepev_buffer_truth.append(hepev_truth)
+
+    def WriteEventBuffersToFile(self,header=False,footer=False):
+        HepMCOutput(self.hepev_buffer_fs,self.buffername,self.filename_full,header,footer)
+        HepMCOutput(self.hepev_buffer_truth,self.buffername_truth,self.filename_truth_full,header,footer)
+        self.ClearEventBuffers()
+
+    def GenerationLoop(self, nevents,i_real = 1, nevents_disp=None):
         n_fail = 0
         if(nevents_disp is None): nevents_disp = nevents # number of events to display in progress bar
 
-        # The way that pyhepmc_ng's WriterAscii works, writing an event will overwrite the whole file.
+        # The way that pyhepmc's WriterAscii works, writing an event will overwrite the whole file.
         # Thus for the time being, we will circumvent this limitation by making a buffer file where each event
         # is written, and then copied to the "main" file before the next event is generated. This I/O might slow
         # down things, so we ultimately want to find some way to do a write with "append" functionality.
 
-        filename_full = '{}/{}'.format(self.outdir,self.filename)
-        filename_truth = filename_full.replace('.hepmc','_truth.hepmc')
-        buffername = filename_full.replace('.hepmc','_buffer.hepmc')
-        buffername_truth = buffername.replace('.hepmc','_truth.hepmc')
+        self.filename_full = '{}/{}'.format(self.outdir,self.filename)
+        self.filename_truth_full = self.filename_full.replace('.hepmc','_truth.hepmc')
+        self.buffername = self.filename_full.replace('.hepmc','_buffer.hepmc')
+        self.buffername_truth = self.buffername.replace('.hepmc','_truth.hepmc')
 
         for i in range(nevents):
             self.pythia.Generate() # generate an event!
@@ -255,7 +284,7 @@ class Generator:
             fs_truth_overlap_wrt_fs    = np.array([np.where(final_state_indices==x)[0] + 1 for x in final_state_truth_overlap]).flatten()
             fs_truth_overlap_wrt_truth = np.array([np.where(truth_indices==x)[0] + 1 for x in final_state_truth_overlap]).flatten()
 
-            indices_max = 100 # TODO: Make this configurable!
+            indices_max = 200 # TODO: Make this configurable!
             indices = np.zeros((indices_max,2),dtype=int) # order will be (index w.r.t. final-state HepMC file, index w.r.t. truth-selection HepMC file)
             l = np.minimum(indices_max,len(fs_truth_overlap_wrt_fs))
             indices[:l,0] = fs_truth_overlap_wrt_fs[:l]
@@ -273,22 +302,39 @@ class Generator:
             f.close()
 
             # ==========================================
-            # Now lets create HepMC events -- one holding just the truth-level particles,
-            # and one holding just the final-state particles. By keeping these separate,
-            # we make it easy to (later) determine which particles are passed to jet clustering.
+            # Now lets create HepMC events -- one holding just the truth-level particles
+            # and one holding just the final-state particles (however we've defined our
+            # "truth selection" and "final-state selection" in our configuration).
+            # By keeping these separate, we make it easy to (later) determine which
+            # particles are passed to jet clustering, at the cost of each event being
+            # split across two files.
+            #
+            # Keep in mind that these are also not totally complete HepMC files as we
+            # have optionally applied an "event selection" above that may have thrown out
+            # some particles (that are hopefully not relevant to whatever jets we're studying),
+            # and partly as a consequence of this event reduction (as well as the fact that we
+            # split things across two files) we're also not saving vertex information to
+            # these HepMC files.
+            #
+            # TODO: We may want to totally rework this part of the code, so that the HepMC files
+            #       contain the *full* event (incl. vertex information), and the selections
+            #       (event selection, truth selection, final-state selection) are applied later
+            #       when in the HepMC -> Delphes/HDF5 pipeline. The current method has the advantage
+            #       of reducing the HepMC filesize but what we get aren't really "full" HepMC files,
+            #       plus redesigning things to use more standard HepMC files (with vertex info) would
+            #       make it easier to utilize HepMC files from outside sources (e.g. events generated
+            #       externally with a different generator like MadGraph).
             # ==========================================
-            final_state_hepev = CreateHepMCEvent(self.pythia,final_state_indices,i_real) # internally will fetch momenta
+            final_state_hepev = CreateHepMCEvent(self.pythia,final_state_indices,i_real)
+            # HepMCOutput(final_state_hepev,self.buffername,filename_full,self.loop_number,i,i_real,nevents,n_fail) # writes event to disk
+
+            truth_hepev = None
             if(len(truth_indices) > 0): # TODO: If this condition isn't met for whatever reason, will final-state and truth files' events not line up?
                 truth_hepev = CreateHepMCEvent(self.pythia,truth_indices, i_real)
+                # HepMCOutput(truth_hepev,self.buffername_truth,filename_truth,self.loop_number,i,i_real,nevents,n_fail) # writes event to disk
 
-            # With the HepMC events created, we write them to disk.
-            # TODO: This is probably a bottleneck since it involves I/O, is there a clever way
-            #       for us to chunk this part and write a bunch of HepMC events to a memory buffer first?
-
-            # Write this event to the HepMC buffer file, then copy the buffer contents to the full HepMC file.
-            HepMCOutput(final_state_hepev,buffername,filename_full,loop_number,i,i_real,nevents,n_fail)
-            if(len(truth_indices) > 0):
-                HepMCOutput(truth_hepev,buffername_truth,filename_truth,loop_number,i,i_real,nevents,n_fail)
+            # Fill the memory buffer with this event.
+            self.FillEventBuffers(final_state_hepev, truth_hepev)
 
             # Diagnostic plots.
             # TODO: Probably a lot of optimization to do for these, some new options thanks to PythiaWrapper.
@@ -307,8 +353,13 @@ class Generator:
 
             i_real += 1 # If success, increase i_real -- this is a counter for the number of successful events
 
+        # Write the event buffer to the event buffer files. Then, copy info from the buffer files to the full HepMC files.
+        header = self.loop_number == 0 # for writing HepMC header
+        footer = i_real >= self.nevents
+        self.WriteEventBuffersToFile(header,footer)
+
         # Delete the buffer files.
-        for fname in [buffername,buffername_truth]:
+        for fname in [self.buffername,self.buffername_truth]:
             comm = ['rm', fname]
             try: sub.check_call(comm,stderr=sub.DEVNULL)
             except: pass
@@ -318,7 +369,8 @@ class Generator:
     # Generate a bunch of events in the given pT range,
     # and save them to a HepMC file.
     # We do perform event selection: Only certain particles are saved to the file to begin with.
-    def Generate(self,nevents): # TODO: implement file chunking
+    def Generate(self,nevents):
+        self.nevents = nevents # total number of events we request
 
         # File for keeping track of any particle indices that correspond with particles saved in *both*
         # our "final-state" and "truth" selections. Indices are stored in two ways:
@@ -340,19 +392,18 @@ class Generator:
         # Loop in such a way as to guarantee that we get as many events as requested.
         # This logic is required as events could technically fail selections, e.g. not have the
         # requested truth particles (depends on requested truth particles & processes).
-        n_success = 0
+        self.nevents_success = 0
         n_fail = nevents
-        nloops = 0
+        self.loop_number = 0
         self.weights       = np.zeros(nevents)
         self.process_codes = np.zeros(nevents, dtype=int)
         while(n_fail > 0):
-            n_success, n_fail = self.GenerationLoop(
-                nevents-n_success,
-                i_real=n_success+1,
-                nevents_disp = nevents,
-                loop_number = nloops
+            self.nevents_success, n_fail = self.GenerationLoop(
+                nevents-self.nevents_success,
+                i_real=self.nevents_success+1,
+                nevents_disp = nevents
             )
-            nloops = nloops + 1
+            self.loop_number += 1
 
         # Fill out an array with each event's cross section (and the uncertainty on that cross-section).
         self.xsecs = np.zeros((nevents,2))
