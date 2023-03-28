@@ -1,4 +1,4 @@
-import sys,os,pathlib
+import sys,os,pathlib,time,datetime
 import argparse as ap
 import subprocess as sub
 from util.generation import Generator
@@ -44,8 +44,9 @@ def main(args):
     parser.add_argument('-separate_h5','--separate_h5',type=int,default=1,help='Whether or not to make separate HDF5 files for each pT bin.')
     parser.add_argument('-pc','--pythia_config',type=str,default=None,help='Path to Pythia configuration template (for setting the process).')
     parser.add_argument('-debug','--debug',type=int,default=0,help='If > 0, will record the full final-state (i.e. before jet clustering/selection) in a separate key.')
-
     args = vars(parser.parse_args())
+
+    start_time = time.time()
 
     nevents_per_bin = args['nevents']
     pt_bin_edges = args['ptbins']
@@ -303,6 +304,15 @@ def main(args):
     if(delete_h5):
         comm = ['rm',h5_file]
         sub.check_call(comm)
+
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    elapsed_time_readable = str(datetime.timedelta(seconds=elapsed_time))
+    print('\n#############################')
+    print('Done. Time elapsed = {:.1f} seconds.'.format(elapsed_time))
+    print('({})'.format(elapsed_time_readable))
+    print('#############################\n')
+
 
 if __name__ == '__main__':
     main(sys.argv)

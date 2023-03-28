@@ -5,7 +5,7 @@ from util.hepmc import RestructureParticleArray
 # Keep final-state particles within a certain distance of the selected truth particles.
 # We should be generous with our selection to avoid throwing out things that
 # have any chance of making their way into our jets later on. This is determined
-# by the alpha parameter, which should always be greater than 1.
+# by the distance parameter.
 class TruthDistanceSelection:
     def __init__(self,distance=2.4, n_truth=None):
         self.SetDistance(distance)
