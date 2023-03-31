@@ -97,12 +97,15 @@ class BasicSelection:
 class AlgoSelection():
     def __init__(self,selection_algo,n, fixed_length=False):
         self.particle_selection_algo = selection_algo
-        self.n = n
+        self.SetN(n)
         self.fixed_length = fixed_length # whether or not this selector will always return the exact same number of particles
         self.selection_status = True
 
     def GetN(self):
         return self.n
+
+    def SetN(self,n):
+        self.n = n
 
     def GetSelectionStatus(self):
         return self.selection_status
@@ -114,7 +117,6 @@ class AlgoSelection():
         self.selection_status, particle_list = self.particle_selection_algo(pythia_wrapper)
         if(len(particle_list) > self.n and self.n > 0): particle_list = particle_list[:self.n]
         return particle_list
-        # return np.sort(particle_list)
 
 # This is a simple class for passing a list comprised of the above selectors.
 # This allows one to construct more complex particle selections, implementing multiple algorithms.

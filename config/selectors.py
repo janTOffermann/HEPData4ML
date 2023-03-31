@@ -16,7 +16,7 @@ selections = {
             parsel.FirstSelector(22,24) # W boson
         ]
     ),
-    't->Wb w/ qq and daughters': parsel.MultiSelection(
+    't->Wb w/ qq and W daughters': parsel.MultiSelection(
         [
             parsel.FirstSelector(22, 6), # top quark
             parsel.FirstSelector(23, 5), # bottom quark

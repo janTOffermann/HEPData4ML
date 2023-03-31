@@ -241,7 +241,7 @@ def main(args):
             AddEventIndices(h5_file_individual,cwd=outdir,copts=compression_opts)
 
             # Optional post-processing. Any post-processing steps have been configured in the config file, config/config.py.
-            processor.PostProcess(jet_file,truth_file,[h5_file_individual],[final_state_truth_overlap_indices_files[i]])
+            processor.PostProcess(jet_file,[h5_file_individual],[final_state_truth_overlap_indices_files[i]])
 
             h5_files.append('/'.join((outdir,h5_file_individual)))
 

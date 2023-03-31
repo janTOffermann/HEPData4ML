@@ -601,23 +601,23 @@ class Processor:
         return
 
     # TODO: A little ugly, but based on certain strings this will run various algorithms.
-    def PostProcess(self,final_state_files, truth_files=None, h5_files=None, indices_files=None):
+    def PostProcess(self,final_state_files, h5_files=None, indices_files=None):
         nfiles = len(final_state_files)
-        if(truth_files is not None): assert(nfiles == len(truth_files)) # TODO: may have to rework some of this logic
+        # if(truth_files is not None): assert(nfiles == len(truth_files)) # TODO: may have to rework some of this logic
         if(h5_files is not None): assert(nfiles == len(h5_files))
         if(indices_files is not None): assert(nfiles == len(indices_files))
 
         for post_proc in self.post_processing:
             if(post_proc is None): continue
             for i in range(nfiles):
-                truth_file = None
+                # truth_file = None
                 h5_file = None
                 idx_file = None
                 fs_file = '{}/{}'.format(self.outdir,final_state_files[i])
-                if(truth_files is not None): truth_file = '{}/{}'.format(self.outdir,truth_files[i])
+                # if(truth_files is not None): truth_file = '{}/{}'.format(self.outdir,truth_files[i])
                 if(h5_files is not None): h5_file = '{}/{}'.format(self.outdir,h5_files[i])
                 if(indices_files is not None): idx_file = '{}/{}'.format(self.outdir,indices_files[i])
-                post_proc(fs_file,truth_file,h5_file,idx_file)
+                post_proc(fs_file,h5_file,idx_file)
 
         # if('DelphesTracing' in self.post_processing):
         #     self.__DelphesTracing(final_state_files,truth_files,h5_files,indices_files)
