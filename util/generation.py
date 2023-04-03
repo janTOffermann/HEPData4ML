@@ -5,7 +5,7 @@ import h5py as h5
 import subprocess as sub
 
 from util.pythia.utils import PythiaWrapper
-from util.config import GetEventSelection, GetTruthSelection, GetFinalStateSelection, GetPythiaConfig, GetPythiaConfigFile, GetJetConfig, GetNPars
+from util.config import GetEventSelection, GetTruthSelection, GetFinalStateSelection, GetPythiaConfig, GetPythiaConfigFile, GetJetConfig, GetNPars, GetEventFilter
 from util.qol_utils.pdg import pdg_names, pdg_plotcodes
 from util.gen_utils.utils import CreateHepMCEvent, HepMCOutput, HistogramFinalStateKinematics, HistogramFinalStateCodes
 from util.conv_utils.utils import InitFastJet
@@ -25,6 +25,7 @@ class Generator:
         self.event_selection = GetEventSelection()
         self.truth_selection = GetTruthSelection()
         self.final_state_selection = GetFinalStateSelection()
+        self.event_filter = GetEventFilter()
         self.jet_config = GetJetConfig()
         self.n_truth = GetNPars()['n_truth']
 
@@ -258,15 +259,22 @@ class Generator:
                 n_fail += 1
                 continue
 
-            # ==========================================
-            # Now we apply an (optional) "event filter". This selects only a subset of the final-state particles
+            # ===================================+======
+            # Now we apply an (optional) "event selection". This selects only a subset of the final-state particles
             # to save to our output HepMC file. In practice this can be useful for reducing these files' sizes.
             # For example, one may choose to only save final-state particles within some distance of one of
             # the selected truth-level particles.
             # ==========================================
-
             if(self.event_selection is not None):
                 final_state_indices = self.event_selection(self.pythia, final_state_indices, truth_indices)
+
+            # ==========================================
+            # Now we apply an (optional) "event filter". This applies some condition to the set
+            # of truth and final-state particles selected above, and requires that the event pass
+            # this condition. If not we will count the event as failed, and generate another.
+            # ==========================================
+            if(self.event_filter is not None):
+                passed_filter = self.event_filter(self.pythia, final_state_indices)
 
             # ==========================================
             # In some cases we may be interested in particles which are counted as both truth particles and final-state particles.

@@ -1,6 +1,5 @@
 import numpy as np
 from util.calcs import DeltaR2Vectorized
-from util.hepmc import RestructureParticleArray
 
 # Keep final-state particles within a certain distance of the selected truth particles.
 # We should be generous with our selection to avoid throwing out things that

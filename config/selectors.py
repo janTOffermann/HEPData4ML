@@ -24,5 +24,11 @@ selections = {
             parsel.AlgoSelection(algos.SelectSimplestQuarks(     parsel.FirstSelector(22,24)),n=2, fixed_length=True), # q's from W->qq'
             parsel.AlgoSelection(algos.SelectFinalStateDaughters(parsel.FirstSelector(22,24)),n=120) # up to 120 stable daughters of W
         ]
-    )
+    ),
+    't daughters': parsel.MultiSelection(
+        [
+            parsel.AlgoSelection(algos.SelectFinalStateDaughters(parsel.FirstSelector(22,6)),n=200) # up to 200 stable daughters of top quark
+        ]
+    ),
+
 }
