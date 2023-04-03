@@ -82,3 +82,6 @@ def GetRecordIndices():
 
 def GetPostProcessing():
     return config['post_processing']
+
+def GetEventFilter():
+    return config['event_filter']

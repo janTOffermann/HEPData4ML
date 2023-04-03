@@ -1,6 +1,4 @@
 import numpy as np
-import pyhepmc as pyhep
-from util.hepmc import HepMCArrayToNumpy
 
 # ==============================
 # These are particle selectors, that the user should
