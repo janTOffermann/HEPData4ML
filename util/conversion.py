@@ -739,7 +739,7 @@ def AddEventIndices(h5_file, cwd=None, copts=7):
     f.create_dataset('event_idx',data=event_indices, compression='gzip', compression_opts=copts)
 
 # Split an HDF5 file into training, testing and validation samples.
-def SplitH5(h5_file, split_ratio = (7,2,1), train_name=None, val_name=None, test_name=None, cwd=None, copts=9,verbose=False):
+def SplitH5(h5_file, split_ratio = (7,2,1), train_name=None, val_name=None, test_name=None, cwd=None, copts=9,verbose=False, seed=None):
     if(cwd is not None): h5_file = '{}/{}'.format(cwd,h5_file)
     file_dir = '/'.join(h5_file.split('/')[:-1])
 
@@ -778,7 +778,7 @@ def SplitH5(h5_file, split_ratio = (7,2,1), train_name=None, val_name=None, test
     diff = np.sum(n) - N
     n[-1] -= diff
 
-    seed = GetSplitSeed()
+    if(seed is None): seed = GetSplitSeed()
     rng = np.random.default_rng(seed)
     if(verbose):
         print('\tSplitting using seed: {}'.format(seed))

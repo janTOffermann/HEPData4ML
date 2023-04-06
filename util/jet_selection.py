@@ -60,7 +60,8 @@ class GetNearestJetWithContainment:
 
     Note that this containment simply uses a distance check
     in (eta, phi). It does not explicitly check that each truth-
-    level particle explicitly corresponds with a jet constituent.
+    level particle explicitly corresponds with a jet constituent
+    within the FastJet clustering sequence.
     """
     def __init__(self,truth_code=6, max_dr=0.8, truth_containment_start_idx=0, truth_containment_stop_idx=-1,containment_radius=None,use_hepmc=True):
         self.jet_selector = GetNearestJet(truth_code,max_dr,use_hepmc) # this will first run the GetNearestJet algo, then apply an additional cut.

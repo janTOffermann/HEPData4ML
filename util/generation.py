@@ -275,6 +275,9 @@ class Generator:
             # ==========================================
             if(self.event_filter is not None):
                 passed_filter = self.event_filter(self.pythia, final_state_indices)
+                if(not passed_filter):
+                    n_fail += 1
+                    continue
 
             # ==========================================
             # In some cases we may be interested in particles which are counted as both truth particles and final-state particles.
