@@ -1,4 +1,4 @@
-import sys, os, glob
+import sys, os, glob,pathlib
 import subprocess as sub
 import util.qol_utils.qol_util as qu
 
@@ -39,26 +39,32 @@ def BuildFastjet(fastjet_dir=None, j=4, force=False, verbose=False):
 
     with open(logfile,'w') as f, open(errfile,'w') as g:
 
-        # Fetch the Fastjet source
-        fastjet_download = 'http://fastjet.fr/repo/fastjet-3.4.0.tar.gz'
-        fastjet_file = fastjet_download.split('/')[-1]
-        print('Downloading fastjet from {}.'.format(fastjet_download))
-
-        # Depending on Linux/macOS, we use wget or curl.
-        has_wget = True
-        with qu.stdout_redirected():
-            try: sub.check_call('which wget'.split(' '))
-            except:
-                has_wget = False
-                pass
-
-        if(has_wget): sub.check_call(['wget', fastjet_download], shell=False, cwd=fastjet_dir, stdout=f, stderr=g)
-        else: sub.check_call(['curl',fastjet_download,'-o',fastjet_file], shell=False, cwd=fastjet_dir, stdout=f, stderr=g)
-        sub.check_call(['tar', 'zxvf', fastjet_file], shell=False, cwd=fastjet_dir, stdout=f, stderr=g)
-        sub.check_call(['rm', fastjet_file], shell=False, cwd=fastjet_dir, stdout=f, stderr=g)
-
         source_dir  = '{}/fastjet-3.4.0'.format(fastjet_dir)
         install_dir = '{}/fastjet-install'.format(fastjet_dir)
+
+        download_source = True
+        if(not force and pathlib.Path(source_dir).exists()): # check if fastjet source is already present, if so we do not need to download it again
+            download_source = False
+            print('Found local fastjet source code, but fastjet is not locally built yet.')
+
+        if(download_source):
+            # Fetch the Fastjet source
+            fastjet_download = 'http://fastjet.fr/repo/fastjet-3.4.0.tar.gz'
+            fastjet_file = fastjet_download.split('/')[-1]
+            print('Downloading fastjet from {}.'.format(fastjet_download))
+
+            # Depending on Linux/macOS, we use wget or curl.
+            has_wget = True
+            with qu.stdout_redirected():
+                try: sub.check_call('which wget'.split(' '))
+                except:
+                    has_wget = False
+                    pass
+
+            if(has_wget): sub.check_call(['wget', fastjet_download], shell=False, cwd=fastjet_dir, stdout=f, stderr=g)
+            else: sub.check_call(['curl',fastjet_download,'-o',fastjet_file], shell=False, cwd=fastjet_dir, stdout=f, stderr=g)
+            sub.check_call(['tar', 'zxvf', fastjet_file], shell=False, cwd=fastjet_dir, stdout=f, stderr=g)
+            sub.check_call(['rm', fastjet_file], shell=False, cwd=fastjet_dir, stdout=f, stderr=g)
 
         # Now configure. We create the python bindings.
         print('Configuring fastjet.')

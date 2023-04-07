@@ -6,6 +6,11 @@ from util.delphes import BuildDelphes, HepMC3ToDelphes
 from util.conversion import Processor, RemoveFailedFromHDF5, SplitH5, AddEventIndices, ConcatenateH5, MergeStatsInfo
 from util.config import GetDelphesConfig, GetDelphesCard
 
+def none_or_str(value): # see https://stackoverflow.com/a/48295546
+    if value == 'None':
+        return None
+    return value
+
 # TODO: We might want to move this to somewhere in the util library, to clean up this file.
 def CompressHepMC(files, delete=True, cwd=None):
     for file in files:
@@ -21,29 +26,29 @@ def CompressHepMC(files, delete=True, cwd=None):
 
 def main(args):
     parser = ap.ArgumentParser()
-    parser.add_argument('-n', '--nevents', type=int, help='Number of events per pt bin.', required=True)
-    parser.add_argument('-p', '--ptbins', type=int, nargs='+', help='Transverse momentum bin edges.', required=True)
-    parser.add_argument('-o', '--outfile', type=str, help='Output HDF5 file name.', default='events.h5')
-    parser.add_argument('-O', '--outdir', type=str, help='Output directory.', default=None)
-    parser.add_argument('-g', '--generation',type=int, help='Whether or not to do event generation.', default=True)
-    parser.add_argument('-s', '--sep_truth',type=int, help='Whether or not to store truth-level particles in separate arrays.', default=True)
-    parser.add_argument('-ns', '--n_sep_truth',type=int, help='How many truth particles to save in separate arrays -- will save the first n as given by the truth selection.', default=-1)
-    parser.add_argument('-d', '--diagnostic_plots',type=int, help='Whether or not to make diagnostic plots.', default=False)
-    parser.add_argument('-v', '--verbose',type=int,help='Verbosity.',default=0)
-    parser.add_argument('-h5', '--hdf5',type=int,help='Whether or not to produce final HDF5 files. If false, stops after HepMC or Delphes/ROOT file production.',default=1)
-    parser.add_argument('-f', '--force',type=int,help='Whether or not to force generation -- if true, will possibly overwrite existing HepMC files in output directory.', default=0)
-    parser.add_argument('-c', '--compress',type=int,help='Whether or not to compress HepMC files.',default=0)
-    parser.add_argument('-cd','--clean_delphes',type=int,help='Whether or not to clean up DELPHES/ROOT files.',default=0)
-    parser.add_argument('-rng','--rng',type=int,help='Pythia RNG seed. Will override the one provided in the config file.',default=None)
-    parser.add_argument('-npc', '--nentries_per_chunk',type=int,help='Number of entries to process per chunk, for jet clustering & conversion to HDF5.',default=int(1e4))
-    parser.add_argument('-pb','--progress_bar',type=int,help='Whether or not to print progress bar during event generation',default=1)
-    parser.add_argument('-sp','--split',type=int,default=1,help='Whether or not to split HDF5 file into training/validation/testing files.')
-    parser.add_argument('-tf','--train_fraction',type=float,default=0.7,help='Fraction of events to place in the training file.')
-    parser.add_argument('-vf','--val_fraction',type=float,default=0.2,help='Fraction of events to place in the validation file.')
-    parser.add_argument('-co','--compression_opts',type=int,default=7,help='Compression option for final HDF5 file (0-9). Higher value means more compression.')
-    parser.add_argument('-separate_h5','--separate_h5',type=int,default=1,help='Whether or not to make separate HDF5 files for each pT bin.')
-    parser.add_argument('-pc','--pythia_config',type=str,default=None,help='Path to Pythia configuration template (for setting the process).')
-    parser.add_argument('-debug','--debug',type=int,default=0,help='If > 0, will record the full final-state (i.e. before jet clustering/selection) in a separate key.')
+    parser.add_argument('-n',          '--nevents',           type=int,          required=True,            help='Number of events per pt bin.')
+    parser.add_argument('-p',          '--ptbins',            type=int,          required=True, nargs='+', help='Transverse momentum bin edges.')
+    parser.add_argument('-o',          '--outfile',           type=str,          default='events.h5',      help='Output HDF5 file name.')
+    parser.add_argument('-O',          '--outdir',            type=none_or_str,  default=None,             help='Output directory.')
+    parser.add_argument('-g',          '--generation',        type=int,          default=True,             help='Whether or not to do event generation.')
+    parser.add_argument('-s',          '--sep_truth',         type=int,          default=True,             help='Whether or not to store truth-level particles in separate arrays.')
+    parser.add_argument('-ns',         '--n_sep_truth',       type=int,          default=-1,               help='How many truth particles to save in separate arrays -- will save the first n as given by the truth selection.')
+    parser.add_argument('-d',          '--diagnostic_plots',  type=int,          default=False,            help='Whether or not to make diagnostic plots.')
+    parser.add_argument('-v',          '--verbose',           type=int,          default=0,                help='Verbosity.')
+    parser.add_argument('-h5',         '--hdf5',              type=int,          default=1,                help='Whether or not to produce final HDF5 files. If false, stops after HepMC or Delphes/ROOT file production.')
+    parser.add_argument('-f',          '--force',             type=int,          default=0,                help='Whether or not to force generation -- if true, will possibly overwrite existing HepMC files in output directory.')
+    parser.add_argument('-c',          '--compress',          type=int,          default=0,                help='Whether or not to compress HepMC files.')
+    parser.add_argument('-cd',         '--clean_delphes',     type=int,          default=0,                help='Whether or not to clean up DELPHES/ROOT files.')
+    parser.add_argument('-rng',        '--rng',               type=int,          default=None,             help='Pythia RNG seed. Will override the one provided in the config file.')
+    parser.add_argument('-npc',        '--nentries_per_chunk',type=int,          default=int(1e4),         help='Number of entries to process per chunk, for jet clustering & conversion to HDF5.')
+    parser.add_argument('-pb',         '--progress_bar',      type=int,          default=1,                help='Whether or not to print progress bar during event generation')
+    parser.add_argument('-sp',         '--split',             type=int,          default=1,                help='Whether or not to split HDF5 file into training/validation/testing files.')
+    parser.add_argument('-tf',         '--train_fraction',    type=float,        default=0.7,              help='Fraction of events to place in the training file.')
+    parser.add_argument('-vf',         '--val_fraction',      type=float,        default=0.2,              help='Fraction of events to place in the validation file.')
+    parser.add_argument('-co',         '--compression_opts',  type=int,          default=7,                help='Compression option for final HDF5 file (0-9). Higher value means more compression.')
+    parser.add_argument('-separate_h5','--separate_h5',       type=int,          default=1,                help='Whether or not to make separate HDF5 files for each pT bin.')
+    parser.add_argument('-pc',         '--pythia_config',     type=none_or_str,  default=None,             help='Path to Pythia configuration template (for setting the process).')
+    parser.add_argument('-debug',      '--debug',             type=int,          default=0,                help='If > 0, will record the full final-state (i.e. before jet clustering/selection) in a separate key.')
     args = vars(parser.parse_args())
 
     start_time = time.time()
