@@ -44,10 +44,12 @@ class FirstSelector:
         self.selection_status = True
 
         pdgid_idx  = np.where(pdgid == self.pdgid)[0]
-        status_idx = np.where(status == self.status)[0]
-
-        intersection = np.intersect1d(pdgid_idx, status_idx)
-        del pdgid_idx, status_idx
+        if(self.status is not None):
+            status_idx = np.where(status == self.status)[0]
+            intersection = np.intersect1d(pdgid_idx, status_idx)
+            del status_idx
+        else: intersection = np.copy(pdgid_idx)
+        del pdgid_idx
         if(len(intersection) == 0):
             self.selection_status = False
             return None
@@ -142,15 +144,19 @@ class MultiSelection:
     def __call__(self,pythia_wrapper):
         self.selection_status = True
         particle_lists = []
-        statuses = []
+        # statuses = []
         for i,selector in enumerate(self.particle_selection_list):
             particle_list = selector(pythia_wrapper)
             if(particle_list is None): particle_list = -1 # a selector failed -- the status should be reported as False
             if(type(particle_list) not in [list,np.ndarray]): particle_list = np.array(particle_list,dtype=int)
             particle_lists.append(particle_list)
-            statuses.append(selector.GetSelectionStatus())
+            individual_status = selector.GetSelectionStatus()
+            if(not individual_status):
+                self.selection_status = False
+                break
+            # statuses.append(selector.GetSelectionStatus())
 
-        if(False in statuses): self.selection_status = False
+        # if(False in statuses): self.selection_status = False
         # return np.hstack(particle_list).flatten()
         particle_list = np.hstack(particle_lists)
         if(self.enforce_unique): particle_list = np.unique(particle_list) # TODO: May have unexpected consequences for particle ordering
