@@ -3,8 +3,10 @@ import argparse as ap
 import subprocess as sub
 from util.generation import Generator
 from util.delphes import BuildDelphes, HepMC3ToDelphes
+from util.delphes import DelphesWrapper
 from util.conversion import Processor, RemoveFailedFromHDF5, SplitH5, AddEventIndices, ConcatenateH5, MergeStatsInfo
-from util.config import GetDelphesConfig, GetDelphesCard
+from util.config import Configurator
+import config.config as config
 
 def none_or_str(value): # see https://stackoverflow.com/a/48295546
     if value == 'None':
@@ -83,6 +85,10 @@ def main(args):
         print('Error: Requested training fraction and validation fraction sum to more than 1, this leaves no events for the test file.')
         assert(False)
 
+    # Configurator class, used for fetching information from our config file.
+    config_dictionary = config.config
+    configurator = Configurator(config_dictionary=config_dictionary)
+
     # Setting the verbosity for the HDF5 conversion.
     # If there are many events it might take a bit, so some printout
     # is helpful to monitor the progress.
@@ -90,7 +96,7 @@ def main(args):
     if(nevents_per_bin >= 100): h5_conversion_verbosity = 1
     elif(nevents_per_bin >= 10000): h5_conversion_verbosity = 2
 
-    use_delphes = GetDelphesConfig()
+    use_delphes = configurator.GetDelphesConfig()
 
     # Keep track of some files we create.
     jet_files = []
@@ -127,9 +133,10 @@ def main(args):
             print('\tSetting Pythia process configuration from {}. (overriding config)'.format(pythia_config))
 
         if(verbose):
-            print('\tGenerating {} events per \\hat{p_T} bin, with the following bin edges (in GeV):')
+            print('\tGenerating {} events per {} bin, with the following bin edges (in GeV):'.format(nevents_per_bin,'\\hat{p_T}'))
             for bin_edge in pt_bin_edges:
                 print('\t\t{}'.format(bin_edge))
+            print()
 
     for i in range(nbins):
         # Generate a HepMC file containing our events. The generation already performs filtering
@@ -141,7 +148,14 @@ def main(args):
         pt_max = pt_bin_edges[i+1]
         hep_file = 'events_{}-{}.hepmc'.format(pt_min,pt_max)
 
-        generator = Generator(pt_min,pt_max, pythia_rng,pythia_config_file=pythia_config)
+        generator = Generator(pt_min,pt_max, configurator, pythia_rng,pythia_config_file=pythia_config)
+        generator.SetEventSelection(configurator.GetEventSelection())
+        generator.SetTruthSelection(configurator.GetTruthSelection())
+        generator.SetFinalStateSelection(configurator.GetFinalStateSelection())
+        generator.SetEventFilter(configurator.GetEventFilter())
+        generator.SetJetConfig(configurator.GetJetConfig())
+        generator.SetNTruth(configurator.GetNPars()['n_truth'])
+
         generator.SetOutputDirectory(outdir)
 
         hist_filename = 'hists_{}.root'.format(i)
@@ -175,17 +189,20 @@ def main(args):
         final_state_truth_overlap_indices_files.append(overlap_index_file)
 
         if(use_delphes): # Case 1: Using Delphes
-            if(verbose and i == 0): print('Running Delphes on HepMC files.')
             # Pass the HepMC file to Delphes. Will output a ROOT file.
-            delphes_dir = BuildDelphes() # build Delphes if it does not yet exist
-            hep_file_with_extension = '{}/{}'.format(outdir,hep_file)
-            delphes_card = GetDelphesCard() # will default to the ATLAS card that is shipped with Delphes
+            delphes_card = configurator.GetDelphesCard() # will default to the ATLAS card that is shipped with Delphes
             delphes_file = hep_file.replace('.hepmc','.root')
-            delphes_file = HepMC3ToDelphes(hepmc_file=hep_file, output_file=delphes_file, delphes_dir=delphes_dir, cwd=outdir, delphes_card=delphes_card)
+            delphes_wrapper = DelphesWrapper(configurator.GetDelphesDirectory())
+            delphes_wrapper.PrepDelphes() # will download/build Delphes if necessary
+            if(verbose and i == 0):
+                print('Running Delphes on HepMC files.')
+                print('Delphes executable: {}'.format(delphes_wrapper.GetExecutable()))
+
+            delphes_file = delphes_wrapper.HepMC3ToDelphes(hepmc_file=hep_file, output_file=delphes_file, cwd=outdir, delphes_card=delphes_card)
             jet_files.append(delphes_file)
 
             # We can now compress the HepMC file. Once it's compressed, we delete the original file to recover space.
-            if(compress_hepmc): CompressHepMC([hep_file_with_extension],True)
+            if(compress_hepmc): CompressHepMC(['{}/{}'.format(outdir,hep_file)],True)
 
         else: # Case 2: No Delphes
             jet_files.append(hep_file)
@@ -207,7 +224,7 @@ def main(args):
     # We can optionally package things into separate HDF5 files, one per pT-hat bin, and then concatenate those later.
     # This could be useful for certain use cases.
     if(verbose): print('\nRunning jet clustering and producing final HDF5 output.\n')
-    processor = Processor(use_delphes)
+    processor = Processor(configurator,use_delphes)
     processor.SetOutputDirectory(outdir)
     processor.SetHistFilename(hist_filename)
     processor.SetDiagnosticPlots(diagnostic_plots)
@@ -298,11 +315,11 @@ def main(args):
         # Now split the HDF5 file into training, testing and validation samples.
         split_ratio = (train_frac,val_frac,test_frac)
         print("\tSplitting HDF5 file {} into training, validation and testing samples:".format('/'.join((outdir,h5_file))))
-        split_ratio_sum = train_frac + val_frac + test_frac
+        # split_ratio_sum = train_frac + val_frac + test_frac
         train_name = 'train.h5'
         val_name = 'valid.h5'
         test_name = 'test.h5'
-        SplitH5(h5_file, split_ratio,cwd=outdir,copts=compression_opts, train_name=train_name,val_name=val_name,test_name=test_name,verbose=True)
+        SplitH5(h5_file, split_ratio,cwd=outdir,copts=compression_opts, train_name=train_name,val_name=val_name,test_name=test_name,verbose=True,seed=configurator.GetSplitSeed())
 
     # Optionally delete the full HDF5 file.
     delete_h5 = False # TODO: Make this configurable

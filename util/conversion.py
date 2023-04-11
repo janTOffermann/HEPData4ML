@@ -1,28 +1,28 @@
-import sys, glob, uuid
+import sys, glob, uuid, pathlib
 import numpy as np
 import h5py as h5
 import ROOT as rt
+import uproot as ur
+import pyhepmc as hep
 import subprocess as sub
-from util.config import GetNPars, GetJetConfig, GetInvisiblesFlag, GetSignalFlag, GetTruthSelection, GetSplitSeed, GetRecordIndices, GetPostProcessing
-from util.calcs import DeltaR2, EPxPyPzToPtEtaPhiM, EPzToRap, PtEtaPhiMToPxPyPzE, PtEtaPhiMToEPxPyPz, AdjustPhi, EPxPyPzToM
-from util.fastjet import BuildFastjet
+from util.calcs import DeltaR2, EPxPyPzToPtEtaPhiM, EPzToRap, PtEtaPhiMToEPxPyPz, AdjustPhi
 from util.qol_utils.qol_util import printProgressBarColor, RN
 from util.qol_utils.pdg import pdg_plotcodes, pdg_names, FillPdgHist
-from util.conv_utils.utils import ExtractHepMCParticles, InitFastJet, PrepDataBuffer, ExtractHepMCEvents,PrepDelphesArrays, PrepH5File, PrepIndexRanges
 from util.particle_selection.algos import IsNeutrino
-from util.post_processing.tracing import Process as DelphesTracingProcess
+from util.fastjet import FastJetSetup
 
-# --- FASTJET IMPORT ---
-# TODO: Can this be done more nicely?
-fastjet_dir = BuildFastjet(j=8)
-fastjet_dir = glob.glob('{}/**/site-packages'.format(fastjet_dir),recursive=True)[0]
-if(fastjet_dir not in sys.path): sys.path.append(fastjet_dir)
-import fastjet as fj
-# ----------------------
+# # --- FASTJET IMPORT ---
+# # TODO: Can this be done more nicely?
+# fastjet_dir = BuildFastjet(j=8)
+# fastjet_dir = glob.glob('{}/**/site-packages'.format(fastjet_dir),recursive=True)[0]
+# if(fastjet_dir not in sys.path): sys.path.append(fastjet_dir)
+# import fastjet as fj
+# # ----------------------
 
 # Convert HepMC / Delphes-ROOT files into our final output -- possibly performing jet clustering along the way.
 class Processor:
-    def __init__(self, use_delphes=False):
+    def __init__(self, configurator, use_delphes=False):
+        self.configurator = configurator
         self.delphes = use_delphes
 
         self.SetProgressBarPrefix('\tClustering jets & preparing data:')
@@ -30,7 +30,12 @@ class Processor:
         self.bl = 50
         self.verbose = False
 
-        self.jet_config, self.jetdef = InitFastJet()
+        self.SetupFastJet()
+        sys.path.append(self.fastjet_dir)
+        import fastjet as fj # This is where fastjet is really imported & cached by Python, but there are other import statements peppered throughout since this has limited scope.
+        #TODO: Is there a nicer way to handle this import, which requires a filepath passed to this class's constructor?
+
+        self.jet_config, self.jetdef = self.InitFastJet()
 
         self.outdir = ''
 
@@ -73,7 +78,7 @@ class Processor:
         self.record_final_state_indices = flag
 
     def SetPostProcessing(self,post_proc=None):
-        if(post_proc is None): post_proc = GetPostProcessing()
+        if(post_proc is None): post_proc = self.configurator.GetPostProcessing()
         self.post_processing = post_proc
 
         # Determine whether or not to generate files containing indices
@@ -215,7 +220,7 @@ class Processor:
             else: h5_file =  h5_file.replace('*','').replace('.root','.h5')
         else:
             h5_file = '{}/{}'.format(self.outdir,h5_file)
-        npars = GetNPars()
+        npars = self.configurator.GetNPars()
         n_truth = npars['n_truth']
 
         # Note: It's important that the Delphes files and truth HepMC files line up!
@@ -228,25 +233,25 @@ class Processor:
             truth_files = ['{}/{}'.format(self.outdir,x) for x in truth_files]
 
         if(self.delphes):
-            delphes_arr,var_map = PrepDelphesArrays(final_state_files)
+            delphes_arr,var_map = self.PrepDelphesArrays(final_state_files)
             nentries = len(delphes_arr)
         else:
             ## Extract final-state truth particle info from the HepMC files.
-            final_state_events, nentries = ExtractHepMCEvents(final_state_files,get_nevents=True)
+            final_state_events, nentries = self.ExtractHepMCEvents(final_state_files,get_nevents=True)
 
         # Also extract truth particle info from the HepMC files.
         # Note that it's possible that there are no truth HepMC files, if we didn't specify any
         # truth_selection in our configuration (e.g. if we were making a background sample).
-        truth_events = ExtractHepMCEvents(truth_files,silent=True)
+        truth_events = self.ExtractHepMCEvents(truth_files,silent=True)
 
         nentries_per_chunk = int(nentries_per_chunk)
-        self.data = PrepDataBuffer(nentries_per_chunk,self.separate_truth_particles,self.n_separate_truth_particles,self.record_final_state_indices,self.record_full_final_state)
+        self.data = self.PrepDataBuffer(nentries_per_chunk,self.separate_truth_particles,self.n_separate_truth_particles,self.record_final_state_indices,self.record_full_final_state)
 
         # Prepare the HDF5 file.
-        dsets = PrepH5File(h5_file,nentries,self.data)
+        dsets = self.PrepH5File(h5_file,nentries,self.data)
 
         # Some indexing preparation for writing in chunks.
-        start_idxs,stop_idxs,ranges = PrepIndexRanges(nentries,nentries_per_chunk)
+        start_idxs,stop_idxs,ranges = self.PrepIndexRanges(nentries,nentries_per_chunk)
         nchunks = len(ranges)
 
         if(verbosity == 1): printProgressBarColor(0,nchunks, prefix=self.prefix_level1, suffix=self.suffix, length=self.bl)
@@ -268,10 +273,10 @@ class Processor:
             else:
                 ## Get final-state particles.
                 npar_fs = 1e4 # TODO: This is some hardcoded max number of final-state particles. Should be plenty.
-                final_state_particles = ExtractHepMCParticles(final_state_events[start_idxs[i]:stop_idxs[i]],npar_fs)
+                final_state_particles = self.ExtractHepMCParticles(final_state_events[start_idxs[i]:stop_idxs[i]],npar_fs)
 
             # Get the truth particles.
-            truth_particles = ExtractHepMCParticles(truth_events[start_idxs[i]:stop_idxs[i]],n_truth)
+            truth_particles = self.ExtractHepMCParticles(truth_events[start_idxs[i]:stop_idxs[i]],n_truth)
 
             prefix_nzero = int(np.ceil(np.log10(nchunks))) + 1
             prefix_level2 = '\tClustering jets & preparing data for chunk {}/{}:'.format(str(i+1).zfill(prefix_nzero),nchunks)
@@ -282,7 +287,7 @@ class Processor:
             for j in range(ranges[i]):
                 self.ResetDataContainers()
 
-                self.data['is_signal'][j] = GetSignalFlag()
+                self.data['is_signal'][j] = self.configurator.GetSignalFlag()
 
                 if(self.delphes): # Delphes gives us cylindrical vector output. Also useful since we want to set m=0.
                     self.final_state_vector_components['pt']   = np.concatenate([momenta[x]['pt'][j].to_numpy() for x in types])
@@ -294,7 +299,7 @@ class Processor:
                     final_state_length = len(final_state_particles[j])
 
                     # Optionally exclude invisibles (neutrinos). If using Delphes, this should be handled by Delphes internally.
-                    if(GetInvisiblesFlag()):
+                    if(self.configurator.GetInvisiblesFlag()):
                         visibles = np.arange(final_state_length)
                     else:
                         invisibles = np.array([IsNeutrino(hepmc_particle=final_state_particles[j][k]) for k in range(final_state_length)])
@@ -326,16 +331,24 @@ class Processor:
         return h5_file
 
     # --- Utility functions for the class ---
+    def SetupFastJet(self):
+        verbose = self.configurator.GetPrintFastjet()
+        self.fastjet_setup = FastJetSetup(self.configurator.GetFastjetDirectory(),full_setup=True,verbose=verbose)
+        self.configurator.SetPrintFastjet(False)
+        self.fastjet_dir = self.fastjet_setup.GetDirectory()
+        return
+
     def InitFastJet(self):
+        import fastjet as fj # hacky, but will work because SetupFastJet() was run in __init__()
         fj.ClusterSequence.print_banner() # Get the Fastjet banner out of the way.
-        jet_config = GetJetConfig()
+        jet_config = self.configurator.GetJetConfig()
         jetdef = fj.JetDefinition(fj.antikt_algorithm, jet_config['jet_radius'])
         return jet_config,jetdef
 
     def ClusterJets(self,vecs, jet_config):
-        cartesian = True
-        if(self.delphes): cartesian = False
+        import fastjet as fj # hacky, but will work because SetupFastJet() was run in __init__()
 
+        cartesian = not self.delphes
         if(cartesian): # vecs has format (E,px,py,pz) -- FastJet uses (px,py,pz,E) so we must modify it. Using np.roll.
             pj = [fj.PseudoJet(*x) for x in np.roll(vecs,-1,axis=-1)]
 
@@ -409,8 +422,8 @@ class Processor:
 
         vecs_copy = np.copy(vecs) # TODO: Is this necessary?
 
-        jet_config = GetJetConfig()
-        n_constituents = GetNPars()['jet_n_par']
+        jet_config = self.configurator.GetJetConfig()
+        n_constituents = self.configurator.GetNPars()['jet_n_par']
         jet_sel = jet_config['jet_selection']
 
         if(jet_sel is None):
@@ -463,8 +476,8 @@ class Processor:
         return
 
     def FillDataBuffer(self,j,vecs,jet,truth_particles,final_state_indices=None):
-        npars = GetNPars()
-        truth_selection = GetTruthSelection()
+        npars = self.configurator.GetNPars()
+        truth_selection = self.configurator.GetTruthSelection()
         n_truth = npars['n_truth']
         l = vecs.shape[0]
         self.data['Nobj'][j] = l
@@ -600,7 +613,6 @@ class Processor:
                 self.jet_diff_hists_2d['det'].Fill(jet_et,delta_et)
         return
 
-    # TODO: A little ugly, but based on certain strings this will run various algorithms.
     def PostProcess(self,final_state_files, h5_files=None, indices_files=None):
         nfiles = len(final_state_files)
         # if(truth_files is not None): assert(nfiles == len(truth_files)) # TODO: may have to rework some of this logic
@@ -618,27 +630,117 @@ class Processor:
                 if(h5_files is not None): h5_file = '{}/{}'.format(self.outdir,h5_files[i])
                 if(indices_files is not None): idx_file = '{}/{}'.format(self.outdir,indices_files[i])
                 post_proc(fs_file,h5_file,idx_file)
-
-        # if('DelphesTracing' in self.post_processing):
-        #     self.__DelphesTracing(final_state_files,truth_files,h5_files,indices_files)
         return
 
-    def __DelphesTracing(self,final_state_files,truth_files,h5_files,indices_files):
-        nfiles = len(final_state_files)
-        assert(nfiles == len(truth_files))
-        assert(nfiles == len(h5_files))
-        assert(nfiles == len(indices_files))
+    def ExtractHepMCEvents(self,files,get_nevents=False, silent=False):
+        events = []
+        nevents = 0
+        for file in files:
+            # Check that the file exists.
+            if(not pathlib.Path(file).exists()):
+                if(not silent):
+                    print('Warning: Tried to access file {} but it does not exist!'.format(file))
+                continue
 
-        for i in range(nfiles):
-            fs_file = '{}/{}'.format(self.outdir,final_state_files[i])
-            truth_file = '{}/{}'.format(self.outdir,truth_files[i])
-            h5_file = '{}/{}'.format(self.outdir,h5_files[i])
-            idx_file = '{}/{}'.format(self.outdir,indices_files[i])
-            # Sanity check: Make sure that the final-state file is actually a Delphes/ROOT file.
-            assert('.root' in fs_file)
-            print('\t\tRunning the "DelphesTracing" post-processing step on {}.'.format(h5_file))
+            with hep.io.ReaderAscii(file) as f:
+                for evt in f:
+                    events.append(evt)
+                    if(get_nevents): nevents += 1
+        if(get_nevents): return events, nevents
+        return events
 
-            DelphesTracingProcess(h5_file,fs_file,idx_file,truth_file,output_file=h5_file)
+    def ExtractHepMCParticles(self,events,n_par):
+        particles = [
+            ev.particles[:int(np.minimum(len(ev.particles),n_par))]
+            for ev in events
+        ]
+        return particles
+
+    def PrepDelphesArrays(self,delphes_files):
+        # types = ['EFlowTrack','EFlowNeutralHadron','EFlowPhoton']
+        types = ['Tower'] # TODO: Is there a better way to prepare Delphes jet constituents? We want PFlow/EFlow?
+        components = ['PT','Eta','Phi','ET'] # not all types have all components, this is OK
+        delphes_keys = ['{x}.{y}'.format(x=x,y=y) for x in types for y in components]
+        delphes_tree = 'Delphes'
+        delphes_trees = ['{}:{}'.format(x,delphes_tree) for x in delphes_files]
+        delphes_arr = ur.lazy(delphes_trees, full_paths=False, filter_branch=lambda b: b.name in delphes_keys)
+        delphes_keys = delphes_arr.fields # only keep branches that actually exist
+
+        # Some convenient "mapping" between branch names and variable names we'll use.
+        var_map = {key:{} for key in types}
+        for branch in delphes_keys:
+            key,var = branch.split('.')
+            if('Eta' in var): var_map[key]['eta'] = branch
+            elif('Phi' in var): var_map[key]['phi'] = branch
+            else: var_map[key]['pt'] = branch
+        return delphes_arr,var_map
+
+    def PrepDataBuffer(self,nentries_per_chunk,separate_truth_particles=False, n_separate=-1,final_state_indices=False, full_final_state=False):
+        nentries_per_chunk = int(nentries_per_chunk)
+        npars = self.configurator.GetNPars()
+        n_constituents = npars['jet_n_par']
+        n_truth = npars['n_truth']
+
+        # Create our Numpy buffers to hold data. This dictates the structure of the HDF5 file we're making,
+        # each key here corresponds to an HDF5 dataset. The shapes of the datasets will be what is shown here,
+        # except with nentries_per_chunk -> nentries.
+        data = {
+            'Nobj'        : np.zeros(nentries_per_chunk,dtype=np.dtype('i2')), # number of jet constituents
+            'Pmu'         : np.zeros((nentries_per_chunk,n_constituents,4),dtype=np.dtype('f8')), # 4-momenta of jet constituents (E,px,py,pz)
+            'truth_Nobj'  : np.zeros(nentries_per_chunk,dtype=np.dtype('i2')), # number of truth-level particles (this is somewhat redundant -- it will typically be constant)
+            'truth_Pdg'   : np.zeros((nentries_per_chunk,n_truth),dtype=np.dtype('i4')), # PDG codes to ID truth particles
+            'truth_Pmu'   : np.zeros((nentries_per_chunk,n_truth,4),dtype=np.dtype('f8')), # truth-level particle 4-momenta
+            'is_signal'   : np.zeros(nentries_per_chunk,dtype=np.dtype('i1')), # signal flag (0 = background, 1 = signal)
+            'jet_Pmu'     : np.zeros((nentries_per_chunk,4),dtype=np.dtype('f8')), # jet 4-momentum, in Cartesian coordinates (E, px, py, pz)
+            'jet_Pmu_cyl' : np.zeros((nentries_per_chunk,4),dtype=np.dtype('f8')) # jet 4-momentum, in cylindrical coordinates (pt,eta,phi,m)
+        }
+
+        # In addition to the above, we will also store the truth-level 4-momenta with each in its own HDF5 dataset.
+        # In practice, this might be a more convenient storage format for things like neural network training.
+        # Note, however, that the number of these keys will depend on n_truth (the number of truth particles saved per event).
+        # TODO: Would be nice to accomplish this with references if possible, see: https://docs.h5py.org/en/stable/refs.html#refs .
+        #       Not clear if that is actually feasible.
+        if(separate_truth_particles):
+            if(n_separate <= 0): n_separate = n_truth
+            for i in range(n_separate):
+                key = 'truth_Pmu_{}'.format(i)
+                data[key] = np.zeros((nentries_per_chunk,4),dtype=np.dtype('f8'))
+
+        # We can optionally record the index of each Pmu with respect to all the four-momenta that were passed to jet clustering.
+        # This may be useful if we are trying to somehow trace certain information through our data generation pipeline,
+        # e.g. if we're trying to keep track of whether daughter particles of a particular decay are in a given jet.
+        # We'll keep this optional since, if we're not doing something like that, this extra info may be useless or even confusing.
+        # This uses zero-indexing, so we'll fill things with -1 to avoid any confusion.
+        #TODO: The filling with the -1's is done when filling the buffer with data. Otherwise the -1's get changed to 0's, I can't remember how/why.
+        if(final_state_indices):
+            key = 'final_state_idx'
+            data[key] = np.zeros((nentries_per_chunk,n_constituents),dtype=np.dtype('i4'))
+
+        if(full_final_state): # This is really only for debugging purposes! We truncate to a fixed length.
+            key = 'Pmu_full_final_state'
+            n_max = 400
+            data[key] = np.zeros((nentries_per_chunk,n_max,4),dtype=np.dtype('f8'))
+
+        return data
+
+    def PrepH5File(self,filename,nentries,data_buffer):
+        dsets = {}
+        with h5.File(filename, 'w') as f:
+            for key, val in data_buffer.items():
+                shape = list(val.shape)
+                shape[0] = nentries
+                shape = tuple(shape)
+                dsets[key] = f.create_dataset(key, shape, val.dtype,compression='gzip')
+        return dsets
+
+    def PrepIndexRanges(self,nentries,nentries_per_chunk):
+        nchunks = int(np.ceil(nentries / nentries_per_chunk))
+        start_idxs = np.zeros(nchunks,dtype = np.dtype('i8'))
+        for i in range(1,start_idxs.shape[0]): start_idxs[i] = start_idxs[i-1] + nentries_per_chunk
+        stop_idxs = start_idxs + nentries_per_chunk
+        stop_idxs[-1] = nentries
+        ranges = stop_idxs - start_idxs
+        return start_idxs,stop_idxs,ranges
 
 # Generic function for concatenating HDF5 files.
 def ConcatenateH5(input_files,output_file,cwd=None,delete_inputs=False, compression='gzip', copts=9,ignore_keys=None,verbose=False):
@@ -739,7 +841,7 @@ def AddEventIndices(h5_file, cwd=None, copts=7):
     f.create_dataset('event_idx',data=event_indices, compression='gzip', compression_opts=copts)
 
 # Split an HDF5 file into training, testing and validation samples.
-def SplitH5(h5_file, split_ratio = (7,2,1), train_name=None, val_name=None, test_name=None, cwd=None, copts=9,verbose=False, seed=None):
+def SplitH5(h5_file, split_ratio = (7,2,1), train_name=None, val_name=None, test_name=None, cwd=None, copts=9,verbose=False, seed=0):
     if(cwd is not None): h5_file = '{}/{}'.format(cwd,h5_file)
     file_dir = '/'.join(h5_file.split('/')[:-1])
 
@@ -762,6 +864,7 @@ def SplitH5(h5_file, split_ratio = (7,2,1), train_name=None, val_name=None, test
         print('\tOutputs:')
         for (name,frac) in zip((train_name,val_name,test_name),split_ratio):
             print('\t\t {} \t (fraction of events = {:.2e})'.format(name,frac))
+        print('\tSplitting using seed: {}'.format(seed))
 
     f = h5.File(h5_file,'r')
     keys = list(f.keys())
@@ -778,10 +881,7 @@ def SplitH5(h5_file, split_ratio = (7,2,1), train_name=None, val_name=None, test
     diff = np.sum(n) - N
     n[-1] -= diff
 
-    if(seed is None): seed = GetSplitSeed()
     rng = np.random.default_rng(seed)
-    if(verbose):
-        print('\tSplitting using seed: {}'.format(seed))
     index_list = np.array(range(N),dtype=int)
     rng.shuffle(index_list,axis=0)
     indices = []

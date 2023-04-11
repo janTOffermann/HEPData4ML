@@ -1,18 +1,20 @@
-import sys, os, glob
+import os
 import numpy as np
 import ROOT as rt
 import h5py as h5
+import pyhepmc as hep
 import subprocess as sub
 
 from util.pythia.utils import PythiaWrapper
-from util.config import GetEventSelection, GetTruthSelection, GetFinalStateSelection, GetPythiaConfig, GetPythiaConfigFile, GetJetConfig, GetNPars, GetEventFilter
-from util.qol_utils.pdg import pdg_names, pdg_plotcodes
-from util.gen_utils.utils import CreateHepMCEvent, HepMCOutput, HistogramFinalStateKinematics, HistogramFinalStateCodes
-from util.conv_utils.utils import InitFastJet
+from util.qol_utils.pdg import pdg_names, pdg_plotcodes, FillPdgHist
+from util.calcs import PxPyPzEToPtEtaPhiM
+from util.particle_selection.algos import IsNeutrino
+from util.hepmc import CreateHepMCEvent, HepMCOutput
 import util.qol_utils.qol_util as qu
 
 class Generator:
-    def __init__(self, pt_min, pt_max, pythia_rng=None, pythia_config_file=None, verbose=False):
+    def __init__(self, pt_min, pt_max, configurator, pythia_rng=None, pythia_config_file=None, verbose=False):
+        self.configurator = configurator
         self.pt_min = pt_min
         self.pt_max = pt_max
 
@@ -21,13 +23,13 @@ class Generator:
         self.pythia_rng = pythia_rng
         self.ConfigPythia(config_file=pythia_config_file)
 
-        # Configure our particle selectors and event filters.
-        self.event_selection = GetEventSelection()
-        self.truth_selection = GetTruthSelection()
-        self.final_state_selection = GetFinalStateSelection()
-        self.event_filter = GetEventFilter()
-        self.jet_config = GetJetConfig()
-        self.n_truth = GetNPars()['n_truth']
+        # Particle selectors and event filters.
+        self.event_selection = None
+        self.truth_selection = None
+        self.final_state_selection = None
+        self.event_filter = None
+        self.jet_config = None
+        self.n_truth = None
 
         # Things for the progress bar.
         self.prefix = 'Generating events for pT bin [{},{}]:'.format(self.pt_min,self.pt_max)
@@ -64,10 +66,29 @@ class Generator:
         self.nevents_success = 0 # number of events successfully generated
         self.nevents_failed = 0 # number of events that failed (failure to pass basic cuts)
 
+    def SetEventSelection(self,selection):
+        self.event_selection = selection
+
+    def SetTruthSelection(self,selection):
+        self.truth_selection = selection
+
+    def SetFinalStateSelection(self,selection):
+        self.final_state_selection = selection
+
+    def SetEventFilter(self,filter):
+        self.event_filter = filter
+        self.event_filter.Initialize(self.configurator) # may be necessary for things like dynamic fastjet import
+
+    def SetJetConfig(self,config):
+        self.jet_config = config
+
+    def SetNTruth(self,n):
+        self.n_truth = n
+
     def SetPythiaConfigFile(self,file=None):
         self.pythia_config_file = file
         if(file is None):
-            self.pythia_config_file = GetPythiaConfigFile() # picked up from dictionary in config/config.py
+            self.pythia_config_file = self.configurator.GetPythiaConfigFile() # picked up from dictionary in config/config.py
 
     def SetDefaultFilenames(self,outdir=None):
         self.SetOutputDirectory(dir)
@@ -130,12 +151,12 @@ class Generator:
     def GetIndexOverlapFilename(self):
         return self.fs_truth_overlap_filename
 
-    def ConfigPythia(self,config_file=None):
+    def ConfigPythia(self, config_file=None):
         """
         Prepare and apply Pythia configuration. This turns our settings (from our config file)
         into a list of strings ready to be input to Pythia8.
         """
-        self.pythia_config = GetPythiaConfig(self.pt_min,self.pt_max)
+        self.pythia_config = self.configurator.GetPythiaConfig(self.pt_min,self.pt_max)
         self.SetPythiaConfigFile(file=config_file)
 
         # Optionally set the Pythia RNG seed to something other than what's in the config.
@@ -394,9 +415,9 @@ class Generator:
         try: sub.check_call(['rm',fs_truth_overlap_filename_full],stderr=sub.DEVNULL)
         except: pass
 
-        # Get the Fastjet banner out of the way
-        tmp = InitFastJet()
-        del tmp
+        # # Get the Fastjet banner out of the way # TODO: This should be done elsewhere.
+        # tmp = InitFastJet()
+        # del tmp
 
         if(self.progress_bar): qu.printProgressBarColor(0,nevents, prefix=self.prefix, suffix=self.suffix, length=self.bl)
 
@@ -469,3 +490,38 @@ class Generator:
     #         codes.append(entry[-2])
     #     FillPdgHist(self.hist_fs_pdgid,codes)
     #     return
+
+    # Some utility functions, which were previously in a separate sub-library.
+    # -- plotting functionality below --
+    def HistogramFinalStateCodes(self,arr,hist):
+        codes = []
+        for entry in arr:
+            codes.append(entry[-2])
+        FillPdgHist(hist,codes)
+        return
+
+    def HistogramFinalStateKinematics(self,arr,kinematic_hist_dict):
+        # We will make histograms of sum E, E_T and p_T. For each, we consider a sum over all particles,
+        # as well as separate sums over invisibles (i.e. neutrinos) and visibles.
+        full_sum = np.zeros(4)
+        inv_sum = np.zeros(4)
+        vis_sum = np.zeros(4)
+
+        for par in arr:
+            par_array = np.array([par[0],par[1],par[2],par[3]] )
+            full_sum += par_array
+            invisible = IsNeutrino(par,use_hepmc=False)
+            if(invisible): inv_sum += par_array
+            else: vis_sum += par_array
+
+        for vec,key in zip((full_sum,inv_sum,vis_sum),('all','invisible','visible')):
+            e = vec[0]
+            px = vec[1]
+            py = vec[2]
+            pz = vec[3]
+            vec_cyl = PxPyPzEToPtEtaPhiM([px],[py],[pz],[e])[0]
+            pt = vec_cyl[0]
+            et = e / np.cosh(vec_cyl[1])
+            kinematic_hist_dict[key]['e'].Fill(e)
+            kinematic_hist_dict[key]['et'].Fill(et)
+            kinematic_hist_dict[key]['pt'].Fill(pt)

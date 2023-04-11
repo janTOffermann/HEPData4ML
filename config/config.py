@@ -14,16 +14,19 @@ config = {
     'mpi' : False,
     'isr' : False,
     'fsr' : False,
-    'delphes' : True,
-    'delphes_card' : None, # path to the Delphes card to use. If None, will use the ATLAS Delphes card that ships with Delphes
     'rng' : 1, # Pythia RNG seed
+    'delphes' : True, # Whether or not to use Delphes
+    'delphes_card' : None, # path to the Delphes card to use. If None, will use the ATLAS Delphes card that ships with Delphes
+    'delphes_dir' : None, # directory containing the Delphes installation. If None, will be build in a local directory "delphes".
+    # 'delphes_dir' : "/cvmfs/sft.cern.ch/lcg/releases/delphes/3.5.1pre05-775ca/x86_64-centos7-gcc11-opt",
+    'fastjet_dir' : None,
     'jet_radius': 0.8,
     'jet_min_pt': 15., #GeV # 15
     'jet_max_eta': 2., # absolute value eta cut # 2.
     'jet_n_par': 200, # max number of jet constituents to save per jet
     'n_truth' : 3 + 2 + 120, # max number of truth particles to save per jet
-    'event_filter' : None,
-    # 'event_filter' : eventfilter.ContainedJetFilter(0.8,selections['t->Wb'],selections['t daughters'],None),
+    # 'event_filter' : None,
+    'event_filter' : eventfilter.ContainedJetFilter(0.8,selections['t->Wb'],selections['W daughters'],None),
     'truth_selection' : selections['t->Wb w/ qq and W daughters'],
     'final_state_selection': parsel.AlgoSelection(algos.SelectFinalState(),200),
     'event_selection' : eventsel.TruthDistanceSelection(distance=2.4, n_truth=3), # filters an event to remove some final-state particles, primarily for lowering HepMC file-size. Ideally does not affect the final output.
@@ -32,7 +35,8 @@ config = {
     # 'jet_selection':jetsel.GetNearestJetWithContainment(6,0.8,5,-1),
     'signal_flag' : 1, # What to provide as the "signal_flag" for these events. (relevant if combining datasets). Must be >= 0.
     'post_processing': [
-        tracing.Tracer(verbose=False)
+        None,
+        # tracing.Tracer(verbose=False)
     ],
     'record_final_state_indices' : True, # Whether or not to record jet constituents' indices w.r.t. the order they were passed to jet clustering (order of particles in HepMC file, or order of Delphes objects if using Delphes).
     'split_seed' : 1 # seed to be used for the RNG when splitting dataset into train/test/validation samples
