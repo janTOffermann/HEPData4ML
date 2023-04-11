@@ -1,4 +1,3 @@
-# This script will prepare a bunch of jobs for condor.
 import sys,os,glob,uuid
 import argparse as ap
 import subprocess as sub

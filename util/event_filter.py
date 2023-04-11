@@ -1,18 +1,18 @@
 # Some functions for filtering out events during generation -- if an event fails to pass some condition
 # on its selected truth and final-state particles (the inputs to jet clustering), the event is thrown out
 # and not written to the HepMC file -- is not counted towards the total number of events we have generated.
-import sys,glob
+import sys
 import numpy as np
 from util.calcs import DeltaR2
-from util.fastjet import BuildFastjet
+from util.fastjet import FastJetSetup
 
-# --- FASTJET IMPORT ---
-# TODO: Can this be done more nicely?
-fastjet_dir = BuildFastjet(j=8)
-fastjet_dir = glob.glob('{}/**/site-packages'.format(fastjet_dir),recursive=True)[0]
-if(fastjet_dir not in sys.path): sys.path.append(fastjet_dir)
-import fastjet as fj
-# ----------------------
+# # --- FASTJET IMPORT ---
+# # TODO: Can this be done more nicely?
+# fastjet_dir = BuildFastjet(j=8)
+# fastjet_dir = glob.glob('{}/**/site-packages'.format(fastjet_dir),recursive=True)[0]
+# if(fastjet_dir not in sys.path): sys.path.append(fastjet_dir)
+# import fastjet as fj
+# # ----------------------
 
 class MultiFilter:
     """
@@ -46,16 +46,27 @@ class ContainedJetFilter:
         self.SetDaughterPtThreshold(pt_threshold) # daughter particles with pT below this value (GeV) are allowed to not be contained
         self.pt_threshold_frac_mode = False
         self.SetDaughterPtThresholdFraction(pt_threshold_frac)
+        self.configurator = None
 
         if(self.pt_threshold != 0. and self.pt_threshold_frac_mode):
             print('\n\t: Warning: ContainedJetFilter has pt_min != 0 and pt_min_frac != 0. Using fractional pT mode.\n')
 
         self.SetMatchingRadius(matching_radius)
         self.SetDaughterSelector(daughter_selector)
-        self.jetdef = fj.JetDefinition(fj.antikt_algorithm, self.radius)
+        self.jetdef = None
         if(pt_min_jet) is None: pt_min_jet = 0.
         self.pt_min_jet = pt_min_jet
         self.eta_max_jet = eta_max_jet
+
+    def Initialize(self,configurator):
+        self.configurator = configurator
+        verbose = self.configurator.GetPrintFastjet()
+        self.fastjet_setup = FastJetSetup(self.configurator.GetFastjetDirectory(),full_setup=True,verbose=verbose)
+        self.configurator.SetPrintFastjet(False)
+        self.fastjet_dir = self.fastjet_setup.GetPythonDirectory()
+        sys.path.append(self.fastjet_dir)
+        import fastjet as fj # this import should work, will be others peppered throughout for scope reasons but Python caches imports!
+        self.jetdef = fj.JetDefinition(fj.antikt_algorithm, self.radius)
 
     def SetJetRadius(self,radius):
         self.radius = radius
@@ -77,6 +88,7 @@ class ContainedJetFilter:
         if(val is not None): self.pt_threshold_frac_mode = True
 
     def __call__(self,pythia_wrapper,final_state_indices):
+        import fastjet as fj
         # Get the truth particle from our truth selector.
         truth_indices = np.atleast_1d(np.array(self.truth_selector(pythia_wrapper),dtype=int))
         truth_selection_status = self.truth_selector.GetSelectionStatus()

@@ -5,15 +5,15 @@
 ####################
 
 executable              = condor_job.sh
-arguments               = "$(joboption_file) $OUTDIR $(Process) $DO_TRUTH_DAOD $TRUTH_DAOD_TYPE $NEVENTS"
+arguments               = "$(job_arguments) $OUTDIR $(Process)"
 initialdir              = job$(Process)
 should_transfer_files   = IF_NEEDED
 when_to_transfer_output = ON_EXIT
-transfer_input_files    = ../setup_generation.sh, ../setup_derivation.sh, ../../utils/condor/copy_output.py, ../../utils/condor/extract.py, ../payload.tar.bz2, $JOBOPTION, $MODELPATH_FILE
+transfer_input_files    = ../../util/copy_output.py, ../payload.tar.bz2, ../config.py
 log                     = job.log
 error                   = job.err
 output                  = job.out
 requirements            = HAS_CVMFS =?= TRUE
 RequestCpus             = 1
 $SHORT_QUEUE
-queue joboption_file from joboptions.txt
+queue job_arguments from job_arguments.txt
