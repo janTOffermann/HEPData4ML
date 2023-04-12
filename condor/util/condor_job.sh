@@ -18,14 +18,14 @@ mv payload/* ./
 rm payload.tar.bz2
 rm -r payload
 
-# Run the setup script.
+## Run the setup script.
 source setup/cvmfs/setup.sh
 
 # Move the config.py file into the config directory. It has been shipped as an input file separate of the payload.
 mv config.py config/config.py
 
-# Run the generation. TODO: Need to use the arguments, figure out how to handle argparse.
-python run.py -n $1 -p $2 -O output -s $3 -ns $4 -h5 $5 -nrg $6 -pb 1 --split $7 -cd 1 -pc $8 # will have to put in a bunch of user options.
+# Run the generation.
+python run.py -n $1 -p_s $2 -O output -s $3 -ns $4 -h5 $5 -rng $6 -pb 1 --split $7 -cd 1 -pc $8 # will have to put in a bunch of user options.
 
 # Compress the output and extract it.
 outname="output.tar.bz2"

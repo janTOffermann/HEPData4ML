@@ -29,7 +29,8 @@ def CompressHepMC(files, delete=True, cwd=None):
 def main(args):
     parser = ap.ArgumentParser()
     parser.add_argument('-n',          '--nevents',           type=int,          required=True,            help='Number of events per pt bin.')
-    parser.add_argument('-p',          '--ptbins',            type=int,          required=True, nargs='+', help='Transverse momentum bin edges.')
+    parser.add_argument('-p',          '--ptbins',            type=float,        default=None, nargs='+',  help='Transverse momentum bin edges, in GeV. (The \hat{p_T} variable for Pythia8 configuration.)')
+    parser.add_argument('-p_s',        '--ptbins_string',     type=none_or_str,  default=None,             help='Transverse momentum bin edges, in GeV, as comma-separated string. An alternative to the -p argument.')
     parser.add_argument('-o',          '--outfile',           type=str,          default='events.h5',      help='Output HDF5 file name.')
     parser.add_argument('-O',          '--outdir',            type=none_or_str,  default=None,             help='Output directory.')
     parser.add_argument('-g',          '--generation',        type=int,          default=True,             help='Whether or not to do event generation.')
@@ -57,6 +58,7 @@ def main(args):
 
     nevents_per_bin = args['nevents']
     pt_bin_edges = args['ptbins']
+    pt_bin_edges_string = args['ptbins_string']
     h5_file = args['outfile']
     outdir = args['outdir']
     do_generation =args['generation'] > 0 # TODO: Find nicer way to handle Boolean -- argparse is weird.
@@ -68,7 +70,6 @@ def main(args):
     compress_hepmc = args['compress']
     delete_delphes = args['clean_delphes']
     force = args['force']
-    nbins = len(pt_bin_edges) - 1
     pythia_rng = args['rng']
     nentries_per_chunk = args['nentries_per_chunk']
     progress_bar = args['progress_bar']
@@ -76,6 +77,19 @@ def main(args):
     separate_h5 = args['separate_h5'] > 0
     pythia_config = args['pythia_config']
     debug = args['debug'] > 0
+
+    if(pt_bin_edges is not None and pt_bin_edges_string is not None):
+        print('Warning: Both "ptbins" and "ptbins_string" arguments were given. Using the "ptbins" argument.')
+
+    if(pt_bin_edges is None and pt_bin_edges_string is None):
+        print('Error: pT bin edges not specified.')
+        assert(False)
+
+    if(pt_bin_edges is None and pt_bin_edges_string is not None):
+        pt_bin_edges = pt_bin_edges_string.split(',')
+        pt_bin_edges = [float(x) for x in pt_bin_edges]
+
+    nbins = len(pt_bin_edges) - 1
 
     split_files = args['split'] > 0
     train_frac = args['train_fraction']
