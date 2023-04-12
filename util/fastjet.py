@@ -15,17 +15,23 @@ class FastJetSetup:
         self.fastjet_dir = os.path.normpath(self.fastjet_dir)
         os.makedirs(self.fastjet_dir,exist_ok=True)
 
-        self.python_dir = os.path.normpath(glob.glob('{}/**/site-packages'.format(self.fastjet_dir),recursive=True)[0])
+        self.SetPythonDirectory() # attempts to get the Python library subdir, only sets it if found
 
         self.logfile = '{}/log.stdout'.format(self.fastjet_dir)
         self.errfile = '{}/log.stderr'.format(self.fastjet_dir)
 
-        self.sourcedir = '{}/fastjet-{}'.format(self.fastjet_dir,self.fastjet_version)
+        self.source_dir = '{}/fastjet-{}'.format(self.fastjet_dir,self.fastjet_version)
         self.install_dir = '{}/fastjet-install'.format(self.fastjet_dir)
         return
 
     def GetDirectory(self):
         return self.fastjet_dir
+
+    def SetPythonDirectory(self):
+        try:
+            self.python_dir = os.path.normpath(glob.glob('{}/**/site-packages'.format(self.fastjet_dir),recursive=True)[0])
+        except:
+            self.python_dir = None
 
     def GetPythonDirectory(self):
         return self.python_dir
@@ -95,6 +101,7 @@ class FastJetSetup:
             if(verbose): print('Installing fastjet.')
             sub.check_call(['make', 'install'],
                         shell=False, cwd=self.source_dir, stdout=f, stderr=g)
+        self.SetPythonDirectory()
         return
 
 class ParticleInfo(object):

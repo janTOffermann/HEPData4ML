@@ -5,7 +5,7 @@ import argparse as ap
 def main(args):
     parser = ap.ArgumentParser()
 
-    parser.add_argument('-i','--input',type=str,default='param_card.dat',help='Input parameter card.')
+    parser.add_argument('-i','--input',type=str,default='param_card.dat',help='Input file.')
     parser.add_argument('-o','--outdir',type=str,required=True,help='Output directory.')
     parser.add_argument('-n','--nProc',type=str,default='0',help='Process number (used for output naming).')
     parser.add_argument('-e','--extension',type=str,default=None)
@@ -23,7 +23,7 @@ def main(args):
     if(not is_directory):
         if(input_extension is None):
             input_extension = input_nopath.split('.')[-1]
-        output = '.'.join(input_nopath.replace('.' + input_extension,'')) + '_{}.{}'.format(nproc,input_extension)
+        output = input_nopath.replace('.' + input_extension,'') + '_{}.{}'.format(nproc,input_extension)
 
     else:
         output = input_nopath + '_{}'.format(nproc)

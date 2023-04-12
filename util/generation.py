@@ -77,7 +77,8 @@ class Generator:
 
     def SetEventFilter(self,filter):
         self.event_filter = filter
-        self.event_filter.Initialize(self.configurator) # may be necessary for things like dynamic fastjet import
+        if(self.event_filter is not None):
+            self.event_filter.Initialize(self.configurator) # may be necessary for things like dynamic fastjet import
 
     def SetJetConfig(self,config):
         self.jet_config = config

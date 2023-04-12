@@ -11,7 +11,7 @@ source ${ATLAS_LOCAL_ROOT_BASE}/user/atlasLocalSetup.sh -q
 # Now we set up a "view" of an LCG release. The LCG_103 contains Pythia8 bindings, earlier ones may not.
 lsetup "views LCG_103 x86_64-centos7-gcc11-opt" # may technically need to adjust the last part based on the arch of where you run this
 
-echo "-----------------------"
-echo "Here is a potentially useful option for the configuration file in config/config.py:"
-echo "'delphes_dir' : '/cvmfs/sft.cern.ch/lcg/releases/delphes/3.5.1pre05-775ca/x86_64-centos7-gcc11-opt'"
-echo "For fastjet, you will need Python bindings and thus a local build -- preferably done interactively, so that you can later point condor jobs to that and they don't all have to build fastjet again."
+#echo "-----------------------"
+#echo "Here is a potentially useful option for the configuration file in config/config.py:"
+#echo "'delphes_dir' : '/cvmfs/sft.cern.ch/lcg/releases/delphes/3.5.1pre05-775ca/x86_64-centos7-gcc11-opt'"
+#echo "For fastjet, you will need Python bindings and thus a local build -- preferably done interactively, so that you can later point condor jobs to that and they don't all have to build fastjet again."
