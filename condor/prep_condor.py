@@ -7,7 +7,7 @@ def main(args):
     parser.add_argument('-n', '--nevents', type=int, help='Number of events per pt bin.', required=True)
     parser.add_argument('-p', '--ptbins', type=int, nargs='+', help='Transverse momentum bin edges.', required=True)
     parser.add_argument('-O', '--outdir', type=str, help='Output directory for the jobs', default=None)
-    parser.add_argument('-j', '--jobdir', type=str, help='Job directory -- where the condor jobs will go.', default='job0')
+    parser.add_argument('-R', '--rundir', type=str, help='Run directory -- where the condor jobs will go.', default='run0')
     parser.add_argument('-s', '--sep_truth',type=int, help='Whether or not to store truth-level particles in separate arrays.', default=1)
     parser.add_argument('-ns', '--n_sep_truth',type=int, help='How many truth particles to save in separate arrays -- will save the first n as given by the truth selection.', default=-1)
     parser.add_argument('-h5', '--hdf5',type=int,help='Whether or not to produce final HDF5 files. If false, stops after HepMC or Delphes/ROOT file production.',default=1)
@@ -20,10 +20,10 @@ def main(args):
 
     nevents = args['nevents']
     ptbins = args['ptbins']
-    jobdir = args['jobdir']
+    rundir = args['rundir']
     outdir = args['outdir']
     if(outdir is None):
-        outdir = jobdir + '/output'
+        outdir = rundir + '/output'
     sep_truth = args['sep_truth']
     n_sep_truth = args['n_sep_truth']
     do_h5 = args['hdf5']
@@ -33,15 +33,15 @@ def main(args):
     njobs = args['Njobs']
     short_queue = args['shortqueue'] > 0
 
-    jobdir = str(pathlib.Path(jobdir).absolute())
+    rundir = str(pathlib.Path(rundir).absolute())
     outdir = str(pathlib.Path(outdir).absolute())
 
     # Prepare the job and output directories.
-    os.makedirs(jobdir,exist_ok=True)
+    os.makedirs(rundir,exist_ok=True)
     os.makedirs(outdir,exist_ok=True)
 
     # Prepare a plaintext file with all the different sets of arguments, for the various jobs.
-    jobs_filename = '{}/job_arguments.txt'.format(jobdir)
+    jobs_filename = '{}/job_arguments.txt'.format(rundir)
     ptbins_str = ','.join([str(x) for x in ptbins])
     template = '{} {} {} {} {} {} {} {}'.format(nevents,ptbins_str,sep_truth, n_sep_truth, do_h5, '{}',split,'{}') # double-quotes for silly condor argument syntax
     with open(jobs_filename,'w') as f:
@@ -60,7 +60,7 @@ def main(args):
         '{}/../run.py'.format(this_dir),
     ]
 
-    tmp_dir = 'dir_'.format(jobdir) + str(uuid.uuid4())
+    tmp_dir = 'dir_'.format(rundir) + str(uuid.uuid4())
     os.makedirs(tmp_dir + '/payload',exist_ok=True)
 
     for file in include_files:
@@ -84,13 +84,13 @@ def main(args):
     #     sub.check_call(comm)
 
     sub.check_call(['tar','-cjf','payload.tar.bz2','payload'],cwd=tmp_dir)
-    sub.check_call(['mv','{}/payload.tar.bz2'.format(tmp_dir),jobdir])
+    sub.check_call(['mv','{}/payload.tar.bz2'.format(tmp_dir),rundir])
     sub.check_call(['rm','-r',tmp_dir])
 
     # We also ship the config.py file separately so that it can be easily modified outside the payload.
     # There is one inside the payload too but it will be overwritten by this one within the job.
     config_file = '{}/../config/config.py'.format(this_dir)
-    comm = ['cp',config_file,jobdir]
+    comm = ['cp',config_file,rundir]
     sub.check_call(comm)
 
     # Now we need to make a condor submission file for this set of jobs. It will be based off a template file.
@@ -105,14 +105,14 @@ def main(args):
         condor_submit_lines[i] = condor_submit_lines[i].replace("$OUTDIR",outdir)
         condor_submit_lines[i] = condor_submit_lines[i].replace('$SHORT_QUEUE',short_queue_line + '\n')
 
-    condor_submit_file = '{}/condor.sub'.format(jobdir)
+    condor_submit_file = '{}/condor.sub'.format(rundir)
     with open(condor_submit_file,'w') as f:
         for line in condor_submit_lines:
             f.write(line)
 
     # Copy the condor executable to the job folder.
     executable = '{}/util/condor_job.sh'.format(this_dir)
-    comm = ['cp',executable,jobdir]
+    comm = ['cp',executable,rundir]
     sub.check_call(comm)
 
 if(__name__=='__main__'):

@@ -288,7 +288,12 @@ class Generator:
             # the selected truth-level particles.
             # ==========================================
             if(self.event_selection is not None):
-                final_state_indices = self.event_selection(self.pythia, final_state_indices, truth_indices)
+                try: # TODO Running into some very rare/stochastic (?) error with certain event selections (using VectorCalcs.DeltaR2Vectorized()).
+                    final_state_indices = self.event_selection(self.pythia, final_state_indices, truth_indices)
+                except: # easiest thing to do for this kind of exception is to just throw out the event and try again
+                    n_fail += 1
+                    continue
+
 
             # ==========================================
             # Now we apply an (optional) "event filter". This applies some condition to the set
