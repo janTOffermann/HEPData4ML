@@ -106,3 +106,15 @@ def HepMCOutput(hepev_list,buffername,filename,header=False,footer=False):
     Write2HepMCBuffer(buffername,hepev_list) # write the given event(s) to a buffer f ile
     CopyHepMCBuffer2File(buffername,filename,header,footer) # copy buffer file into the full file
     return
+
+def CompressHepMC(files, delete=True, cwd=None):
+    for file in files:
+        compress_file = file.replace('.hepmc','.tar.bz2')
+        if(cwd is not None): compress_file = '{}/{}'.format(cwd,compress_file)
+        cwd = '/'.join(compress_file.split('/')[:-1])
+        comm = ['tar','-cjf',compress_file.split('/')[-1],file.split('/')[-1]]
+        # if(delete_hepmc): comm.append('--remove-files')
+        sub.check_call(comm,shell=False,cwd=cwd)
+        if(delete):
+            sub.check_call(['rm',file.split('/')[-1]],shell=False,cwd=cwd)
+    return

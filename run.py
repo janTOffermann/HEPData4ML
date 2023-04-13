@@ -1,10 +1,10 @@
-import sys,os,pathlib,time,datetime
+import sys,os,pathlib,time,datetime,re
 import argparse as ap
 import subprocess as sub
 from util.generation import Generator
-from util.delphes import BuildDelphes, HepMC3ToDelphes
 from util.delphes import DelphesWrapper
 from util.conversion import Processor, RemoveFailedFromHDF5, SplitH5, AddEventIndices, ConcatenateH5, MergeStatsInfo
+from util.hepmc import CompressHepMC
 from util.config import Configurator
 import config.config as config
 
@@ -13,18 +13,11 @@ def none_or_str(value): # see https://stackoverflow.com/a/48295546
         return None
     return value
 
-# TODO: We might want to move this to somewhere in the util library, to clean up this file.
-def CompressHepMC(files, delete=True, cwd=None):
-    for file in files:
-        compress_file = file.replace('.hepmc','.tar.bz2')
-        if(cwd is not None): compress_file = '{}/{}'.format(cwd,compress_file)
-        cwd = '/'.join(compress_file.split('/')[:-1])
-        comm = ['tar','-cjf',compress_file.split('/')[-1],file.split('/')[-1]]
-        # if(delete_hepmc): comm.append('--remove-files')
-        sub.check_call(comm,shell=False,cwd=cwd)
-        if(delete):
-            sub.check_call(['rm',file.split('/')[-1]],shell=False,cwd=cwd)
-    return
+# Convenience function for file naming
+def float_to_str(value):
+    value_str = str(value)
+    value_str = value_str.replace('.',',')
+    return re.sub(',0$','',value_str)
 
 def main(args):
     parser = ap.ArgumentParser()
@@ -160,7 +153,7 @@ def main(args):
         # TODO: Make the no-generation option more flexible, to pick up any existing HepMC3 files in the cwd.
         pt_min = pt_bin_edges[i]
         pt_max = pt_bin_edges[i+1]
-        hep_file = 'events_{}-{}.hepmc'.format(pt_min,pt_max)
+        hep_file = 'events_{}-{}.hepmc'.format(float_to_str(pt_min),float_to_str(pt_max))
 
         generator = Generator(pt_min,pt_max, configurator, pythia_rng,pythia_config_file=pythia_config)
         generator.SetEventSelection(configurator.GetEventSelection())
@@ -266,7 +259,7 @@ def main(args):
             pt_max = pt_bin_edges[i+1]
             jet_file = [jet_files[i]]
             truth_file = [truth_files[i]]
-            h5_file_individual = h5_file.replace('.h5','_{}-{}.h5'.format(pt_min,pt_max))
+            h5_file_individual = h5_file.replace('.h5','_{}-{}.h5'.format(float_to_str(pt_min),float_to_str(pt_max)))
             processor.SetProgressBarPrefix('\tClustering jets & preparing data for pT bin [{},{}]:'.format(pt_min,pt_max))
 
             processor.Process(jet_file,truth_file,h5_file_individual,verbosity=h5_conversion_verbosity,nentries_per_chunk=nentries_per_chunk)

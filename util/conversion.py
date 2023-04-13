@@ -336,7 +336,6 @@ class Processor:
         self.fastjet_setup = FastJetSetup(self.configurator.GetFastjetDirectory(),full_setup=True,verbose=verbose)
         self.configurator.SetPrintFastjet(False)
         self.fastjet_dir = self.fastjet_setup.GetPythonDirectory()
-        print("self.fastjet_dir = ",self.fastjet_dir)
         return
 
     def InitFastJet(self):
