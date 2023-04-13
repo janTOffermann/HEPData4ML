@@ -24,22 +24,24 @@ source setup/cvmfs/setup.sh
 # Move the config.py file into the config directory. It has been shipped as an input file separate of the payload.
 mv config.py config/config.py
 
+outdir_local="output_${10}"
+
 # Run the generation.
-python run.py -n $1 -p_s $2 -O output -s $3 -ns $4 -h5 $5 -rng $6 -pb 1 --split $7 -cd 1 -pc $8 # will have to put in a bunch of user options.
+python run.py -n $1 -p_s $2 -O ${outdir_local} -s $3 -ns $4 -h5 $5 -rng $6 -pb 1 --split $7 -cd 1 -pc $8 # will have to put in a bunch of user options.
 
 # Compress the output and extract it.
 outname="output.tar.bz2"
-tar -cjf ${outname} output
-rm -r output
+tar -cjf ${outname} ${outdir_local}
+rm -r ${outdir_local}
 
 # Ship the output.
 python copy_output.py -i ${outname} -e "tar.bz2" -o ${9} -n ${10}
 
 # Cleanup. Not strictly necessary.
-rm $outname
+rm ${outname}
 rm *.py
 rm -r util
 rm -r config
 rm -r setup
-rm -r fastjet # may throw an error, which is OK
-rm -r delphes # may throw an error, which is OK
+if [ -d fastjet ]; then rm -r fastjet; fi
+if [ -d delphes ]; then rm -r delphes; fi

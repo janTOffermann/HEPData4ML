@@ -18,10 +18,9 @@ class TruthDistanceSelection:
         self.n = n
 
     def __call__(self,pythia_wrapper,final_state_indices,truth_indices):
-        truth_indices_local = np.copy(truth_indices) # TODO: Should not be necessary, not modifying truth_indices
-        if(self.n is not None): truth_indices_local = truth_indices_local[:self.n]
-        fs_particles    = np.array([[pythia_wrapper.GetTheta(x), pythia_wrapper.GetPhi(x)] for x in final_state_indices])
-        truth_particles = np.array([[pythia_wrapper.GetTheta(x), pythia_wrapper.GetPhi(x)] for x in truth_indices_local])
+        if(self.n is None): self.n = len(truth_indices)
+        fs_particles    = np.array([[pythia_wrapper.GetTheta(x), pythia_wrapper.GetPhi(x)] for x in final_state_indices   ],dtype=np.dtype('f8'))
+        truth_particles = np.array([[pythia_wrapper.GetTheta(x), pythia_wrapper.GetPhi(x)] for x in truth_indices[:self.n]],dtype=np.dtype('f8'))
 
         distances = DeltaR2Vectorized(fs_particles, truth_particles)
         min_distances = np.min(distances,axis=1)

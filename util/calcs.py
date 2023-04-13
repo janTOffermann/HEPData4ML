@@ -17,10 +17,10 @@ def DeltaR2(eta1,phi1,eta2,phi2):
 # of shape n x m. Component [i][j] is the distance between
 # vec1[i] and vec2[j].
 def DeltaR2Vectorized(vec1, vec2):
+    # TODO: Running into some runtime errors with DeltaR2Vectorized, preceded by "cling JIT session error: Cannot allocate memory". Hard to reproduce outside the routine.
     n,m = vec1.shape[0], vec2.shape[0]
-    distances = np.array(rt.VectorCalcs.DeltaR2Vectorized(vec1[:,0].flatten(),vec1[:,1].flatten(),vec2[:,0].flatten(),vec2[:,1].flatten()))
-    distances = np.reshape(distances,(n,m))
-    return distances
+    distances = np.array(rt.VectorCalcs.DeltaR2Vectorized(vec1[:,0].flatten(),vec1[:,1].flatten(),vec2[:,0].flatten(),vec2[:,1].flatten())) # testing shows this is faster than using DeltaR2 w/ list comprehension
+    return np.reshape(distances,(n,m))
 
 # Make sure that phi is in [-pi, pi].
 # TODO: This is kind of ugly, is there a method that works for both arrays and scalars?
