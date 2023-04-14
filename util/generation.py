@@ -60,11 +60,14 @@ class Generator:
 
         self.hepev_buffer_fs = [] # list containing HepMC events, to be written to a file
         self.hepev_buffer_truth = []
-        self.SetBufferSize(100)
+        self.SetBufferSize(100) # TODO: Should this be configurable? Could be too much detail.
         self.buffername = None
         self.buffername_truth = None
         self.nevents_success = 0 # number of events successfully generated
         self.nevents_failed = 0 # number of events that failed (failure to pass basic cuts)
+
+        self.header_status = False
+        self.footer_status = False
 
     def SetEventSelection(self,selection):
         self.event_selection = selection
@@ -229,6 +232,9 @@ class Generator:
     def SetBufferSize(self,size=100):
         self.buffer_size = size
 
+    def GetCurrentBufferSize(self):
+        return len(self.hepev_buffer_fs)
+
     def ClearEventBuffers(self):
         self.hepev_buffer_fs.clear()
         self.hepev_buffer_truth.clear()
@@ -238,6 +244,8 @@ class Generator:
         if(hepev_truth is not None): self.hepev_buffer_truth.append(hepev_truth)
 
     def WriteEventBuffersToFile(self,header=False,footer=False):
+        if(header): self.header_status = True
+        if(footer): self.footer_status = True
         HepMCOutput(self.hepev_buffer_fs,self.buffername,self.filename_full,header,footer)
         HepMCOutput(self.hepev_buffer_truth,self.buffername_truth,self.filename_truth_full,header,footer)
         self.ClearEventBuffers()
@@ -374,6 +382,12 @@ class Generator:
             # Fill the memory buffer with this event.
             self.FillEventBuffers(final_state_hepev, truth_hepev)
 
+            # If buffer is full (i.e. has reached max size), write it to file & flush.
+            if(self.GetCurrentBufferSize() == self.buffer_size):
+                header = (self.loop_number == 0) and (not self.header_status)
+                footer = False
+                self.WriteEventBuffersToFile(header,footer)
+
             # Diagnostic plots.
             # TODO: Probably a lot of optimization to do for these, some new options thanks to PythiaWrapper.
             # if(self.diagnostic_plots):
@@ -391,9 +405,10 @@ class Generator:
 
             i_real += 1 # If success, increase i_real -- this is a counter for the number of successful events
 
-        # Write the event buffer to the event buffer files. Then, copy info from the buffer files to the full HepMC files.
-        header = self.loop_number == 0 # for writing HepMC header
-        footer = i_real >= self.nevents
+        # Buffer gets written to the file in the loop above whenever it's full, but after exiting the loop
+        # we should flush it once more -- even if empty, since this is still where we may write the footer.
+        header = (self.loop_number == 0) and (not self.header_status) # for writing HepMC header
+        footer = n_fail == 0
         self.WriteEventBuffersToFile(header,footer)
 
         # Delete the buffer files.
@@ -452,7 +467,7 @@ class Generator:
         # Create a stats file, and put in information on event weights & cross-sections.
         f = h5.File('{}/{}'.format(self.outdir,self.stats_filename),'w')
         compression = 'gzip'
-        copts = 7
+        copts = 9
         f.create_dataset('mc_weight',data=self.weights,compression=compression,compression_opts=copts)
         f.create_dataset('process_code',data=self.process_codes,compression=compression,compression_opts=copts)
         f.create_dataset('cross_section',data=self.xsecs[:,0],compression=compression,compression_opts=copts)
