@@ -99,7 +99,7 @@ def main(args):
         condor_submit_lines = f.readlines()
 
     short_queue_line = ' +queue="short"'
-    if(not short_queue): short_queue_line = ''
+    if(not short_queue): short_queue_line = '#' + short_queue_line
 
     for i,line in enumerate(condor_submit_lines):
         condor_submit_lines[i] = condor_submit_lines[i].replace("$OUTDIR",outdir)
