@@ -1,11 +1,12 @@
 import numpy as np
-from util.calcs import DeltaR2
+from util.calcs import Calculator
 
 class GetNearestJet:
     def __init__(self,truth_code=6, max_dr=0.8, use_hepmc=True):
         self.SetTruthCode(truth_code)
         self.SetMaxDeltaR(max_dr)
         self.SetUseHepMC(use_hepmc)
+        self.calculator = Calculator()
 
     def SetTruthCode(self,code):
         self.truth_code = code
@@ -38,7 +39,7 @@ class GetNearestJet:
             truth_phi = truth['phi']
 
         # Now find distance between the truth particle and each of the jets, and pick the closest jet.
-        dr2 = np.array([DeltaR2(truth_eta,truth_phi,x.eta(),x.phi()) for x in jets]).flatten()
+        dr2 = np.array([self.calculator.DeltaR2(truth_eta,truth_phi,x.eta(),x.phi()) for x in jets]).flatten()
 
         # Optional check on the distance of the nearest jet.
         if(self.max_dr > 0.):
@@ -71,6 +72,8 @@ class GetNearestJetWithContainment:
         self.use_hepmc = use_hepmc
         if(containment_radius is None):
             self.containment_radius = max_dr
+        self.calculator = Calculator()
+
 
     def __call__(self,**kwargs):
         truth_particles = kwargs['truth']
@@ -92,7 +95,7 @@ class GetNearestJetWithContainment:
             truth_eta = [t['eta'] for t in truth_particles]
             truth_phi = [t['phi'] for t in truth_particles]
 
-        dr2 = np.array([DeltaR2(jet.eta(),jet.phi(),truth_eta[i],truth_phi[i]) for i in range(len(truth_particles))]).flatten()
+        dr2 = np.array([self.calculator.DeltaR2(jet.eta(),jet.phi(),truth_eta[i],truth_phi[i]) for i in range(len(truth_particles))]).flatten()
 
         if(np.max(dr2) > self.containment_radius * self.containment_radius): return -1
         return jet_idx

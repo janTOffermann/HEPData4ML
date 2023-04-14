@@ -1,5 +1,5 @@
 import numpy as np
-from util.calcs import DeltaR2Vectorized
+from util.calcs import Calculator
 
 # Keep final-state particles within a certain distance of the selected truth particles.
 # We should be generous with our selection to avoid throwing out things that
@@ -9,6 +9,7 @@ class TruthDistanceSelection:
     def __init__(self,distance=2.4, n_truth=None):
         self.SetDistance(distance)
         self.SetNTruth(n_truth)
+        self.calculator = Calculator()
 
     def SetDistance(self,distance):
         self.distance = distance
@@ -22,7 +23,7 @@ class TruthDistanceSelection:
         fs_particles    = np.array([[pythia_wrapper.GetTheta(x), pythia_wrapper.GetPhi(x)] for x in final_state_indices   ],dtype=np.dtype('f8'))
         truth_particles = np.array([[pythia_wrapper.GetTheta(x), pythia_wrapper.GetPhi(x)] for x in truth_indices[:self.n]],dtype=np.dtype('f8'))
 
-        distances = DeltaR2Vectorized(fs_particles, truth_particles)
+        distances = self.calculator.DeltaR2Vectorized(fs_particles, truth_particles)
         min_distances = np.min(distances,axis=1)
         selected = (np.abs(min_distances) < np.abs(self.d2))
         return final_state_indices[selected]

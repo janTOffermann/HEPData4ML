@@ -7,7 +7,7 @@ import subprocess as sub
 
 from util.pythia.utils import PythiaWrapper
 from util.qol_utils.pdg import pdg_names, pdg_plotcodes, FillPdgHist
-from util.calcs import PxPyPzEToPtEtaPhiM
+from util.calcs import Calculator
 from util.particle_selection.algos import IsNeutrino
 from util.hepmc import CreateHepMCEvent, HepMCOutput
 import util.qol_utils.qol_util as qu
@@ -68,6 +68,8 @@ class Generator:
 
         self.header_status = False
         self.footer_status = False
+
+        self.calculator = Calculator()
 
     def SetEventSelection(self,selection):
         self.event_selection = selection
@@ -540,7 +542,7 @@ class Generator:
             px = vec[1]
             py = vec[2]
             pz = vec[3]
-            vec_cyl = PxPyPzEToPtEtaPhiM([px],[py],[pz],[e])[0]
+            vec_cyl = self.calculator.PxPyPzEToPtEtaPhiM([px],[py],[pz],[e])[0]
             pt = vec_cyl[0]
             et = e / np.cosh(vec_cyl[1])
             kinematic_hist_dict[key]['e'].Fill(e)
