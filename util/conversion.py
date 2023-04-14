@@ -5,7 +5,7 @@ import ROOT as rt
 import uproot as ur
 import pyhepmc as hep
 import subprocess as sub
-from util.calcs import DeltaR2, EPxPyPzToPtEtaPhiM, EPzToRap, PtEtaPhiMToEPxPyPz, AdjustPhi
+from util.calcs import Calculator
 from util.qol_utils.qol_util import printProgressBarColor, RN
 from util.qol_utils.pdg import pdg_plotcodes, pdg_names, FillPdgHist
 from util.particle_selection.algos import IsNeutrino
@@ -54,6 +54,8 @@ class Processor:
         self.SetPostProcessing()
 
         self.SetRecordFullFinalState(False) # by default we don't want this, it may significantly increase filesize!
+
+        self.calculator = Calculator()
 
     def ResetDataContainers(self):
         self.final_state_vector_components = {
@@ -429,7 +431,7 @@ class Processor:
         if(jet_sel is None):
             # If we're using Delphes, vecs is in cylindrical and we need to convert it to Cartesian since we're not
             # calling the ClusterJets() routine (which internally handles the conversion via FastJet).
-            if(self.delphes): vecs = PtEtaPhiMToEPxPyPz(vecs[:,0], vecs[:,1],vecs[:,2],vecs[:,3]) #TODO: Is this conditional okay?
+            if(self.delphes): vecs = self.calculator.PtEtaPhiMToEPxPyPz(vecs[:,0], vecs[:,1],vecs[:,2],vecs[:,3]) #TODO: Is this conditional okay?
             self.FillDataBuffer(j,vecs,None,truth_particles)
         else:
             # Any necessary cylindrical->Cartesian conversion (i.e. Delphes case) is handled within ClusterJets().
@@ -508,7 +510,7 @@ class Processor:
             self.data['jet_Pmu_cyl'][j,:] = 0.
         else:
             self.data['jet_Pmu'][j,:]     = [jet.e(), jet.px(), jet.py(), jet.pz()]
-            self.data['jet_Pmu_cyl'][j,:] = [jet.pt(), jet.eta(), AdjustPhi(jet.phi()), jet.m()]
+            self.data['jet_Pmu_cyl'][j,:] = [jet.pt(), jet.eta(), self.calculator.AdjustPhi(jet.phi()), jet.m()]
 
             if(self.diagnostic_plots):
                 # Histogram the dR between the jet and each of the truth-level particles.
@@ -520,7 +522,7 @@ class Processor:
                         self.jet_truth_dr_hists[pid].GetXaxis().SetTitle('#Delta R')
                         self.jet_truth_dr_hists[pid].GetYaxis().SetTitle('Count')
                     h = self.jet_truth_dr_hists[pid]
-                    dr = np.sqrt(DeltaR2(truth_particles[j][i].momentum.eta(),truth_particles[j][i].momentum.phi(), self.data['jet_Pmu_cyl'][j,1],self.data['jet_Pmu_cyl'][j,2]))
+                    dr = np.sqrt(self.calculator.DeltaR2(truth_particles[j][i].momentum.eta(),truth_particles[j][i].momentum.phi(), self.data['jet_Pmu_cyl'][j,1],self.data['jet_Pmu_cyl'][j,2]))
                     h.Fill(dr)
 
         if(self.separate_truth_particles):
@@ -549,7 +551,7 @@ class Processor:
                     self.final_state_vector_components['phi'],
                     self.final_state_vector_components['m'],
                 )).T
-                vecs = PtEtaPhiMToEPxPyPz(vecs[:,0], vecs[:,1],vecs[:,2],vecs[:,3])
+                vecs = self.calculator.PtEtaPhiMToEPxPyPz(vecs[:,0], vecs[:,1],vecs[:,2],vecs[:,3])
 
             else:
                 vecs = np.vstack((
@@ -567,10 +569,10 @@ class Processor:
 
             # Kinematic histograms for sum of Pmu (jet constituents).
             s = np.sum(vecs,axis=0) # E, px, py, pz
-            s_cyl = EPxPyPzToPtEtaPhiM(*s)
+            s_cyl = self.calculator.EPxPyPzToPtEtaPhiM(*s)
             s_pt,s_eta,s_phi,s_m = s_cyl
             s_e = s[0]
-            y = EPzToRap(s[0],s[3])
+            y = self.calculator.EPzToRap(s[0],s[3])
             s_et = s[0]/np.cosh(y)
             self.pmu_sum_hists['pt'].Fill(s_pt)
             self.pmu_sum_hists['eta'].Fill(s_eta)
