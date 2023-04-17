@@ -2,28 +2,21 @@
 #       That library must be loaded, otherwise funcs will not work.
 import numpy as np
 import ROOT as rt
-from util.vectorcalcs import BuildVectorCalcs, LoadVectorCalcs
-
-# Always build/load library when loading this.
-# Putting the commands outside of any func makes sure this is loaded.
-BuildVectorCalcs()
-LoadVectorCalcs()
+from util.vectorcalcs import VectorCalcsManager
 
 class Calculator:
     def __init__(self):
-        BuildVectorCalcs()
-        LoadVectorCalcs()
+        self.vc_manager = VectorCalcsManager()
+        self.vc_manager.FullPreparation(force=False)
         self.calculator = rt.VectorCalcs.Calculator()
 
     def __del__(self): # TODO: Not sure if this is needed?
         del self.calculator
 
     def DeltaR2(self,eta1,phi1,eta2,phi2):
-        # print('\nRunning DeltaR2.\n')
         return self.calculator.DeltaR2(eta1,phi1,eta2,phi2)
 
     def DeltaR2Vectorized(self,vec1,vec2):
-        # print('\nRunning DeltaR2Vectorized.\n')
         n,m = vec1.shape[0], vec2.shape[0]
         return np.reshape( self.calculator.DeltaR2Vectorized( vec1[:,0].flatten(),vec1[:,1].flatten(),vec2[:,0].flatten(),vec2[:,1].flatten()) , (n,m))
 

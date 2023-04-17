@@ -12,7 +12,7 @@ project(
   LANGUAGES C CXX)
 
 # Fetch ROOT! As of ~6.20, this also sets up our ROOT CMake macros.
-find_package(ROOT 6.22 CONFIG REQUIRED)
+find_package(ROOT ROOT_VERSION CONFIG REQUIRED)
 
 # This is required on if there is more than one flag (like on macOS)
 separate_arguments(ROOT_EXE_LINKER_FLAGS)
