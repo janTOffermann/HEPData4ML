@@ -69,10 +69,11 @@ class Generator:
         self.header_status = False
         self.footer_status = False
 
-        self.calculator = Calculator()
+        self.calculator = Calculator(use_vectorcalcs=self.configurator.GetUseVectorCalcs())
 
     def SetEventSelection(self,selection):
         self.event_selection = selection
+        self.event_selection.Initialize(self.configurator)
 
     def SetTruthSelection(self,selection):
         self.truth_selection = selection

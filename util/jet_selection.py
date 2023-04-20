@@ -6,7 +6,11 @@ class GetNearestJet:
         self.SetTruthCode(truth_code)
         self.SetMaxDeltaR(max_dr)
         self.SetUseHepMC(use_hepmc)
-        self.calculator = Calculator()
+        self.calculator = None
+
+    def Initialize(self,configurator):
+        self.configurator = configurator
+        self.calculator = Calculator(use_vectorcalcs=self.configurator.GetUseVectorCalcs())
 
     def SetTruthCode(self,code):
         self.truth_code = code
@@ -74,6 +78,9 @@ class GetNearestJetWithContainment:
             self.containment_radius = max_dr
         self.calculator = Calculator()
 
+    def Initialize(self,configurator):
+        self.configurator = configurator
+        self.calculator = Calculator(use_vectorcalcs=self.configurator.GetUseVectorCalcs())
 
     def __call__(self,**kwargs):
         truth_particles = kwargs['truth']
@@ -103,6 +110,10 @@ class GetNearestJetWithContainment:
 class GetLeadingJet:
     def __init__(self):
         pass
+
+    def Initialize(self):
+        pass
+
     def __call__(self,**kwargs):
         jets = kwargs['jets']
         pt = np.array([x.pt() for x in jets])
