@@ -63,7 +63,7 @@ class PtMatchedJetFilter:
         sys.path.append(self.fastjet_dir)
         import fastjet as fj # this import should work, will be others peppered throughout for scope reasons but Python caches imports!
         self.jetdef = fj.JetDefinition(fj.antikt_algorithm, self.radius)
-        self.calculator = Calculator()
+        self.calculator = Calculator(use_vectorcalcs=self.configurator.GetUseVectorCalcs())
 
     def SetJetRadius(self,radius):
         self.radius = radius
@@ -158,7 +158,7 @@ class ContainedJetFilter:
         sys.path.append(self.fastjet_dir)
         import fastjet as fj # this import should work, will be others peppered throughout for scope reasons but Python caches imports!
         self.jetdef = fj.JetDefinition(fj.antikt_algorithm, self.radius)
-        self.calculator = Calculator()
+        self.calculator = Calculator(use_vectorcalcs=self.configurator.GetUseVectorCalcs())
 
     def SetJetRadius(self,radius):
         self.radius = radius

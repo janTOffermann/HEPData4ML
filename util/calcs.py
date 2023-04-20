@@ -4,53 +4,119 @@ import numpy as np
 import ROOT as rt
 from util.vectorcalcs import VectorCalcsManager
 
+# Note: Some functions have a funny-looking structure - they
+#       will try to use our custom "VectorCalcs" C++/ROOT library,
+#       but fall back on pure Python if there is an issue. This is
+#       due to some kind of bug I have encountered when using this
+#       code on the UChicago Analysis Facility, which is a bug I
+#       have not been able to reproduce elsewhere. It involves
+#       an error with "cling JIT" not being able to allocate
+#       memory, so this is a bit of a workaround.
+
 class Calculator:
-    def __init__(self):
+    def __init__(self, use_vectorcalcs=True):
         self.vc_manager = VectorCalcsManager()
-        self.vc_manager.FullPreparation(force=False)
-        self.calculator = rt.VectorCalcs.Calculator()
+        self.use_vectorcalcs = use_vectorcalcs
+        if(self.use_vectorcalcs):
+            self.vc_manager.FullPreparation(force=False)
+            self.calculator = rt.VectorCalcs.Calculator()
+
+        # for non-C++/ROOT usage.
+        self.v1 = rt.Math.PtEtaPhiMVector(0.,0.,0.,0.)
+        self.v2 = rt.Math.PtEtaPhiMVector(0.,0.,0.,0.)
+        self.v3 = rt.Math.PxPyPzEVector(0.,0.,0.,0.)
 
     def __del__(self): # TODO: Not sure if this is needed?
-        del self.calculator
+        if(self.use_vectorcalcs):
+            del self.calculator
 
     def DeltaR2(self,eta1,phi1,eta2,phi2):
+        if(self.use_vectorcalcs):
+            try:
+                return self._DeltaR2_root(eta1,phi1,eta2,phi2)
+            except:
+                self.use_vectorcalcs = False
+                return self.DeltaR2(eta1,phi1,eta2,phi2)
+        else:
+            return self._DeltaR2_numpy(eta1,phi1,eta2,phi2)
+
+    def _DeltaR2_root(self,eta1,phi1,eta2,phi2):
         return self.calculator.DeltaR2(eta1,phi1,eta2,phi2)
 
+    def _DeltaR2_numpy(self,eta1,phi1,eta2,phi2):
+        deta = eta2 - eta1
+        dphi = self._dPhi(phi2,phi1)
+        return np.square(deta) + np.square(dphi)
+
+
     def DeltaR2Vectorized(self,vec1,vec2):
+        if(self.use_vectorcalcs):
+            try:
+                return self._DeltaR2Vectorized_root(vec1,vec2)
+            except:
+                self.use_vectorcalcs = False
+                return self.DeltaR2Vectorized(vec1,vec2)
+        else:
+            return self._DeltaR2Vectorized_numpy(vec1,vec2)
+
+    def _DeltaR2Vectorized_root(self,vec1,vec2):
         n,m = vec1.shape[0], vec2.shape[0]
         return np.reshape( self.calculator.DeltaR2Vectorized( vec1[:,0].flatten(),vec1[:,1].flatten(),vec2[:,0].flatten(),vec2[:,1].flatten()) , (n,m))
 
-    def AdjustPhi(self,phi):
-        phi = np.asarray(phi)
-        phi[phi > np.pi] -= 2.0 * np.pi
-        phi[phi < -np.pi] += 2.0 * np.pi
-        if(phi.shape == (1,)): return phi[0]
-        return phi
+    def _DeltaR2Vectorized_numpy(self,vec1,vec2):
+        return np.array([[self._DeltaR2_numpy(*x,*y) for y in vec2] for x in vec1])
 
-    def EPxPyPzToPtEtaPhiM(self,e,px,py,pz,transpose=True): # TODO: Some inconsistent naming/design here, some funcs act on single vectors, others act on many!
+    def EPxPyPzToPtEtaPhiM_single(self,e,px,py,pz,transpose=True):
         """
         Acts on a single vector.
         """
-        vec = rt.Math.PxPyPzEVector()
-        vec.SetCoordinates(px,py,pz,e)
-        pt = vec.Pt()
-        eta = vec.Eta()
-        phi = vec.Phi()
-        m = vec.M()
+        if(self.use_vectorcalcs):
+            try:
+                return self._EPxPyPzToPtEtaPhiM_single_root(e,px,py,pz,transpose)
+            except:
+                self.use_vectorcalcs = False
+                return self.EPxPyPzToPtEtaPhiM_single(e,px,py,pz,transpose)
+        else:
+            return self._EPxPyPzToPtEtaPhiM_single_numpy(e,px,py,pz,transpose)
+
+
+    def _EPxPyPzToPtEtaPhiM_single_root(self,e,px,py,pz,transpose=True):
+        vec = np.array([px,py,pz,e])
+        return np.array(self.calculator.PxPyPzE_to_PtEtaPhiM(vec.flatten()))
+
+    def _EPxPyPzToPtEtaPhiM_single_numpy(self,e,px,py,pz,transpose=True):
+        pt = np.linalg.norm([px,py])
+        p = np.linalg.norm([px,py,pz])
+        eta = np.arctanh(pz/p)
+        phi = np.arctan(py/px)
+        m = np.sqrt(np.square(e) - np.square(p))
         v = np.array([pt,eta,phi,m],dtype=np.dtype('f8'))
         if(transpose): return v.T
         return v
-
-    def EPzToRap(self,e,pz):
-        return 0.5 * np.log((e + pz)/(e - pz))
 
     def PxPyPzEToPtEtaPhiM(self,px,py,pz,e,transpose=True):
         """
         Acts on a set of vectors (separate lists/arrays of px, py, pz and e).
         """
+        if(self.use_vectorcalcs):
+            try:
+                return self._PxPyPzEToPtEtaPhiM_root(px,py,pz,e,transpose)
+            except:
+                self.use_vectorcalcs = False
+                return self.PxPyPzEToPtEtaPhiM(px,py,pz,e,transpose)
+        else:
+            return self._PxPyPzEToPtEtaPhiM_numpy(px,py,pz,e,transpose)
+
+    def _PxPyPzEToPtEtaPhiM_root(self,px,py,pz,e,transpose=True):
         nvecs = len(px)
         input_vecs = np.vstack((px,py,pz,e)).T
         output_vecs = np.array(self.calculator.PxPyPzE_to_PtEtaPhiM_Multi(input_vecs.flatten())).reshape((nvecs,-1))
+        if(transpose): return output_vecs
+        return output_vecs.T
+
+    def _PxPyPzEToPtEtaPhiM_numpy(self,px,py,pz,e,transpose=True):
+        vecs = np.vstack((e,px,py,pz)).T
+        output_vecs = np.array([self._EPxPyPzToPtEtaPhiM_single_numpy(*x) for x in vecs])
         if(transpose): return output_vecs
         return output_vecs.T
 
@@ -60,6 +126,45 @@ class Calculator:
         """
         nvecs = len(pt)
         input_vecs = np.vstack((pt,eta,phi,m)).T
+        if(self.use_vectorcalcs):
+            try:
+                output_vecs = np.array(self.calculator.PtEtaPhiM_to_EPxPyPz_Multi(input_vecs.flatten())).reshape((nvecs,-1))
+            except:
+                self.use_vectorcalcs = False
+                return self.PtEtaPhiMToEPxPyPz(pt,eta,phi,m,transpose)
+        else:
+            output_vecs = np.zeros((nvecs,4))
+            for i,ivec in enumerate(input_vecs):
+                self.v1.SetCoordinates(*ivec)
+                output_vecs[i,:] = np.array([self.v3.E(), self.v3.Px(), self.v3.Py(), self.v3.Pz()])
+        if(transpose): return output_vecs
+        return output_vecs.T
+
+    def _PtEtaPhiMToEPxPyPz_root(self,pt,eta,phi,m,transpose=True):
+        nvecs = len(pt)
+        input_vecs = np.vstack((pt,eta,phi,m)).T
         output_vecs = np.array(self.calculator.PtEtaPhiM_to_EPxPyPz_Multi(input_vecs.flatten())).reshape((nvecs,-1))
         if(transpose): return output_vecs
         return output_vecs.T
+
+    def EPzToRap(self,e,pz):
+        return 0.5 * np.log((e + pz)/(e - pz))
+
+    def AdjustPhi(self,phi):
+        phi = np.asarray(phi)
+        phi[phi > np.pi] -= 2.0 * np.pi
+        phi[phi < -np.pi] += 2.0 * np.pi
+        if(phi.shape == (1,)): return phi[0]
+        return phi
+
+    def _dPhi(self,phi1,phi2):
+        """
+        Delta phi. Based off of the ROOT::Math::VectorUtil source code.
+        """
+        # see https://root.cern/doc/v608/GenVector_2VectorUtil_8h_source.html#l00061
+        dphi = phi2 - phi1
+        if(dphi > np.pi):
+            dphi -= 2. * np.pi
+        elif(dphi <= -np.pi):
+            dphi += 2. * np.pi
+        return dphi

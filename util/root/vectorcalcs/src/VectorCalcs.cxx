@@ -25,16 +25,17 @@ namespace VectorCalcs{
   }
 
   vector<Double_t> Calculator::PxPyPzE_to_PtEtaPhiM(vector<Double_t> input_coords){
-    _vec_xyze->SetCoordinates(input_coords.at(0),input_coords.at(1),input_coords.at(2),input_coords.at(3));
-    vector<Double_t> result {_vec1->Pt(), _vec1->Eta(), _vec1->Phi(), _vec1->M()};
+    return PxPyPzE_to_PtEtaPhiM(input_coords.at(0),input_coords.at(1),input_coords.at(2),input_coords.at(3));
+  }
+
+  vector<Double_t> Calculator::PxPyPzE_to_PtEtaPhiM(Double_t px, Double_t py, Double_t pz, Double_t e){
+    _vec_xyze->SetCoordinates(px,py,pz,e);
+    vector<Double_t> result {_vec_xyze->Pt(), _vec_xyze->Eta(), _vec_xyze->Phi(), _vec_xyze->M()};
     return result;
   }
 
-  vector<Double_t> Calculator::PxPyPzE_to_PtEtaPhiM(Double_t px, Double_t py, Double_t pz, Double_t e){\
-    return PxPyPzE_to_PtEtaPhiM(px,py,pz,e);
-  }
-
   vector<Double_t> Calculator::PxPyPzE_to_PtEtaPhiM_Multi(vector<Double_t> input_vectors){
+    // TODO: This is broken!
     Int_t nvecs = Int_t(input_vectors.size()) / 4;
     vector<Double_t> results(input_vectors.size(),0.);
     vector<Double_t> result_single(4,0.);

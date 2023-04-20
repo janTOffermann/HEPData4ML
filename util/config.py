@@ -109,3 +109,6 @@ class Configurator:
 
     def SetPrintDelphes(self,val):
         self.print_delphes = val
+
+    def GetUseVectorCalcs(self):
+        return self.config['use_vectorcalcs']

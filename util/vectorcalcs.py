@@ -12,12 +12,21 @@ class VectorCalcsManager:
         self.build_script = 'build.sh'
         self.script_dir = os.path.realpath(os.path.dirname(os.path.realpath(__file__)) + '/root')
         self.cmake_template = self.script_dir + '/cmake_template/CMakeLists.txt'
+        self.status = False
 
     def FullPreparation(self,force=False):
-        self.PrepareCMake() # writes a CMakeLists.txt file with current ROOT version, based on template.
-        self.BuildVectorCalcs(force) # builds VectorCalcs library, if it is not built yet. (force=True will make it always build)
-        self.LoadVectorCalcs()
+        self.status = False
+        try:
+            self.PrepareCMake() # writes a CMakeLists.txt file with current ROOT version, based on template.
+            self.BuildVectorCalcs(force) # builds VectorCalcs library, if it is not built yet. (force=True will make it always build)
+            self.LoadVectorCalcs()
+            self.status = True
+        except:
+            pass
         return
+
+    def GetStatus(self):
+        return self.status
 
     def PrepareCMake(self):
         with open(self.cmake_template,'r') as f:

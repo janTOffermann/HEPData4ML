@@ -36,6 +36,11 @@ class Processor:
         #TODO: Is there a nicer way to handle this import, which requires a filepath passed to this class's constructor?
 
         self.jet_config, self.jetdef = self.InitFastJet()
+        self.jet_selection = self.jet_config['jet_selection']
+        if(self.jet_selection is not None):
+            self.jet_selection.Initialize(self.configurator)
+        self.n_constituents = self.configurator.GetNPars()['jet_n_par']
+
 
         self.outdir = ''
 
@@ -55,7 +60,7 @@ class Processor:
 
         self.SetRecordFullFinalState(False) # by default we don't want this, it may significantly increase filesize!
 
-        self.calculator = Calculator()
+        self.calculator = Calculator(use_vectorcalcs=self.configurator.GetUseVectorCalcs())
 
     def ResetDataContainers(self):
         self.final_state_vector_components = {
@@ -424,18 +429,14 @@ class Processor:
 
         vecs_copy = np.copy(vecs) # TODO: Is this necessary?
 
-        jet_config = self.configurator.GetJetConfig()
-        n_constituents = self.configurator.GetNPars()['jet_n_par']
-        jet_sel = jet_config['jet_selection']
-
-        if(jet_sel is None):
+        if(self.jet_selection is None):
             # If we're using Delphes, vecs is in cylindrical and we need to convert it to Cartesian since we're not
             # calling the ClusterJets() routine (which internally handles the conversion via FastJet).
             if(self.delphes): vecs = self.calculator.PtEtaPhiMToEPxPyPz(vecs[:,0], vecs[:,1],vecs[:,2],vecs[:,3]) #TODO: Is this conditional okay?
             self.FillDataBuffer(j,vecs,None,truth_particles)
         else:
             # Any necessary cylindrical->Cartesian conversion (i.e. Delphes case) is handled within ClusterJets().
-            self.ClusterJets(vecs,jet_config)
+            self.ClusterJets(vecs,self.jet_config)
             jets = self.jets_filtered
 
             if(len(jets) == 0): # If there are no jets, throw out this event.
@@ -446,7 +447,7 @@ class Processor:
             except: truth = None # needed in case there was no truth selection
 
             # Now we apply our jet selection algorithm.
-            selected_jet_idx = jet_sel(truth=truth, jets=jets)
+            selected_jet_idx = self.jet_selection(truth=truth, jets=jets)
 
             if(selected_jet_idx < 0): # If we didn't select any jet, throw out this event.
                 self.data['is_signal'][j] = -1 # Using -1 to mark as "no event". (To be discarded.)
@@ -454,7 +455,7 @@ class Processor:
             jet = jets[selected_jet_idx]
 
             # Get the constituents of our selected jet, as well as their indices w.r.t. the final state.
-            selected_vecs, selected_indices = self.FetchJetConstituents(jet,n_constituents)
+            selected_vecs, selected_indices = self.FetchJetConstituents(jet,self.n_constituents)
 
             self.FillDataBuffer(j,selected_vecs,jet,truth_particles,final_state_indices=selected_indices)
 
@@ -569,7 +570,7 @@ class Processor:
 
             # Kinematic histograms for sum of Pmu (jet constituents).
             s = np.sum(vecs,axis=0) # E, px, py, pz
-            s_cyl = self.calculator.EPxPyPzToPtEtaPhiM(*s)
+            s_cyl = self.calculator.EPxPyPzToPtEtaPhiM_single(*s)
             s_pt,s_eta,s_phi,s_m = s_cyl
             s_e = s[0]
             y = self.calculator.EPzToRap(s[0],s[3])

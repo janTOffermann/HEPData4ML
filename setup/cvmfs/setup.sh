@@ -9,6 +9,7 @@ fi
 source ${ATLAS_LOCAL_ROOT_BASE}/user/atlasLocalSetup.sh -q
 
 # Now we set up a "view" of an LCG release. The LCG_103 contains Pythia8 bindings, earlier ones may not.
+# See: https://sft.its.cern.ch/jira/projects/GENSER/issues/GENSER-440
 lsetup "views LCG_103 x86_64-centos7-gcc11-opt" # may technically need to adjust the last part based on the arch of where you run this
 
 #echo "-----------------------"

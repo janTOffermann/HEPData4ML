@@ -18,8 +18,14 @@ mv payload/* ./
 rm payload.tar.bz2
 rm -r payload
 
-## Run the setup script.
+# Run the setup script.
 source setup/cvmfs/setup.sh
+
+# Delete any VectorCalcs build that might've been included in the payload,
+# it will have to be rebuilt locally based on how it's currently implemented.
+# (the build is very quick)
+vc_build=util/root/vectorcalcs/build
+if [ -d $vc_build ]; then rm -r $vc_build; fi
 
 # Move the config.py file into the config directory. It has been shipped as an input file separate of the payload.
 mv config.py config/config.py
