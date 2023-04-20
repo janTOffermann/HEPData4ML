@@ -17,10 +17,8 @@ config = {
     'rng' : 1, # Pythia RNG seed
     'delphes' : False, # Whether or not to use Delphes
     'delphes_card' : None, # path to the Delphes card to use. If None, will use the ATLAS Delphes card that ships with Delphes
-    # 'delphes_dir' : None ,# directory containing the Delphes installation. If None, will be build in a local directory "delphes".
-    'delphes_dir' : "/cvmfs/sft.cern.ch/lcg/releases/delphes/3.5.1pre05-775ca/x86_64-centos7-gcc11-opt",
-    'fastjet_dir' : "/home/jaofferm/HEPData4ML/fastjet",
-    #'fastjet_dir' : None,
+    'delphes_dir' : None ,# directory containing the Delphes installation. If None, will be build in a local directory "delphes".
+    'fastjet_dir' : None,
     'jet_radius': 0.8,
     'jet_min_pt': 15., #GeV # 15
     'jet_max_eta': 2., # absolute value eta cut # 2.
