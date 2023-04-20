@@ -41,6 +41,7 @@ def main(args):
     parser.add_argument('-sp',         '--split',             type=int,          default=1,                help='Whether or not to split HDF5 file into training/validation/testing files.')
     parser.add_argument('-tf',         '--train_fraction',    type=float,        default=0.7,              help='Fraction of events to place in the training file.')
     parser.add_argument('-vf',         '--val_fraction',      type=float,        default=0.2,              help='Fraction of events to place in the validation file.')
+    parser.add_argument('-df',         '--delete_full',       type=int,          default=0,                help='Whether or not to delete the full HDF5 file after splitting into train/validation/testing files.')
     parser.add_argument('-co',         '--compression_opts',  type=int,          default=7,                help='Compression option for final HDF5 file (0-9). Higher value means more compression.')
     parser.add_argument('-separate_h5','--separate_h5',       type=int,          default=1,                help='Whether or not to make separate HDF5 files for each pT bin.')
     parser.add_argument('-pc',         '--pythia_config',     type=none_or_str,  default=None,             help='Path to Pythia configuration template (for setting the process).')
@@ -71,6 +72,7 @@ def main(args):
     pythia_config = args['pythia_config']
     debug = args['debug'] > 0
 
+
     if(pt_bin_edges is not None and pt_bin_edges_string is not None):
         print('Warning: Both "ptbins" and "ptbins_string" arguments were given. Using the "ptbins" argument.')
 
@@ -88,6 +90,9 @@ def main(args):
     train_frac = args['train_fraction']
     val_frac = args['val_fraction']
     test_frac = 1. - train_frac - val_frac
+    delete_full = args['delete_full'] > 0
+    if(not split_files): delete_full = False # otherwise we are throwing out all the final files
+
     if(test_frac < 0. and split_files):
         print('Error: Requested training fraction and validation fraction sum to more than 1, this leaves no events for the test file.')
         assert(False)
@@ -252,7 +257,7 @@ def main(args):
         # the HepMC/Delphes and HDF5 files, since they are all binned it'll be easy to match events across files.
         h5_files = []
         print('\tProducing separate HDF5 files for each pT bin, and then concatenating these.')
-        delete_individual_h5 = False
+        delete_individual_h5 = True
         nentries_per_chunk = int(nentries_per_chunk/nbins)
         for i in range(nbins):
             pt_min = pt_bin_edges[i]
@@ -329,8 +334,7 @@ def main(args):
         SplitH5(h5_file, split_ratio,cwd=outdir,copts=compression_opts, train_name=train_name,val_name=val_name,test_name=test_name,verbose=True,seed=configurator.GetSplitSeed())
 
     # Optionally delete the full HDF5 file.
-    delete_h5 = False # TODO: Make this configurable
-    if(delete_h5):
+    if(delete_full):
         comm = ['rm',h5_file]
         sub.check_call(comm)
 
