@@ -46,8 +46,8 @@ class Calculator:
     def _DeltaR2_numpy(self,eta1,phi1,eta2,phi2):
         deta = eta2 - eta1
         dphi = self._dPhi(phi2,phi1)
-        return np.square(deta) + np.square(dphi)
-
+        result = np.square(deta) + np.square(dphi)
+        return result
 
     def DeltaR2Vectorized(self,vec1,vec2):
         if(self.use_vectorcalcs):
@@ -79,7 +79,6 @@ class Calculator:
         else:
             return self._EPxPyPzToPtEtaPhiM_single_numpy(e,px,py,pz,transpose)
 
-
     def _EPxPyPzToPtEtaPhiM_single_root(self,e,px,py,pz,transpose=True):
         vec = np.array([px,py,pz,e])
         return np.array(self.calculator.PxPyPzE_to_PtEtaPhiM(vec.flatten()))
@@ -88,7 +87,7 @@ class Calculator:
         pt = np.linalg.norm([px,py])
         p = np.linalg.norm([px,py,pz])
         eta = np.arctanh(pz/p)
-        phi = np.arctan(py/px)
+        phi = np.arctan2(py,px)
         m = np.sqrt(np.square(e) - np.square(p))
         v = np.array([pt,eta,phi,m],dtype=np.dtype('f8'))
         if(transpose): return v.T
@@ -151,6 +150,9 @@ class Calculator:
         return 0.5 * np.log((e + pz)/(e - pz))
 
     def AdjustPhi(self,phi):
+        """
+        Adjusts phi values so that they lie in [-pi,pi].
+        """
         phi = np.asarray(phi)
         phi[phi > np.pi] -= 2.0 * np.pi
         phi[phi < -np.pi] += 2.0 * np.pi
