@@ -19,12 +19,6 @@ def float_to_str(value):
     value_str = value_str.replace('.',',')
     return re.sub(',0$','',value_str)
 
-# def PrintFastJetBanner():
-#     import fastjet as fj # hacky, but will work after FastJetSetup was run!
-#     fj.ClusterSequence.print_banner() # Get the Fastjet banner out of the way.
-#     return
-
-
 def main(args):
     parser = ap.ArgumentParser()
     parser.add_argument('-n',          '--nevents',           type=int,          required=True,            help='Number of events per pt bin.')
@@ -167,6 +161,7 @@ def main(args):
                 print('\t\t{}'.format(bin_edge))
             print()
 
+    print()
     for i in range(nbins):
         # Generate a HepMC file containing our events. The generation already performs filtering
         # before writing, so that we just save final-state particles & some selected truth particles.
@@ -197,7 +192,6 @@ def main(args):
 
         generator.SetFilename(hep_file)
         generator.SetDiagnosticPlots(diagnostic_plots)
-
         generator.SetProgressBar(progress_bar)
 
         hepfile_exists = pathlib.Path('{}/{}'.format(outdir,hep_file)).exists()
@@ -282,7 +276,7 @@ def main(args):
             jet_file = [jet_files[i]]
             truth_file = [truth_files[i]]
             h5_file_individual = h5_file.replace('.h5','_{}-{}.h5'.format(float_to_str(pt_min),float_to_str(pt_max)))
-            processor.SetProgressBarPrefix('\tClustering jets & preparing data for pT bin [{},{}]:'.format(pt_min,pt_max))
+            processor.SetProgressBarPrefix('\n\tClustering jets & preparing data for pT bin [{},{}]:'.format(pt_min,pt_max))
 
             processor.Process(jet_file,truth_file,h5_file_individual,verbosity=h5_conversion_verbosity,nentries_per_chunk=nentries_per_chunk)
 
@@ -344,7 +338,6 @@ def main(args):
         # Now split the HDF5 file into training, testing and validation samples.
         split_ratio = (train_frac,val_frac,test_frac)
         print("\tSplitting HDF5 file {} into training, validation and testing samples:".format('/'.join((outdir,h5_file))))
-        # split_ratio_sum = train_frac + val_frac + test_frac
         train_name = 'train.h5'
         val_name = 'valid.h5'
         test_name = 'test.h5'
@@ -352,7 +345,7 @@ def main(args):
 
     # Optionally delete the full HDF5 file.
     if(delete_full):
-        comm = ['rm',h5_file]
+        comm = ['rm','{}/{}'.format(outdir,h5_file)]
         sub.check_call(comm)
 
     end_time = time.time()
@@ -362,7 +355,6 @@ def main(args):
     print('Done. Time elapsed = {:.1f} seconds.'.format(elapsed_time))
     print('({})'.format(elapsed_time_readable))
     print('#############################\n')
-
 
 if __name__ == '__main__':
     main(sys.argv)
