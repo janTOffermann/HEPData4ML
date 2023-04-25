@@ -1,5 +1,5 @@
 # Credit to Tim Hoffman (https://github.com/hoffmantj) for implementing
-# the tracing algorithm ( Process() ) in this code.
+# the tracing algorithm ( Tracer.Process() ) in this code.
 
 # The purpose of this code is to help with tracing particles through Delphes.
 # Specifically, this is to be used for stable particles that are selected by
@@ -24,11 +24,16 @@ class Tracer:
         self.status = False
         self.SetVerbosity(verbose)
         self.energy_ratio_truth = None
+        self.energy_ratio_smeared = None
         self.print_prefix = '\n\tTracer'
 
         self.progress_bar_length = 50
-        self.progress_bar_prefix = '\n\tTracing daughter particles:'
+        self.progress_bar_prefix = '\tTracing daughter particles:'
         self.progress_bar_suffix = 'Complete'
+        self.key_prefix = 'energy_ratio'
+
+    def SetKeyPrefix(self,val):
+        self.key_prefix = val
 
     def SetH5EventFile(self,file):
         self.h5_file = file
@@ -45,11 +50,16 @@ class Tracer:
     def GetEnergyRatioTruth(self):
         return self.energy_ratio_truth
 
+    def GetEnergyRatioSmeared(self):
+        return self.energy_ratio_smeared
+
     def RequiresIndexing(self):
         return True
 
-    # Reads in files, places relevant information in memory.
-    def Initialize(self):
+    def Initialize(self): # TODO: May want to consider chunking things and using a buffer? Memory usage will scale better for larger files.
+        """
+        Reads in files, and places the relevant information in memory.
+        """
         if(self.h5_file is None):
             self.status = False
             return
@@ -74,7 +84,8 @@ class Tracer:
         f_delphes = ur.open(self.delphes_file)
         t_delphes = f_delphes['Delphes']
         self.indices_delphes = t_delphes['Tower/Tower.Particles'].array()['refs']
-        self.energies_delphes = t_delphes['Tower/Tower.E'].array()
+        self.tower_energies_delphes = t_delphes['Tower/Tower.E'].array()
+        self.particle_energies_delphes = t_delphes['Particle/Particle.E'].array()
         f_delphes.close()
 
         # Fetch the final HDF5 file, that contains selected jets' constituent four-momenta.
@@ -101,15 +112,16 @@ class Tracer:
             print('{}.Process: Number of events = {}'.format(self.print_prefix,self.nevents))
             qu.printProgressBarColor(0,self.nevents,prefix=self.progress_bar_prefix,suffix=self.progress_bar_suffix,length=self.progress_bar_length)
 
-        daughter_energy = np.zeros((self.nevents, self.nobj_max))
-        tower_energy    = np.full( (self.nevents, self.nobj_max), np.nan)
+        daughter_energy    = np.zeros((self.nevents, self.nobj_max))
+        tower_energy       = np.full( (self.nevents, self.nobj_max), np.nan)
+        truth_tower_energy = np.full( (self.nevents, self.nobj_max), np.nan)
 
         #true daughter to smeared total
-        for i, event_idx in enumerate(self.event_indices):
+        for i, event_idx in enumerate(self.event_indices): # Looping over events
             nobj = self.nobj[i]
-            for j, tower_idx in enumerate(self.selected_tower_indices[i,:nobj]):
+            for j, tower_idx in enumerate(self.selected_tower_indices[i,:nobj]): # Looping over towers in event i
                 daughter_energy[i,j] = 0 #set tower energy =0 when you touch said tower
-                tower_energy[i,j] = self.energies_delphes[event_idx,tower_idx]
+                tower_energy[i,j] = self.tower_energies_delphes[event_idx,tower_idx]
                 residual = [i for n, i in enumerate(self.indices_delphes[event_idx,tower_idx]) if i not in self.indices_delphes[event_idx,tower_idx][:n]]# NOTE: eliminate Delphes's apparent double-counting of anti-muons
                 for part_idx in residual:
                     if part_idx in self.daughter_indices_fs[event_idx]:
@@ -119,24 +131,37 @@ class Tracer:
                         part_idx_truth = self.daughter_indices_truth[event_idx, np.where(self.daughter_indices_fs[event_idx] == part_idx)[0][0]]
                         part_energy = self.truth_Pmu[i,part_idx_truth-1,0] # conversion from 1-indexing to 0-indexing on the 2nd axis
                         daughter_energy[i,j] += part_energy
+
+                    # Get this particle's truth-level energy, to add to the "truth tower energy".
+                    part_truth_energy = self.particle_energies_delphes[event_idx, part_idx-1] # part_idx uses 1-indexing
+                    if(np.isnan(truth_tower_energy[i,j])): truth_tower_energy[i,j] = part_truth_energy
+                    else: truth_tower_energy[i,j] += part_truth_energy
+
             if(self.verbose): qu.printProgressBarColor(i+1,self.nevents,prefix=self.progress_bar_prefix,suffix=self.progress_bar_suffix,length=self.progress_bar_length)
-        self.energy_ratio_truth = daughter_energy/tower_energy
+        self.energy_ratio_smeared = daughter_energy/tower_energy
+        self.energy_ratio_truth = daughter_energy/truth_tower_energy
         return
 
-    def __call__(self, delphes_file,h5_file,indices_file,output_file=None,verbose=None, copts=9, key='energy_ratio_truth'):
+    def __call__(self, delphes_file,h5_file,indices_file,output_file=None,verbose=None, copts=9, key=None):
         self.SetH5EventFile(h5_file)
         self.SetDelphesFile(delphes_file)
         self.SetIndicesFile(indices_file)
         if(verbose is not None): self.SetVerbosity(verbose)
+        if(key is not None):
+            self.key_prefix = key # TODO: Is this clear? Maybe should rename argument, but I want it to be a generic function signature
         self.Process()
+
+        key_truth = '{}_truth'.format(self.key_prefix)
+        key_smeared = '{}_smeared'.format(self.key_prefix)
 
         if(output_file is None): output_file = h5_file
         else: sub.check_call(['cp',h5_file,output_file])
 
-        if(verbose):
-            print('Writing {} to {}.'.format(key,output_file))
         f = h5.File(output_file,'a')
+        if(verbose): print('Writing {} to {}.'.format(key_truth,output_file))
         d = f.create_dataset(key,data=self.GetEnergyRatioTruth(),compression='gzip',compression_opts=copts)
+        if(verbose): print('Writing {} to {}.'.format(key_smeared,output_file))
+        d = f.create_dataset(key,data=self.GetEnergyRatioSmeared(),compression='gzip',compression_opts=copts)
         f.close()
         return output_file
 
@@ -150,7 +175,7 @@ def Process(h5_file,delphes_file,indices_file,output_file=None,verbose=False):
 
     # Get the ratio of true daughter particle energy, versus the total energy deposited in the Delphes Tower.
     # Since the numerator is total true energy, and not deposited/measured energy, this ratio can be larger than 1!
-    energy_ratio_truth = tracer.GetEnergyRatioTruth()
+    energy_ratio_truth = tracer.GetEnergyRatioSmeared()
 
     replace_h5 = False
     if(output_file is None):

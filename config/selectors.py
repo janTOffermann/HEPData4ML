@@ -41,7 +41,7 @@ selections = {
     ),
     'b daughters': parsel.MultiSelection(
         [
-            parsel.AlgoSelection(algos.SelectFinalStateDaughters(parsel.FirstSelector(23,5)),n=120) # up to 200 stable daughters of top quark
+            parsel.AlgoSelection(algos.SelectFinalStateDaughters(parsel.FirstSelector(23,5)),n=60) # up to 60 stable daughters of b quark
         ]
     ),
     'W daughters': parsel.MultiSelection(

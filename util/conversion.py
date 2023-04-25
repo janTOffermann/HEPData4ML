@@ -11,16 +11,11 @@ from util.qol_utils.pdg import pdg_plotcodes, pdg_names, FillPdgHist
 from util.particle_selection.algos import IsNeutrino
 from util.fastjet import FastJetSetup
 
-# # --- FASTJET IMPORT ---
-# # TODO: Can this be done more nicely?
-# fastjet_dir = BuildFastjet(j=8)
-# fastjet_dir = glob.glob('{}/**/site-packages'.format(fastjet_dir),recursive=True)[0]
-# if(fastjet_dir not in sys.path): sys.path.append(fastjet_dir)
-# import fastjet as fj
-# # ----------------------
-
-# Convert HepMC / Delphes-ROOT files into our final output -- possibly performing jet clustering along the way.
 class Processor:
+    """
+    Convert HepMC or Delphes/ROOT file, representing an event, into an HDF5 file where each entry/event corresponds
+    with a single jet. (Can also skip jet clustering entirely).
+    """
     def __init__(self, configurator, use_delphes=False):
         self.configurator = configurator
         self.delphes = use_delphes
@@ -40,7 +35,6 @@ class Processor:
         if(self.jet_selection is not None):
             self.jet_selection.Initialize(self.configurator)
         self.n_constituents = self.configurator.GetNPars()['jet_n_par']
-
 
         self.outdir = ''
 
@@ -289,7 +283,7 @@ class Processor:
             prefix_level2 = '\tClustering jets & preparing data for chunk {}/{}:'.format(str(i+1).zfill(prefix_nzero),nchunks)
             if(verbosity==2): printProgressBarColor(0,ranges[i], prefix=prefix_level2, suffix=self.suffix, length=self.bl)
 
-            # For each event we must combine tracks and neutral hadrons, perform jet clustering on them,
+            # For each event we must collect inputs to jet clustering, perform the clustering on them,
             # select a single jet (based on user criteria), and select that jet's leading constituents.
             for j in range(ranges[i]):
                 self.ResetDataContainers()
@@ -347,7 +341,8 @@ class Processor:
 
     def InitFastJet(self):
         import fastjet as fj # hacky, but will work because SetupFastJet() was run in __init__()
-        fj.ClusterSequence.print_banner() # Get the Fastjet banner out of the way.
+        # Print the FastJet banner -- it's unavoidable (other packages don't do this!).
+        fj.ClusterSequence.print_banner()
         jet_config = self.configurator.GetJetConfig()
         jetdef = fj.JetDefinition(fj.antikt_algorithm, jet_config['jet_radius'])
         return jet_config,jetdef

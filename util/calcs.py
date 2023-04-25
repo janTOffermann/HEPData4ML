@@ -88,7 +88,8 @@ class Calculator:
         p = np.linalg.norm([px,py,pz])
         eta = np.arctanh(pz/p)
         phi = np.arctan2(py,px)
-        m = np.sqrt(np.square(e) - np.square(p))
+        m2 = np.square(e) - np.square(p)
+        m = np.sign(m2) * np.sqrt(np.abs(m2))
         v = np.array([pt,eta,phi,m],dtype=np.dtype('f8'))
         if(transpose): return v.T
         return v
