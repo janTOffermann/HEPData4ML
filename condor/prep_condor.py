@@ -67,22 +67,6 @@ def main(args):
         comm = ['cp','-r',file,tmp_dir + '/payload/'] # -r flag since some of these are directories
         sub.check_call(comm)
 
-    # # We will also try to ship the local fastjet installation, if it is present.
-    # # Specifically we will ship the source code if it was downloaded.
-    # # We will not do this for Delphes because it's less clear to me how source/install
-    # # are separated.
-    # include_fastjet = False
-    # fastjet_dir = glob.glob('{}/../fastjet'.format(this_dir))
-    # if(len(fastjet_dir) > 0):
-    #     fastjet_dir = fastjet_dir[0]
-    #     include_fastjet = True
-
-    # if(include_fastjet):
-    #     print('Including fastjet source code in payload...')
-    #     os.makedirs('{}/payload/fastjet'.format(tmp_dir))
-    #     comm = ['cp','-r',fastjet_dir + '/fastjet-3.4.0','{}/payload/fastjet'.format(tmp_dir)]
-    #     sub.check_call(comm)
-
     sub.check_call(['tar','-cjf','payload.tar.bz2','payload'],cwd=tmp_dir)
     sub.check_call(['mv','{}/payload.tar.bz2'.format(tmp_dir),rundir])
     sub.check_call(['rm','-r',tmp_dir])

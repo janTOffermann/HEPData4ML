@@ -30,7 +30,7 @@ class Tracer:
         self.progress_bar_length = 50
         self.progress_bar_prefix = '\tTracing daughter particles:'
         self.progress_bar_suffix = 'Complete'
-        self.key_prefix = 'energy_ratio'
+        self.SetKeyPrefix('energy_ratio')
 
     def SetKeyPrefix(self,val):
         self.key_prefix = val
@@ -159,9 +159,9 @@ class Tracer:
 
         f = h5.File(output_file,'a')
         if(verbose): print('Writing {} to {}.'.format(key_truth,output_file))
-        d = f.create_dataset(key,data=self.GetEnergyRatioTruth(),compression='gzip',compression_opts=copts)
+        d = f.create_dataset(key_truth,data=self.GetEnergyRatioTruth(),compression='gzip',compression_opts=copts)
         if(verbose): print('Writing {} to {}.'.format(key_smeared,output_file))
-        d = f.create_dataset(key,data=self.GetEnergyRatioSmeared(),compression='gzip',compression_opts=copts)
+        d = f.create_dataset(key_smeared,data=self.GetEnergyRatioSmeared(),compression='gzip',compression_opts=copts)
         f.close()
         return output_file
 
