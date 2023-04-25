@@ -19,6 +19,12 @@ def float_to_str(value):
     value_str = value_str.replace('.',',')
     return re.sub(',0$','',value_str)
 
+# def PrintFastJetBanner():
+#     import fastjet as fj # hacky, but will work after FastJetSetup was run!
+#     fj.ClusterSequence.print_banner() # Get the Fastjet banner out of the way.
+#     return
+
+
 def main(args):
     parser = ap.ArgumentParser()
     parser.add_argument('-n',          '--nevents',           type=int,          required=True,            help='Number of events per pt bin.')
@@ -72,7 +78,6 @@ def main(args):
     pythia_config = args['pythia_config']
     debug = args['debug'] > 0
 
-
     if(pt_bin_edges is not None and pt_bin_edges_string is not None):
         print('Warning: Both "ptbins" and "ptbins_string" arguments were given. Using the "ptbins" argument.')
 
@@ -100,6 +105,18 @@ def main(args):
     # Configurator class, used for fetching information from our config file.
     config_dictionary = config.config
     configurator = Configurator(config_dictionary=config_dictionary)
+
+    # Set up FastJet -- we will need this later on (except for the special use case of no jet clustering!).
+    # To keep our printouts clean, we are initializing FastJet here instead of later on in a loop, so that
+    # we can get the FastJet banner printout out of the way. We remove the banner with some ANSI printing
+    # hackery, since it's really not useful and clutters up our printout (we acknowledge the use in the
+    # documentation, having this unavoidable printout for a single package's use is quite gratuitous).
+    print()
+    dummy_processor = Processor(configurator)
+    line_up = '\033[1A'
+    line_clear = '\x1b[2K'
+    for i in range(13):
+        print(line_up, end=line_clear)
 
     # Setting the verbosity for the HDF5 conversion.
     # If there are many events it might take a bit, so some printout
@@ -206,9 +223,9 @@ def main(args):
             delphes_file = hep_file.replace('.hepmc','.root')
             delphes_wrapper = DelphesWrapper(configurator.GetDelphesDirectory())
             delphes_wrapper.PrepDelphes() # will download/build Delphes if necessary
-            if(verbose and i == 0):
-                print('Running Delphes on HepMC files.')
-                print('Delphes executable: {}'.format(delphes_wrapper.GetExecutable()))
+            print('Running DelphesHepMC3: {} -> {}.'.format(hep_file,delphes_file))
+            if(i == 0):
+                print('\tDelphes executable: {}'.format(delphes_wrapper.GetExecutable()))
 
             delphes_file = delphes_wrapper.HepMC3ToDelphes(hepmc_file=hep_file, output_file=delphes_file, cwd=outdir, delphes_card=delphes_card)
             jet_files.append(delphes_file)
@@ -315,7 +332,7 @@ def main(args):
     AddEventIndices(h5_file,cwd=outdir,copts=compression_opts)
 
     # Remove any failed events (e.g. detector-level events with no jets passing cuts).
-    print('\tRemoving any failed events from file {}. These may be events where there weren\'t any jets passing the requested cuts.'.format('/'.join((outdir,h5_file))))
+    print('\tRemoving any failed events from file {}.\n\tThese may be events where there weren\'t any jets passing the requested cuts.'.format('/'.join((outdir,h5_file))))
     RemoveFailedFromHDF5(h5_file,cwd=outdir)
 
     # TODO: Might want to think about offering the ability to split the HepMC3 and Delphes files too?
