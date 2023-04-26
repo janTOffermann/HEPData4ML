@@ -33,17 +33,27 @@ mv config.py config/config.py
 outdir_local="output_${10}"
 
 # Run the generation.
-python run.py -n $1 -p_s $2 -O ${outdir_local} -s $3 -ns $4 -h5 $5 -rng $6 -pb 1 --split $7 -cd 1 -pc $8 # will have to put in a bunch of user options.
+python run.py -n $1 -p_s $2 -O ${outdir_local} -s $3 -ns $4 -h5 $5 -rng $6 -pb 1 --split $7 -cd 1 -pc $8 -df 1 # will have to put in a bunch of user options.
 
 # Compress the output and extract it.
 outname="output.tar.bz2"
 tar -cjf ${outname} ${outdir_local}
-rm -r ${outdir_local}
 
-# Ship the output.
+# Ship the output tarball.
 python copy_output.py -i ${outname} -e "tar.bz2" -o ${9} -n ${10}
 
+# Additionally, ship the full event HDF5 file(s).
+# This is technically redundant but might save us some time, since we don't need to unpack all the job output for them.
+if [ "${7}" == "1" ]; then
+  python copy_output.py -i ${outdir_local}/train.h5 -e "h5" -o ${9} -n ${10}
+  python copy_output.py -i ${outdir_local}/test.h5  -e "h5" -o ${9} -n ${10}
+  python copy_output.py -i ${outdir_local}/valid.h5 -e "h5" -o ${9} -n ${10}
+else
+  python copy_output.py -i ${outdir_local}/events.h5 -e "h5" -o ${9} -n ${10}
+fi
+
 # Cleanup. Not strictly necessary.
+rm -r ${outdir_local}
 rm ${outname}
 rm *.py
 rm -r util
