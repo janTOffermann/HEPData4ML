@@ -158,42 +158,16 @@ class Tracer:
         else: sub.check_call(['cp',h5_file,output_file])
 
         f = h5.File(output_file,'a')
-        if(verbose): print('Writing {} to {}.'.format(key_truth,output_file))
+        if(self.verbose): print('\tWriting {} to {}.'.format(key_truth,output_file))
         d = f.create_dataset(key_truth,data=self.GetEnergyRatioTruth(),compression='gzip',compression_opts=copts)
-        if(verbose): print('Writing {} to {}.'.format(key_smeared,output_file))
+        if(self.verbose): print('\tWriting {} to {}.'.format(key_smeared,output_file))
         d = f.create_dataset(key_smeared,data=self.GetEnergyRatioSmeared(),compression='gzip',compression_opts=copts)
         f.close()
         return output_file
 
 def Process(h5_file,delphes_file,indices_file,output_file=None,verbose=False):
-    tracer = Tracer()
-    tracer.SetH5EventFile(h5_file)
-    tracer.SetDelphesFile(delphes_file)
-    tracer.SetIndicesFile(indices_file)
-    tracer.SetVerbosity(verbose)
-    tracer.Process()
-
-    # Get the ratio of true daughter particle energy, versus the total energy deposited in the Delphes Tower.
-    # Since the numerator is total true energy, and not deposited/measured energy, this ratio can be larger than 1!
-    energy_ratio_truth = tracer.GetEnergyRatioSmeared()
-
-    replace_h5 = False
-    if(output_file is None):
-        output_file = h5_file.replace('.h5','_proc.h5')
-
-    if(output_file == h5_file):
-        replace_h5 = True
-
-    if(not replace_h5):
-        sub.check_call(['cp',h5_file,output_file])
-
-    f = h5.File(output_file,'a')
-    key = 'energy_ratio_truth'
-    copts = 9
-    d = f.create_dataset(key,data=energy_ratio_truth,compression='gzip',compression_opts=copts)
-    f.close()
-
-    return output_file
+    tracer = Tracer(verbose)
+    return tracer(delphes_file,h5_file,indices_file,output_file,verbose)
 
 # Main function lets this be run as an executable, which may be a useful feature to have.
 # Ideally this is set up so that it can be automatically run by the main generation script (run.py).
