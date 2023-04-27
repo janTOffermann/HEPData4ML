@@ -21,8 +21,8 @@ config = {
     'rng' : 1, # Pythia8 RNG seed
     'delphes' : False, # Whether or not to use Delphes
     'delphes_card' : None, # path to the Delphes card to use. If None, will use the ATLAS Delphes card that ships with Delphes
-    'delphes_dir' : None, # path to Delphes install directory. If None, will download and build Delphes locally, and use that.
-    'fastjet_dir' : None, # path to Fastjet install directory -- must have the Python extension! If None, will download and build Fastjet locally, and use that.
+    'delphes_dir' : '/cvmfs/sft.cern.ch/lcg/releases/delphes/3.5.1pre05-775ca/x86_64-centos7-gcc11-opt' ,# directory containing the Delphes installation. If None, will be build in a local directory "delphes".
+    'fastjet_dir' : '/home/jaofferm/HEPData4ML/fastjet',
     'jet_radius': 0.8, # jet radius in (eta,phi). Jets currently all use anti-kt algorithm.
     'jet_min_pt': 15., # minimum pT cut, GeV
     'jet_max_eta': 2., # absolute value eta cut
@@ -31,7 +31,7 @@ config = {
     # 'event_filter' : None, # if not using any event filter
     'event_filter' : eventfilter.MultiFilter( # multi-filter -- applies filters (cuts) sequentially, if an event fails a filter we generate another to replace it
         [
-            eventfilter.PtMatchedJetFilter(0.8,selections['t->Wb'],pt_window_frac=0.01,pt_min_jet=15.,eta_max_jet=2.), # require jet pT to match top pT closely
+            eventfilter.PtMatchedJetFilter(0.8,selections['t->Wb'],pt_window_frac=0.005,pt_min_jet=15.,eta_max_jet=2.), # require jet pT to match top pT closely
             eventfilter.ContainedJetFilter(0.8,selections['t->Wb'],selections['bqq'],matching_radius=0.6,pt_min_jet=15.,eta_max_jet=2.), # require W(qq) & b within 0.6 of jet centroid
             eventfilter.ContainedJetFilter(0.8,selections['t->Wb'],selections['t daughters'],pt_threshold_frac=0.01,pt_min_jet=15.,eta_max_jet=2.) # require all stable t daughters within jet, except for those which carry < 1% of total pT
         ]
@@ -43,15 +43,15 @@ config = {
     'jet_selection':jetsel.GetNearestJet(truth_code=6,max_dr=0.8),
     'signal_flag' : 1, # What to provide as the "signal_flag" for these events. (relevant if combining datasets). Must be >= 0.
     'post_processing': [
-        tracing.Tracer(verbose=True), # Delphes tracing, computes the "W daughteriness" of Delphes detector towers
+        # tracing.Tracer(verbose=True), # Delphes tracing, computes the "W daughteriness" of Delphes detector towers
         truth_sum.TruthParticleSum(np.arange(5,125),0.8,verbose=True), # produce 4-vector sum of W daughters within the jet cone
         rotate.Rotation(2,1,['Pmu'],verbose=True), # create rotated copies of 4-vectors
-        containment.Containment([3,4],jet_distance=0.8,containment_key='jet_W_contained',max_dr_key='jet_qq_dr_max',verbose=True), # compute W containment
+        containment.Containment([3,4],  jet_distance=0.8,containment_key='jet_W_contained',  max_dr_key='jet_qq_dr_max', verbose=True), # compute W containment
         containment.Containment([1,3,4],jet_distance=0.8,containment_key='jet_top_contained',max_dr_key='jet_bqq_dr_max',verbose=True), # compute top containment
     ],
     'record_final_state_indices' : True, # Whether or not to record jet constituents' indices w.r.t. the order they were passed to jet clustering (order of particles in HepMC file, or order of Delphes objects if using Delphes).
     'split_seed' : 1, # seed to be used for the RNG when splitting dataset into train/test/validation samples
-    'use_vectorcalcs' : False # whether or not to use the VectorCalcs C++/ROOT library (which is part of this repo). May speed up some computations, but can lead to issues if there's a problem with the ROOT build (e.g. CVMFS/LCG_103 seems to cause issues)
+    'use_vectorcalcs' : True # whether or not to use the VectorCalcs C++/ROOT library (which is part of this repo). May speed up some computations, but can lead to issues if there's a problem with the ROOT build (e.g. CVMFS/LCG_103 seems to cause issues)
 }
 
 # Don't adjust the lines below.

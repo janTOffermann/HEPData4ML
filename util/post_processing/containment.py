@@ -85,7 +85,7 @@ class Containment:
             truth_Pmu = self.truth_Pmu[i][self.truth_indices < self.truth_Nobj[i]] # masking to get rid of any empty entries
             jet_Pmu = self.jet_Pmu_cyl[i]
             truth_Pmu_cyl = self.calculator.PxPyPzEToPtEtaPhiM(*np.roll(truth_Pmu,-1,axis=1).T)
-            dr2 = self.calculator.DeltaR2Vectorized(truth_Pmu_cyl[:,1:3],np.expand_dims(jet_Pmu[1:3],0)).flatten()
+            dr2 = self.calculator.DeltaR2Vectorized(truth_Pmu_cyl[:,1:3],np.expand_dims(jet_Pmu[1:3],0)).flatten() # [1:3] gets (eta,phi)
             max_dr = np.sqrt(np.max(dr2))
             self.max_dr[i] = max_dr
             if(max_dr < self.jet_distance): self.containment[i] = True

@@ -10,8 +10,8 @@ class VectorCalcsManager:
         self.verbose = verbose
         self.lib_extensions = ['so','dylib']
         self.build_script = 'build.sh'
-        self.script_dir = os.path.realpath(os.path.dirname(os.path.realpath(__file__)) + '/root')
-        self.cmake_template = self.script_dir + '/cmake_template/CMakeLists.txt'
+        self.script_dir = os.path.realpath(os.path.dirname(os.path.realpath(__file__)) + '/root/vcalcs')
+        self.cmake_template = self.script_dir + '/../cmake_templates/CMakeLists_vectorcalcs.txt'
         self.status = False
 
     def FullPreparation(self,force=False):
@@ -70,8 +70,8 @@ class VectorCalcsManager:
         # Note that we *also* need to fetch some include files -- this has something to do with using the ROOT interpreter.
         # Also note that we have multiple library paths -- to allow for Linux/macOS compatibility.
         # TODO: Is there a more elegant workaround for this?
-        custom_lib_paths = [os.path.realpath(os.path.dirname(os.path.realpath(__file__)) + '/root/vectorcalcs/build/lib/libVectorCalcs.{}'.format(x)) for x in self.lib_extensions]
-        custom_inc_paths = os.path.realpath(os.path.dirname(os.path.realpath(__file__)) + '/root/vectorcalcs/build/include/vectorcalcs')
+        custom_lib_paths = [os.path.realpath(os.path.dirname(os.path.realpath(__file__)) + '/root/vcalcs/vectorcalcs/build/lib/libVectorCalcs.{}'.format(x)) for x in self.lib_extensions]
+        custom_inc_paths = os.path.realpath(os.path.dirname(os.path.realpath(__file__)) + '/root/vcalcs/vectorcalcs/build/include/vectorcalcs')
         custom_inc_paths = glob.glob(custom_inc_paths + '/**/*.h',recursive=True)
 
         # Check for any of the libraries.
