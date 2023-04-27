@@ -6,14 +6,6 @@ import numpy as np
 from util.calcs import Calculator
 from util.fastjet import FastJetSetup
 
-# # --- FASTJET IMPORT ---
-# # TODO: Can this be done more nicely?
-# fastjet_dir = BuildFastjet(j=8)
-# fastjet_dir = glob.glob('{}/**/site-packages'.format(fastjet_dir),recursive=True)[0]
-# if(fastjet_dir not in sys.path): sys.path.append(fastjet_dir)
-# import fastjet as fj
-# # ----------------------
-
 class MultiFilter:
     """
     A class for combining multiple event filters.
