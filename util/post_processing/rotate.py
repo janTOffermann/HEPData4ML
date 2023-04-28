@@ -15,6 +15,7 @@ class Rotation:
         self.SetTruthIndices(truth_idx_1,truth_idx_2)
         self.SetRotationKeyExpressions(rotation_keys)
         self.SetExclusionKeyExpressions(exclusion_keys)
+        self.configurator = None
         self.print_prefix = '\n\tRotation'
         self.progress_bar_length = 50
         self.progress_bar_prefix = '\tProducing rotated copies of four-vectors:'
@@ -59,6 +60,9 @@ class Rotation:
 
     def GetRotatedData(self):
         return self.data_to_rotate # only will be rotated after running Process()
+
+    def SetConfigurator(self,configurator):
+        self.configurator = configurator
 
     def Initialize(self): # TODO: May want to consider chunking things and using a buffer? Memory usage will scale better for larger files.
         """

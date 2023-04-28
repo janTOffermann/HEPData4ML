@@ -1,7 +1,6 @@
 # The purpose of this code is to rotate four-vectors spatially, using two given
 # truth-level 4-vectors as a reference (for how to rotate things).
 # This may be useful for visualizations of the data.
-import re
 import subprocess as sub
 import numpy as np
 import h5py as h5
@@ -17,7 +16,8 @@ class Containment:
         self.SetJetDistance(jet_distance)
         self.SetContainmentKey(containment_key)
         self.SetMaxDeltaRKey(max_dr_key)
-        self.calculator = Calculator(use_vectorcalcs=False) # for now, default to false instead of having to take in the configurator
+        self.configurator = None
+        self.calculator = None
 
         self.print_prefix = '\n\tContainment'
         self.progress_bar_length = 50
@@ -62,6 +62,7 @@ class Containment:
         """
         Reads in the input HDF5 file, and places the required arrays in memory.
         """
+        self.calculator = Calculator(use_vectorcalcs=self.configurator.GetUseVectorCalcs())
         f = h5.File(self.h5_file,'r')
         self.truth_Pmu = f['truth_Pmu'][:,self.truth_indices,:] # can have some zeros, if a particular event doesn't have a particle at an index in self.truth_indices
         self.truth_Nobj = f['truth_Nobj'][:]
@@ -72,6 +73,9 @@ class Containment:
         self.max_dr = np.zeros(self.nevents,dtype=np.dtype('f8'))
         self.status = True
         f.close()
+
+    def SetConfigurator(self,configurator):
+        self.configurator = configurator
 
     def Process(self):
         self.Initialize()

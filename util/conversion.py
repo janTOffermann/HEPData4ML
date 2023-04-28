@@ -619,6 +619,7 @@ class Processor:
 
         for post_proc in self.post_processing:
             if(post_proc is None): continue
+            post_proc.SetConfigurator(self.configurator)
             for i in range(nfiles):
                 # truth_file = None
                 h5_file = None

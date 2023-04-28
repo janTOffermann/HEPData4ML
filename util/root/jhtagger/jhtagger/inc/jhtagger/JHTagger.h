@@ -20,12 +20,12 @@
 using namespace std;
 namespace JHTagger{
 
-  class JohnnyTwoJets{
+  class JohnnyTagger{
     public:
-      JohnnyTwoJets(){};
-      JohnnyTwoJets(Double_t delta_p, Double_t delta_r, Double_t cos_theta_w_max);
-      JohnnyTwoJets(Double_t delta_p, Double_t delta_r, Double_t cos_theta_w_max, Double_t top_mass_min, Double_t top_mass_max, Double_t W_mass_min, Double_t W_mass_max);
-      ~JohnnyTwoJets();
+      JohnnyTagger(){};
+      JohnnyTagger(Double_t delta_p, Double_t delta_r, Double_t cos_theta_w_max);
+      JohnnyTagger(Double_t delta_p, Double_t delta_r, Double_t cos_theta_w_max, Double_t top_mass_min, Double_t top_mass_max, Double_t W_mass_min, Double_t W_mass_max);
+      ~JohnnyTagger();
 
       // Setters.
       void SetJetDeltaR(Double_t value){_R = value;};
