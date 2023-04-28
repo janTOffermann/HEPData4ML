@@ -25,8 +25,9 @@ class Tracer:
         self.SetVerbosity(verbose)
         self.energy_ratio_truth = None
         self.energy_ratio_smeared = None
-        self.print_prefix = '\n\tTracer'
+        self.configurator = None
 
+        self.print_prefix = '\n\tTracer'
         self.progress_bar_length = 50
         self.progress_bar_prefix = '\tTracing daughter particles:'
         self.progress_bar_suffix = 'Complete'
@@ -55,6 +56,9 @@ class Tracer:
 
     def RequiresIndexing(self):
         return True
+
+    def SetConfigurator(self,configurator):
+        self.configurator = configurator
 
     def Initialize(self): # TODO: May want to consider chunking things and using a buffer? Memory usage will scale better for larger files.
         """

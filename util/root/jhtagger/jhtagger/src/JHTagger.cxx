@@ -7,7 +7,7 @@ using namespace std;
 
 namespace JHTagger{
 
-  JohnnyTwoJets::JohnnyTwoJets(Double_t delta_p, Double_t delta_r, Double_t cos_theta_w_max){
+  JohnnyTagger::JohnnyTagger(Double_t delta_p, Double_t delta_r, Double_t cos_theta_w_max){
     SetDeltaP(delta_p);
     SetDeltaR(delta_r);
     SetCosThetaWMax(cos_theta_w_max);
@@ -15,7 +15,7 @@ namespace JHTagger{
     return;
   }
 
-  JohnnyTwoJets::JohnnyTwoJets(Double_t delta_p, Double_t delta_r, Double_t cos_theta_w_max,Double_t top_mass_min, Double_t top_mass_max, Double_t W_mass_min, Double_t W_mass_max){
+  JohnnyTagger::JohnnyTagger(Double_t delta_p, Double_t delta_r, Double_t cos_theta_w_max,Double_t top_mass_min, Double_t top_mass_max, Double_t W_mass_min, Double_t W_mass_max){
     SetDeltaP(delta_p);
     SetDeltaR(delta_r);
     SetCosThetaWMax(cos_theta_w_max);
@@ -25,18 +25,18 @@ namespace JHTagger{
     return;
   }
 
-  JohnnyTwoJets::~JohnnyTwoJets(){
+  JohnnyTagger::~JohnnyTagger(){
     delete _vec;
     delete _tagger;
     delete _jetdef;
   }
 
-  void JohnnyTwoJets::InitializeCamAachAlgo(){
+  void JohnnyTagger::InitializeCamAachAlgo(){
     _jetdef = new fastjet::JetDefinition(fastjet::cambridge_algorithm,_R);
     return;
   }
 
-  void JohnnyTwoJets::CreateTagger(){
+  void JohnnyTagger::CreateTagger(){
     _tagger = new fastjet::JHTopTagger(_delta_p,_delta_r,_cos_theta_w_max);
     _tagger->set_top_selector(fastjet::SelectorMassRange(_top_mass_min,_top_mass_max));
     _tagger->set_W_selector(fastjet::SelectorMassRange(_W_mass_min,_W_mass_max));
@@ -45,7 +45,7 @@ namespace JHTagger{
     InitializeCamAachAlgo();
   }
 
-  void JohnnyTwoJets::TagJet(fastjet::PseudoJet jet){
+  void JohnnyTagger::TagJet(fastjet::PseudoJet jet){
     fastjet::PseudoJet top_candidate = _tagger->operator()(jet);
     delete _vec; // TODO: Is this necessary? My C++ is rusty but I wonder if constantly assigning "_vec = new ..." I have introduced a memory leak.
     _vec = 0;
@@ -61,7 +61,7 @@ namespace JHTagger{
     }
   }
 
-  void JohnnyTwoJets::TagJet(std::vector<Double_t> E, std::vector<Double_t> px, std::vector<Double_t> py, std::vector<Double_t> pz){
+  void JohnnyTagger::TagJet(std::vector<Double_t> E, std::vector<Double_t> px, std::vector<Double_t> py, std::vector<Double_t> pz){
     Size_t n = E.size();
 
     std::vector<fastjet::PseudoJet> particles;
@@ -77,7 +77,7 @@ namespace JHTagger{
     return TagJet(jet);
   }
 
-  std::vector<Double_t> JohnnyTwoJets::GetWCandidateConstituentsProperty(TString property){
+  std::vector<Double_t> JohnnyTagger::GetWCandidateConstituentsProperty(TString property){
     std::vector<Double_t> values = {};
     for(fastjet::PseudoJet vec : _vec_constituents){
       if(property.EqualTo("E")) values.push_back(vec.E());
@@ -90,7 +90,7 @@ namespace JHTagger{
       else if(property.EqualTo("m")) values.push_back(vec.m());
       else if(property.EqualTo("y")) values.push_back(vec.rapidity());
       else{
-        std::cout << Form("Error: Property \"%s\" passed to JohnnyTwoJets::GetWCandidateConstituentsProperty not understood",property.Data()) << std::endl;
+        std::cout << Form("Error: Property \"%s\" passed to JohnnyTagger::GetWCandidateConstituentsProperty not understood",property.Data()) << std::endl;
         break;
       }
 

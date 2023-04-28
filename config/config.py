@@ -8,6 +8,7 @@ import util.post_processing.tracing as tracing
 import util.post_processing.truth_sum as truth_sum
 import util.post_processing.rotate as rotate
 import util.post_processing.containment as containment
+import util.post_processing.jh_tagging as jh_tagging
 import config.selectors as s
 
 selections = s.selections
@@ -19,7 +20,7 @@ config = {
     'isr' : False, # Pythia8 initial-state radiation flag
     'fsr' : False, # Pythia8 final-state radiation flag
     'rng' : 1, # Pythia8 RNG seed
-    'delphes' : False, # Whether or not to use Delphes
+    'delphes' : True, # Whether or not to use Delphes
     'delphes_card' : None, # path to the Delphes card to use. If None, will use the ATLAS Delphes card that ships with Delphes
     'delphes_dir' : '/cvmfs/sft.cern.ch/lcg/releases/delphes/3.5.1pre05-775ca/x86_64-centos7-gcc11-opt' ,# directory containing the Delphes installation. If None, will be build in a local directory "delphes".
     'fastjet_dir' : '/home/jaofferm/HEPData4ML/fastjet',
@@ -43,7 +44,8 @@ config = {
     'jet_selection':jetsel.GetNearestJet(truth_code=6,max_dr=0.8),
     'signal_flag' : 1, # What to provide as the "signal_flag" for these events. (relevant if combining datasets). Must be >= 0.
     'post_processing': [
-        # tracing.Tracer(verbose=True), # Delphes tracing, computes the "W daughteriness" of Delphes detector towers
+        tracing.Tracer(verbose=True), # Delphes tracing, computes the "W daughteriness" of Delphes detector towers
+        jh_tagging.JHTagger(2,120,True),
         truth_sum.TruthParticleSum(np.arange(5,125),0.8,verbose=True), # produce 4-vector sum of W daughters within the jet cone
         rotate.Rotation(2,1,['Pmu'],verbose=True), # create rotated copies of 4-vectors
         containment.Containment([3,4],  jet_distance=0.8,containment_key='jet_W_contained',  max_dr_key='jet_qq_dr_max', verbose=True), # compute W containment

@@ -12,6 +12,7 @@ import numpy as np
 import h5py as h5
 from util.calcs import Calculator
 import util.qol_utils.qol_util as qu
+from util.config import Configurator
 
 class TruthParticleSum:
     def __init__(self,truth_indices=[],jet_distance=0.8,verbose=False):
@@ -19,6 +20,8 @@ class TruthParticleSum:
         self.SetVerbosity(verbose)
         self.SetTruthIndices(truth_indices)
         self.SetJetDistance(jet_distance)
+        self.configurator = None
+        self.calculator = None
         self.calculator = Calculator(use_vectorcalcs=False) # for now, default to false instead of having to take in the configurator
 
         self.print_prefix = '\n\tTruthParticleSum'
@@ -51,10 +54,14 @@ class TruthParticleSum:
     def GetPmuSum(self):
         return self.pmu_sum
 
+    def SetConfigurator(self,configurator):
+        self.configurator = configurator
+
     def Initialize(self): # TODO: May want to consider chunking things and using a buffer? Memory usage will scale better for larger files.
         """
         Reads in the input HDF5 file, and places the required arrays in memory.
         """
+        self.calculator = Calculator(use_vectorcalcs=self.configurator.GetUseVectorCalcs())
         f = h5.File(self.h5_file,'r')
         self.truth_Pmu = f['truth_Pmu'][:,self.truth_indices,:] # can have some zeros, if a particular event doesn't have a particle at an index in self.truth_indices
         self.truth_Nobj = f['truth_Nobj'][:]
