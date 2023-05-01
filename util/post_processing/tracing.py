@@ -64,6 +64,14 @@ class Tracer:
         """
         Reads in files, and places the relevant information in memory.
         """
+
+        # Check if Delphes generation is on. If not, we will presumably run into some issues because Delphes files are not produced,
+        # so we should disable this post-processing.
+        if(not self.configurator.GetDelphesConfig()):
+            print('Error: Delphes option is turned off in config. Skipping Tracer.')
+            self.status = False
+            return
+
         if(self.h5_file is None):
             self.status = False
             return
@@ -158,16 +166,17 @@ class Tracer:
         key_truth = '{}_truth'.format(self.key_prefix)
         key_smeared = '{}_smeared'.format(self.key_prefix)
 
-        if(output_file is None): output_file = h5_file
-        else: sub.check_call(['cp',h5_file,output_file])
-
-        f = h5.File(output_file,'a')
-        if(self.verbose): print('\tWriting {} to {}.'.format(key_truth,output_file))
-        d = f.create_dataset(key_truth,data=self.GetEnergyRatioTruth(),compression='gzip',compression_opts=copts)
-        if(self.verbose): print('\tWriting {} to {}.'.format(key_smeared,output_file))
-        d = f.create_dataset(key_smeared,data=self.GetEnergyRatioSmeared(),compression='gzip',compression_opts=copts)
-        f.close()
-        return output_file
+        if(self.status):
+            if(output_file is None): output_file = h5_file
+            else: sub.check_call(['cp',h5_file,output_file])
+            f = h5.File(output_file,'a')
+            if(self.verbose): print('\tWriting {} to {}.'.format(key_truth,output_file))
+            d = f.create_dataset(key_truth,data=self.GetEnergyRatioTruth(),compression='gzip',compression_opts=copts)
+            if(self.verbose): print('\tWriting {} to {}.'.format(key_smeared,output_file))
+            d = f.create_dataset(key_smeared,data=self.GetEnergyRatioSmeared(),compression='gzip',compression_opts=copts)
+            f.close()
+            return output_file
+        return h5_file
 
 def Process(h5_file,delphes_file,indices_file,output_file=None,verbose=False):
     tracer = Tracer(verbose)

@@ -783,7 +783,7 @@ def ConcatenateH5(input_files,output_file,cwd=None,delete_inputs=False, compress
         for f in input_files:
             sub.check_call(['rm',f])
 
-def MergeStatsInfo(h5_file, stats_file, cwd=None, delete_stats_file=False, compression='gzip',copts=7):
+def MergeStatsInfo(h5_file, stats_file, cwd=None, delete_stats_file=False, compression='gzip',copts=9):
     if(cwd is not None):
         h5_file = '{}/{}'.format(cwd,h5_file)
         stats_file = '{}/{}'.format(cwd,stats_file)
@@ -805,8 +805,11 @@ def MergeStatsInfo(h5_file, stats_file, cwd=None, delete_stats_file=False, compr
         sub.check_call(['rm',stats_file])
     return
 
-# Remove any "failed events". They will have been marked with a negative signal flag.
-def RemoveFailedFromHDF5(h5_file, cwd=None, copts=7):
+def RemoveFailedFromHDF5(h5_file, cwd=None, copts=9):
+    """
+    Remove any failed events from the HDF5 file -- these are identified
+    as those with a negative value in the "is_signal" dataset.
+    """
     if(cwd is not None): h5_file = '{}/{}'.format(cwd,h5_file)
 
     fname_tmp = h5_file.replace('.h5','_{}.h5'.format(str(uuid.uuid4())))
@@ -832,15 +835,84 @@ def RemoveFailedFromHDF5(h5_file, cwd=None, copts=7):
     return
 
 # Add a column with event indices.
-def AddEventIndices(h5_file, cwd=None, copts=7):
+def AddEventIndices(h5_file,cwd=None,copts=9,key='event_idx'):
+    """
+    Add a dataset with event indices to an HDF5 file. This is a sequential index,
+    which may be useful if some entries will later be dropped and one wants to
+    keep track of which events these were.
+    """
     if(cwd is not None): h5_file = '{}/{}'.format(cwd,h5_file)
     f = h5.File(h5_file,'r+')
     nevents = f['is_signal'].shape[0]
     event_indices = np.arange(nevents,dtype=int)
     f.create_dataset('event_idx',data=event_indices, compression='gzip', compression_opts=copts)
+    f.close()
 
-# Split an HDF5 file into training, testing and validation samples.
+def AddConstantValue(h5_file,cwd=None,copts=9,value=0,key='constant_value',dtype=None):
+    """
+    Add a dataset with some constant value to the HDF5 file. In practice this can
+    be used to attach metadata to events -- like the Pythia8 RNG seed that was used.
+    This may become useful when multiple datasets are combined.
+    """
+    if(cwd is not None): h5_file = '{}/{}'.format(cwd,h5_file)
+    f = h5.File(h5_file,'r+')
+    nevents = f['is_signal'].shape[0]
+
+    if(dtype is None): dtype = np.dtype('f8')
+    if(dtype != str):
+        data = np.full((nevents),value)
+    else:
+        data = nevents * [value]
+    f.create_dataset(key,data=data,compression='gzip',compression_opts=copts)
+    f.close()
+
+def AddMetaData(h5_file,cwd=None,value='',key='metadata'):
+    """
+    Generic function for adding a value to the HDF5 file
+    metadata container.
+    """
+    if(cwd is not None): h5_file = '{}/{}'.format(cwd,h5_file)
+    f = h5.File(h5_file,'r+')
+    f.attrs[key] = value
+    f.close()
+
+# def AddMetaDataWithReference(h5_file,cwd=None,value='',key_base='metadata',copts=9):
+#     if(cwd is not None): h5_file = '{}/{}'.format(cwd,h5_file)
+#     f = h5.File(h5_file,'r+')
+#     nevents = f['is_signal'].shape[0]
+#     # Look for similar keys -- we will use key_base to construct a numbered key, the number
+#     # will be used to mark events. This will help when combining different files.
+#     counter = 0
+#     key = '{}_{}'.format(key_base,counter)
+#     while(key in list(f.attrs.keys())):
+#         counter += 1
+#         key = '{}_{}'.format(key_base,counter)
+#     f.attrs[key] = value
+#     f.create_dataset(key_base,data=np.full(nevents,counter,dtype=np.dtype('i4')),compression='gzip',compression_opts=copts)
+#     f.close()
+
+def AddMetaDataWithReference(h5_file,cwd=None,value='',key='metadata',copts=9):
+    """
+    Adds an entry to the metadata -- if under an existing key, appends it to the list at that key.
+    Also creates a column in the dataset that will point to this metadata's index.
+    Somewhat redundant for file generation but this type of logic will be useful when concatenating files
+    with different entries in the metadata fields.
+    """
+    if(cwd is not None): h5_file = '{}/{}'.format(cwd,h5_file)
+    f = h5.File(h5_file,'r+')
+    nevents = f['is_signal'].shape[0]
+    metadata = f.attrs
+    if(key not in metadata.keys()): f.attrs[key] = [value]
+    else: f.attrs[key] = list(f.attrs[key]) + [value] # I think the list <-> array stuff should be OK here
+    idx = len(f.attrs[key]) - 1
+    f.create_dataset(key,data=np.full(nevents,idx,dtype=np.dtype('i4')),compression='gzip',compression_opts=copts)
+    f.close()
+
 def SplitH5(h5_file, split_ratio = (7,2,1), train_name=None, val_name=None, test_name=None, cwd=None, copts=9,verbose=False, seed=0):
+    """
+    Split an HDF5 file into training, testing and validation samples.
+    The split is random (with the RNG seed provided).
+    """
     if(cwd is not None): h5_file = '{}/{}'.format(cwd,h5_file)
     file_dir = '/'.join(h5_file.split('/')[:-1])
 

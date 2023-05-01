@@ -1,17 +1,25 @@
-import sys,os,pathlib,time,datetime,re
+import sys,os,pathlib,time,datetime,re,shlex,uuid
+import numpy as np
 import argparse as ap
 import subprocess as sub
 from util.generation import Generator
 from util.delphes import DelphesWrapper
-from util.conversion import Processor, RemoveFailedFromHDF5, SplitH5, AddEventIndices, ConcatenateH5, MergeStatsInfo
+from util.conversion import Processor, RemoveFailedFromHDF5, SplitH5, AddEventIndices, ConcatenateH5, MergeStatsInfo, AddConstantValue, AddMetaDataWithReference
 from util.hepmc import CompressHepMC
-from util.config import Configurator
+from util.config import Configurator,GetConfigFileContent
 import config.config as config
 
 def none_or_str(value): # see https://stackoverflow.com/a/48295546
     if value == 'None':
         return None
     return value
+
+def get_git_revision_short_hash(): # see https://stackoverflow.com/a/21901260
+    try:
+        result = sub.check_output(['git', 'rev-parse', '--short', 'HEAD']).decode('ascii').strip()
+    except:
+        result = 'NO_GIT_HASH'
+    return result
 
 # Convenience function for file naming
 def float_to_str(value):
@@ -49,6 +57,9 @@ def main(args):
     args = vars(parser.parse_args())
 
     start_time = time.time()
+
+    # Produce a random identifier for this dataset.
+    unique_id = '{}-{}'.format(str(uuid.uuid4()),str(uuid.uuid4())) # concat should be unnecessary, chance of two uuid4's matching is already practically zero...
 
     nevents_per_bin = args['nevents']
     pt_bin_edges = args['ptbins']
@@ -328,6 +339,16 @@ def main(args):
     # Remove any failed events (e.g. detector-level events with no jets passing cuts).
     print('\tRemoving any failed events from file {}.\n\tThese may be events where there weren\'t any jets passing the requested cuts.'.format('/'.join((outdir,h5_file))))
     RemoveFailedFromHDF5(h5_file,cwd=outdir)
+
+    # Now, add some metadata to the file -- we will add this to individual events instead of an HDF5 metadata object, to make it easy when combining files.
+    # TODO: Is there a a better way to handle this
+    AddConstantValue(h5_file,cwd=outdir,value=configurator.GetPythiaRNGSeed(),key='pythia_random_seed',dtype=np.dtype('i8')) # Add the Pythia8 RNG seed. Not as metadata since it is storing an int either way.
+    AddMetaDataWithReference(h5_file,cwd=outdir,value=" ".join(map(shlex.quote, sys.argv[1:])),                   key='command_line_arguments') # Add the command line arguments.
+    AddMetaDataWithReference(h5_file,cwd=outdir,value='\n'.join(GetConfigFileContent()),                          key='config_file'           ) # Add the full config file a string.
+    AddMetaDataWithReference(h5_file,cwd=outdir,value=start_time,                                                 key='timestamp'             ) # Add the epoch time for the start of generation.
+    AddMetaDataWithReference(h5_file,cwd=outdir,value=time.strftime('%Y-%m-%d %H:%M:%S',time.gmtime(start_time)), key='timestamp_string'      ) # Add the epoch time for the start of generation, as a string.
+    AddMetaDataWithReference(h5_file,cwd=outdir,value=unique_id,                                                  key='unique_id'             ) # A unique random string to identify this dataset.
+    AddMetaDataWithReference(h5_file,cwd=outdir,value=get_git_revision_short_hash(),                              key='git_hash'              ) # Git hash for the data generation code.
 
     # TODO: Might want to think about offering the ability to split the HepMC3 and Delphes files too?
     #       Could be useful for certain post-processing where we need to access those files, and we

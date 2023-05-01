@@ -6,6 +6,14 @@ def Bool2String(bool):
     if(bool): return 'on'
     return 'off'
 
+# Function for fetching the config.py file as a string.
+def GetConfigFileContent():
+    config_file = os.path.realpath(os.path.dirname(os.path.realpath(__file__)) + '/../config/config.py') # assuming relative location is fixed
+    with open(config_file,'r') as f:
+        lines = f.readlines()
+    lines = [x.strip().strip('\n') for x in lines]
+    return lines
+
 class Configurator:
     def __init__(self,config_dictionary):
         self.config=config_dictionary
@@ -48,6 +56,9 @@ class Configurator:
     #     pythia_config['Next:numberShowProcess'] = '2'
     #     pythia_config['Next:numberShowEvent'] = '2'
         return pythia_config
+
+    def GetPythiaRNGSeed(self):
+        return self.config['rng']
 
     def GetTruthSelection(self):
         return self.config['truth_selection']
