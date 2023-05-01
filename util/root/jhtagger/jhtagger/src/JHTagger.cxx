@@ -90,10 +90,9 @@ namespace JHTagger{
       else if(property.EqualTo("m")) values.push_back(vec.m());
       else if(property.EqualTo("y")) values.push_back(vec.rapidity());
       else{
-        std::cout << Form("Error: Property \"%s\" passed to JohnnyTagger::GetWCandidateConstituentsProperty not understood",property.Data()) << std::endl;
+        cout << Form("Error: Property \"%s\" passed to JohnnyTagger::GetWCandidateConstituentsProperty not understood",property.Data()) << endl;
         break;
       }
-
     }
     return values;
   }

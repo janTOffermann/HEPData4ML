@@ -145,7 +145,8 @@ class JHTopTagger:
         self.status = self.tagger.GetStatus()
         self.w_candidate = None
         if(self.status):
-            self.w_candidate = self.tagger.GetWCandidate()
+            w = self.tagger.GetWCandidate() # Fastjet::PseudoJet (C++ type, PyROOT seems to handle interface here!)
+            self.w_candidate = np.array([w.e(),w.px(),w.py(),w.pz()]) # TODO: Can this array return be handled by the C++/ROOT class?
         return
 
     def GetStatus(self):
@@ -156,10 +157,13 @@ class JHTopTagger:
 
     def GetWCandidateConstituents(self):
         if(not self.status): return None
-        n = self.tagger.GetWCandidateNConstituents()
+        # n = self.tagger.GetWCandidateNConstituents() #TODO: Why does n seem to be 1 too small in some tests?
+        # if(n == 0):
+        #     return None
+        pt = np.array(self.tagger.GetWCandidateConstituentsProperty("pt")) # used for ordering
+        n = pt.shape[0]
         if(n == 0):
             return None
-        pt = np.array(self.tagger.GetWCandidateConstituentsProperty("pt")) # used for ordering
         ordering = np.argsort(-pt)
         vecs = np.zeros((n,4))
         vecs[:,0] = np.array(self.tagger.GetWCandidateConstituentsProperty("E"))[ordering]

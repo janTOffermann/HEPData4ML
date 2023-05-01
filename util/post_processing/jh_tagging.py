@@ -80,16 +80,17 @@ class JHTagger:
 
         for i in range(self.nevents):
             if(self.is_signal[i] < 0): continue
-            self.jh_tag[i] = self.tagger.TagEvent(self.Pmu[i])
+            self.tagger.TagEvent(self.Pmu[i])
+            self.jh_tag[i] = self.tagger.GetStatus()
 
             if(self.jh_tag[i]):
                 self.jh_W_pmu[i] = self.tagger.GetWCandidate()
                 constituents = self.tagger.GetWCandidateConstituents()
-                self.jh_W_pred_nobj[i] = np.min(constituents.shape[0],self.w_nobj_max)
+                self.jh_W_pred_nobj[i] = np.minimum(constituents.shape[0],self.w_nobj_max)
                 self.jh_W_pred_constituents[i,:self.jh_W_pred_nobj[i],:] = constituents
 
-                W_cyl = self.calculator.PxPyPzEToPtEtaPhiM(*np.roll(self.truth_Pmu[i]),-1) # roll to get (E,px,py,pz) -> (px,py,pz,E) for the function signature
-                W_pred_cyl = self.calculator.PxPyPzEToPtEtaPhiM(*np.roll(self.jh_W_pmu[i],-1))
+                W_cyl      = self.calculator.EPxPyPzToPtEtaPhiM_single(*self.truth_Pmu[i])
+                W_pred_cyl = self.calculator.EPxPyPzToPtEtaPhiM_single(*self.jh_W_pmu[i])
                 self.jh_pt_pred[i] = W_pred_cyl[0]
                 self.jh_m_pred[i]  = W_pred_cyl[-1]
                 self.jh_pt_res[i] = W_pred_cyl[0]  / W_cyl[0]
