@@ -346,7 +346,7 @@ def main(args):
     AddMetaDataWithReference(h5_file,cwd=outdir,value=" ".join(map(shlex.quote, sys.argv[1:])),                   key='command_line_arguments') # Add the command line arguments.
     AddMetaDataWithReference(h5_file,cwd=outdir,value='\n'.join(GetConfigFileContent()),                          key='config_file'           ) # Add the full config file a string.
     AddMetaDataWithReference(h5_file,cwd=outdir,value=start_time,                                                 key='timestamp'             ) # Add the epoch time for the start of generation.
-    AddMetaDataWithReference(h5_file,cwd=outdir,value=time.strftime('%Y-%m-%d %H:%M:%S',time.gmtime(start_time)), key='timestamp_string'      ) # Add the epoch time for the start of generation, as a string.
+    AddMetaDataWithReference(h5_file,cwd=outdir,value=time.strftime('%Y-%m-%d %H:%M:%S',time.gmtime(start_time)), key='timestamp_string_utc'  ) # Add the epoch time for the start of generation, as a string.
     AddMetaDataWithReference(h5_file,cwd=outdir,value=unique_id,                                                  key='unique_id'             ) # A unique random string to identify this dataset.
     AddMetaDataWithReference(h5_file,cwd=outdir,value=get_git_revision_short_hash(),                              key='git_hash'              ) # Git hash for the data generation code.
 
