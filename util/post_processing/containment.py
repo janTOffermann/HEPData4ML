@@ -109,6 +109,7 @@ class Containment:
             print('\tWriting {} and {} to {}.'.format(self.containment_key,self.max_dr_key, output_file))
         f = h5.File(output_file,'a')
         d = f.create_dataset(self.containment_key,data=self.GetContainment(),compression='gzip',compression_opts=copts)
-        d = f.create_dataset(self.max_dr_key,data=self.GetMaxDeltaR(),compression='gzip',compression_opts=copts)
+        if(self.max_dr_key is not None):
+            d = f.create_dataset(self.max_dr_key,data=self.GetMaxDeltaR(),compression='gzip',compression_opts=copts)
         f.close()
         return output_file
