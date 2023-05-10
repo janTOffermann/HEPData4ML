@@ -121,14 +121,16 @@ class ContainedJetFilter:
     - Require there to be a jet within some dR of a particular truth particle (identified by its index in the truth selection).
     - Require all the stable daughters of a particular truth particle -- above some pT threshold -- to be within that jet's radius.
     """
-    def __init__(self,jet_radius,truth_selector, daughter_selector,matching_radius=None, pt_threshold=None, pt_threshold_frac=None, pt_min_jet=None, eta_max_jet=None):
+    def __init__(self,jet_radius,truth_selector, daughter_selector,matching_radius=None, pt_threshold=None, pt_threshold_sum=None, pt_threshold_frac=None, pt_min_jet=None, eta_max_jet=None):
         self.SetJetRadius(jet_radius)
         self.SetTruthSelector(truth_selector) # index of truth particle we want the jet to be close to
         if(matching_radius is None): matching_radius = jet_radius
         if(pt_threshold is None): pt_threshold = 0.
         self.SetDaughterPtThreshold(pt_threshold) # daughter particles with pT below this value (GeV) are allowed to not be contained
         self.pt_threshold_frac_mode = False
+        self.pt_threshold_sum_mode = False
         self.SetDaughterPtThresholdFraction(pt_threshold_frac)
+        self.SetDaughterPtThresholdSum(pt_threshold_sum)
         self.configurator = None
 
         if(self.pt_threshold != 0. and self.pt_threshold_frac_mode):
@@ -169,7 +171,15 @@ class ContainedJetFilter:
 
     def SetDaughterPtThresholdFraction(self,val):
         self.pt_threshold_frac = val
-        if(val is not None): self.pt_threshold_frac_mode = True
+        if(val is not None):
+            self.pt_threshold_frac_mode = True
+            self.pt_threshold_sum_mode = False
+
+    def SetDaughterPtThresholdSum(self,val):
+        self.pt_threshold_sum = val
+        if(val is not None):
+            self.pt_threshold_sum_mode = True
+            self.pt_threshold_frac_mode = False
 
     def __call__(self,pythia_wrapper,final_state_indices):
         import fastjet as fj
@@ -215,6 +225,22 @@ class ContainedJetFilter:
         # Get the distances between the selected jet and each daughter particle.
         daughters_eta_phi = np.array([[pythia_wrapper.GetEta(x),pythia_wrapper.GetPhi(x)] for x in daughter_particles])
         daughters_pt = np.array([pythia_wrapper.GetPt(x) for x in daughter_particles])
+
+        # If we use the "sum mode", we check the pT of the sum of uncontained daughters versus the threshold.
+        if(self.pt_threshold_sum_mode):
+            d2 = np.array([self.calculator.DeltaR2(*daughter,jet_eta,jet_phi) for daughter in daughters_eta_phi])
+            mask = d2 > np.square(self.matching_radius)
+            uncontained_daughters = daughter_particles[mask]
+
+            if(len(uncontained_daughters) == 0): return True
+
+            else:
+                # do a 4-vector sum -- just need to get the pT so we only need total px and py
+                uncontained_sum = np.sum(np.array([pythia_wrapper.GetPxPyPzE(x) for x in uncontained_daughters]),axis=0)
+                uncontained_pt = np.linalg.norm(uncontained_sum[:2],ord=2)
+
+            if(uncontained_pt > self.pt_threshold_sum): return False
+            return True
 
         if(self.pt_threshold_frac_mode):
             daughter_sum = np.sum(np.array([pythia_wrapper.GetPxPyPzE(x) for x in daughter_particles]),axis=0)
