@@ -912,6 +912,9 @@ def SplitH5(h5_file, split_ratio = (7,2,1), train_name=None, val_name=None, test
     """
     Split an HDF5 file into training, testing and validation samples.
     The split is random (with the RNG seed provided).
+    Note that this copies over the full metadata, though with the splitting
+    it is technically possible that one of the files has some metadata
+    entries with no corresponding events.
     """
     if(cwd is not None): h5_file = '{}/{}'.format(cwd,h5_file)
     file_dir = '/'.join(h5_file.split('/')[:-1])
@@ -970,6 +973,8 @@ def SplitH5(h5_file, split_ratio = (7,2,1), train_name=None, val_name=None, test
                 # Putting the data from f into memory (numpy array)
                 # since h5py doesn't like non-ordered indices.
                 g.create_dataset(key, data=f[key][:][indices[i]],compression='gzip', compression_opts=copts)
+        for key in list(f.attrs.keys()):
+            g.attrs[key] = f.attrs[key]
         g.close()
     f.close()
 
