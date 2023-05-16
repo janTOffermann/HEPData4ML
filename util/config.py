@@ -31,6 +31,12 @@ class Configurator:
             assert(False)
         return template_file
 
+    def GetPythiaConfigFileContents(self):
+        filepath = self.GetPythiaConfigFile()
+        with open(filepath,'r') as f:
+            contents = f.readlines()
+        return ''.join(contents)
+
     # Get the Pythia configuration, for a single pT bin, as a dictionary.
     # This dictionary will only control a few settings (MPI, ISR/FSR etc.),
     # while the process settings from the 'proc' entry of config will be

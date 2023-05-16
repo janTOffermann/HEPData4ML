@@ -876,21 +876,6 @@ def AddMetaData(h5_file,cwd=None,value='',key='metadata'):
     f.attrs[key] = value
     f.close()
 
-# def AddMetaDataWithReference(h5_file,cwd=None,value='',key_base='metadata',copts=9):
-#     if(cwd is not None): h5_file = '{}/{}'.format(cwd,h5_file)
-#     f = h5.File(h5_file,'r+')
-#     nevents = f['is_signal'].shape[0]
-#     # Look for similar keys -- we will use key_base to construct a numbered key, the number
-#     # will be used to mark events. This will help when combining different files.
-#     counter = 0
-#     key = '{}_{}'.format(key_base,counter)
-#     while(key in list(f.attrs.keys())):
-#         counter += 1
-#         key = '{}_{}'.format(key_base,counter)
-#     f.attrs[key] = value
-#     f.create_dataset(key_base,data=np.full(nevents,counter,dtype=np.dtype('i4')),compression='gzip',compression_opts=copts)
-#     f.close()
-
 def AddMetaDataWithReference(h5_file,cwd=None,value='',key='metadata',copts=9):
     """
     Adds an entry to the metadata -- if under an existing key, appends it to the list at that key.
@@ -932,7 +917,7 @@ def SplitH5(h5_file, split_ratio = (7,2,1), train_name=None, val_name=None, test
         test_name = '{}/{}'.format(cwd,test_name)
 
     if(verbose):
-        print("\n\t###############")
+        print("\n\t" + 15*"#")
         print('\t### SplitH5 ###')
         print('\tInput: {}'.format(h5_file))
         print('\tOutputs:')
@@ -979,5 +964,5 @@ def SplitH5(h5_file, split_ratio = (7,2,1), train_name=None, val_name=None, test
     f.close()
 
     if(verbose):
-        print("\t###############\n")
+        print("\t" + 15*"#" + "\n")
     return
