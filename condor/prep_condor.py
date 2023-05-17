@@ -53,23 +53,23 @@ def main(args):
 
     # Prepare the code.
     this_dir = os.path.dirname(os.path.abspath(__file__))
-    include_files = [
-        '{}/../config'.format(this_dir), # Note that we will ship the config.py file separately so that it can be easily modified!
-        '{}/../util'.format(this_dir),
-        '{}/../setup'.format(this_dir),
-        '{}/../run.py'.format(this_dir),
-    ]
+    # include_files = [
+    #     '{}/../config'.format(this_dir), # Note that we will ship the config.py file separately so that it can be easily modified!
+    #     '{}/../util'.format(this_dir),
+    #     '{}/../setup'.format(this_dir),
+    #     '{}/../run.py'.format(this_dir),
+    # ]
 
-    tmp_dir = 'dir_'.format(rundir) + str(uuid.uuid4())
-    os.makedirs(tmp_dir + '/payload',exist_ok=True)
+    # tmp_dir = 'dir_'.format(rundir) + str(uuid.uuid4())
+    # os.makedirs(tmp_dir + '/payload',exist_ok=True)
 
-    for file in include_files:
-        comm = ['cp','-r',file,tmp_dir + '/payload/'] # -r flag since some of these are directories
-        sub.check_call(comm)
+    # for file in include_files:
+    #     comm = ['cp','-r',file,tmp_dir + '/payload/'] # -r flag since some of these are directories
+    #     sub.check_call(comm)
 
-    sub.check_call(['tar','-cjf','payload.tar.bz2','payload'],cwd=tmp_dir)
-    sub.check_call(['mv','{}/payload.tar.bz2'.format(tmp_dir),rundir])
-    sub.check_call(['rm','-r',tmp_dir])
+    # sub.check_call(['tar','-cjf','payload.tar.bz2','payload'],cwd=tmp_dir)
+    # sub.check_call(['mv','{}/payload.tar.bz2'.format(tmp_dir),rundir])
+    # sub.check_call(['rm','-r',tmp_dir])
 
     # We also ship the config.py file separately so that it can be easily modified outside the payload.
     # There is one inside the payload too but it will be overwritten by this one within the job.
