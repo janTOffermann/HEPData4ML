@@ -15,8 +15,9 @@ def none_or_str(value): # see https://stackoverflow.com/a/48295546
     return value
 
 def get_git_revision_short_hash(): # see https://stackoverflow.com/a/21901260
+    cwd = os.path.dirname(os.path.abspath(__file__))
     try:
-        result = sub.check_output(['git', 'rev-parse', '--short', 'HEAD']).decode('ascii').strip()
+        result = sub.check_output(['git', 'rev-parse', '--short', 'HEAD'],cwd=cwd).decode('ascii').strip()
     except:
         result = 'NO_GIT_HASH'
     return result
