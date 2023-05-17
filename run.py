@@ -58,6 +58,8 @@ def main(args):
 
     start_time = time.time()
 
+    print(os.getcwd())
+
     # Produce a random identifier for this dataset.
     unique_id = str(uuid.uuid4())
     unique_id_short = str(uuid.uuid4())[:5] # a second, shorter random string -- probably more convenient to use, at the risk of a higher collision rate
@@ -153,7 +155,8 @@ def main(args):
             f.write('{} = {}\n'.format(key,val))
 
     # Also copy the configuration file, it is currently always config/config.py.
-    comm = ['cp','config/config.py','{}/config.py'.format(outdir)]
+    this_dir = os.path.dirname(os.path.abspath(__file__))
+    comm = ['cp','{}/config/config.py'.format(this_dir),'{}/config.py'.format(outdir)]
     sub.check_call(comm)
 
     if(do_generation):
