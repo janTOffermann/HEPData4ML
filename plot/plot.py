@@ -1,4 +1,4 @@
-import sys,os,glob,uuid
+import sys,os
 import numpy as np
 import ROOT as rt
 import h5py as h5
@@ -8,10 +8,10 @@ import argparse as ap
 from plot_util.plot_util import RN
 
 # custom imports
-path_prefix = os.getcwd() + '/../'
+path_prefix = os.path.dirname(os.path.abspath(__file__)) + '/../'
 if(path_prefix not in sys.path): sys.path.append(path_prefix)
 from util.qol_utils.pdg import pdg_names
-from util.calcs import EPxPyPzToPtEtaPhiM
+from util.calcs import Calculator
 
 def DeltaR(vec1,vec2):
     n = vec1.shape[0]
@@ -26,11 +26,14 @@ def DeltaR(vec1,vec2):
         dr[i] = rt.Math.VectorUtil.DeltaR(rvec1,rvec2)
     return dr
 
-def SimpleHist(data,binning,title):
+def SimpleHist(data,binning,title,normalize=True):
     h = rt.TH1D(RN(),title,*binning)
     for entry in data:
         h.Fill(entry)
-    h.Scale(1./h.Integral())
+    if(normalize):
+        integral = h.Integral()
+        if(integral != 0.):
+            h.Scale(1./h.Integral())
     return h
 
 def Root2Plt_hist1d(h,ax,grid=True):
@@ -66,7 +69,6 @@ def SaveOutput(name,outdir):
     return
 
 def main(args):
-
     parser = ap.ArgumentParser()
     parser.add_argument('-i','--infile',type=str,help='Input HDF5 file.',required=True)
     parser.add_argument('-o','--outdir',type=str,help='Output directory.',default=None)
@@ -78,6 +80,9 @@ def main(args):
     if(outdir is None):
         outdir = os.getcwd()
     n_truth = args['ntruth']
+    os.makedirs(outdir,exist_ok=True)
+
+    calculator = Calculator(use_vectorcalcs=False)
 
     f = h5.File(infile,'r')
     keys = list(f.keys())
@@ -172,7 +177,8 @@ def main(args):
         print('Making plots for {}.'.format(particle_name))
 
         vec = truth_Pmu[:,i,:]
-        vec_cyl = np.array([EPxPyPzToPtEtaPhiM(*x) for x in vec])
+        vec_cyl = np.array([calculator.EPxPyPzToPtEtaPhiM_single(*np.roll(x,-1)) for x in vec])
+        # vec_cyl = np.array([EPxPyPzToPtEtaPhiM(*x) for x in vec])
 
         binning = (200,0.,2000.)
         title = ';{}'.format(particle_name_fancy) + ' $p_{T}$ [GeV];Fractional Count'
