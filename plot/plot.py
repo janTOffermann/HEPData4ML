@@ -60,7 +60,7 @@ def PltStatBox(h,ax):
     )
     # props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
     # ax.text(0.05,0.95,text,fontsize=14,verticalalignment='top',bbox=props)
-    anchored_text = AnchoredText(text,loc='upper right')
+    anchored_text = AnchoredText(text,loc='upper right',prop=dict(family='monospace'))
     ax.add_artist(anchored_text)
     return
 
@@ -109,7 +109,7 @@ def main(args):
     plt.clf()
 
     # Make plots of the jet kinematics
-    binning = (200,0.,2000.)
+    binning = (100,0.,1000.)
     title = ';jet $p_{T}$ [GeV];Fractional Count'
     h = SimpleHist(jet_Pmu_cyl[:,0],binning,title)
     fig,ax = plt.subplots(1,1)
@@ -169,24 +169,40 @@ def main(args):
         n_truth = len(truth_Pdg)
     truth_names = [pdg_names[x] for x in truth_Pdg]
 
+    quark_counter = 1
+    for i,truth_name in enumerate(truth_names):
+        if(truth_name in ['u','d','#bar{u}','#bar{d}']):
+            truth_names[i] = 'q_{' + str(quark_counter) + '}'
+            quark_counter += 1
+
     for i in range(n_truth):
         # if(i > 0): break
         particle_name = truth_names[i]
-        particle_name_fancy = 'truth ${}$'.format(truth_names[i])
+        has_subscript = False
+        if('_' in particle_name): has_subscript = True
+
+        if(not has_subscript):
+            particle_name_fancy = '${}'.format(truth_names[i]) + '_{truth}' + '$'
+        else:
+            particle_name_fancy = '${}'.format(truth_names[i]).replace('}',', truth}') + '$'
+            # print(particle_name_fancy)
+        particle_name_fancy = particle_name_fancy.replace('#','\\')
         vec = truth_Pmu[:,i,:]
         print('Making plots for {}.'.format(particle_name))
 
         vec = truth_Pmu[:,i,:]
-        vec_cyl = np.array([calculator.EPxPyPzToPtEtaPhiM_single(*np.roll(x,-1)) for x in vec])
+        vec_cyl = np.array([calculator.EPxPyPzToPtEtaPhiM_single(*x) for x in vec])
         # vec_cyl = np.array([EPxPyPzToPtEtaPhiM(*x) for x in vec])
 
-        binning = (200,0.,2000.)
+        binning = (100,0.,1000.)
         title = ';{}'.format(particle_name_fancy) + ' $p_{T}$ [GeV];Fractional Count'
         h = SimpleHist(vec_cyl[:,0],binning,title)
         fig,ax = plt.subplots(1,1)
+        ax.set_yscale('log')
         Root2Plt_hist1d(h,ax)
         SaveOutput('{}_pt.png'.format(particle_name),outdir)
         plt.clf()
+        plt.close()
 
         binning = (200,-2.5,2.5)
         title = ';{}'.format(particle_name_fancy) + ' $\eta$;Fractional Count'
@@ -195,6 +211,7 @@ def main(args):
         Root2Plt_hist1d(h,ax)
         SaveOutput('{}_eta.png'.format(particle_name),outdir)
         plt.clf()
+        plt.close()
 
         binning = (100,-np.pi,np.pi)
         title = ';{}'.format(particle_name_fancy) + ' $\phi$;Fractional Count'
@@ -203,34 +220,41 @@ def main(args):
         Root2Plt_hist1d(h,ax)
         SaveOutput('{}_phi.png'.format(particle_name),outdir)
         plt.clf()
+        plt.close()
 
         binning = (250,0.,250.)
         title = ';{}'.format(particle_name_fancy) + ' $m$ [GeV];Fractional Count'
         h = SimpleHist(vec_cyl[:,3],binning,title)
         fig,ax = plt.subplots(1,1)
+        ax.set_yscale('log')
         Root2Plt_hist1d(h,ax)
         SaveOutput('{}_m.png'.format(particle_name),outdir)
         plt.clf()
+        plt.close()
 
         binning = (200,0.,2000.)
         title = ';{}'.format(particle_name_fancy) + ' $E$ [GeV];Fractional Count'
         h = SimpleHist(vec[:,0],binning,title)
         fig,ax = plt.subplots(1,1)
+        ax.set_yscale('log')
         Root2Plt_hist1d(h,ax)
         SaveOutput('{}_e.png'.format(particle_name),outdir)
         plt.clf()
+        plt.close()
 
         # Also get the dR between the truth particle and the jet.
-        binning = (250,0.,5.)
+        binning = (100,0.,2.)
         title = ';$\Delta R$({}, jet)'.format(particle_name_fancy) + ';Fractional Count'
         dr = DeltaR(vec_cyl[:,1:3],jet_Pmu_cyl[:,1:3])
         h = SimpleHist(dr,binning,title)
         fig,ax = plt.subplots(1,1)
+        ax.set_yscale('log')
         Root2Plt_hist1d(h,ax)
         SaveOutput('{}_jet_dr.png'.format(particle_name),outdir)
         plt.clf()
-
         plt.close()
+
+        # plt.close()
 
     return
 
