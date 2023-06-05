@@ -16,6 +16,7 @@ def main(args):
     parser.add_argument('-pc','--pythia_config',type=str, nargs='+', default=[None],help='Path to Pythia configuration template (for setting the process).')
     parser.add_argument('-N','--Njobs',type=int,default=1,help='Number of jobs per config.')
     parser.add_argument('-sq', '--shortqueue', type=int,default=0,help='Whether or not to use the condor short queue (for UChicago Analysis Facility).')
+    parser.add_argument('-ncpu','--n_cpu',type=int,default=1,help='Number of (logical) CPU cores per job.')
     parser.add_argument('-nblas','--n_openblas',type=int,default=16,help='Sets the $OPENBLAS_NUM_THREADS variable (used for numpy multithreading). Advanced usage.')
     args = vars(parser.parse_args())
 
@@ -33,6 +34,7 @@ def main(args):
     pythia_configs = args['pythia_config']
     njobs = args['Njobs']
     short_queue = args['shortqueue'] > 0
+    ncpu = args['n_cpu']
     nblas = args['n_openblas']
 
     rundir = str(pathlib.Path(rundir).absolute())
@@ -74,6 +76,7 @@ def main(args):
     for i,line in enumerate(condor_submit_lines):
         condor_submit_lines[i] = condor_submit_lines[i].replace("$OUTDIR",outdir)
         condor_submit_lines[i] = condor_submit_lines[i].replace("$N_THREAD",str(nblas))
+        condor_submit_lines[i] = condor_submit_lines[i].replace("$N_CPU",str(ncpu))
         condor_submit_lines[i] = condor_submit_lines[i].replace('$SHORT_QUEUE',short_queue_line + '\n')
 
     condor_submit_file = '{}/condor.sub'.format(rundir)
