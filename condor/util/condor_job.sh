@@ -12,24 +12,12 @@
 # $9 Output directory (for the condor job).
 # $10 Process number (for naming the output).
 
-# # Unpack the tarball that contains our generation code.
-# tar -xjf payload.tar.bz2
-# mv payload/* ./
-# rm payload.tar.bz2
-# rm -r payload
-
 # Clone the git repo -- this is cleaner than packaging up the code with a tarball.
 git clone -b devel git@github.com:janTOffermann/HEPData4ML.git # get the development branch, maybe make this configurable?
 gitdir=HEPData4ML
 
 # Run the setup script.
 source ${gitdir}/setup/cvmfs/setup.sh
-
-# # Delete any VectorCalcs build that might've been included in the payload,
-# # it will have to be rebuilt locally based on how it's currently implemented.
-# # (the build is very quick)
-# vc_build=${gitdir}/util/root/vectorcalcs/build
-# if [ -d $vc_build ]; then rm -r $vc_build; fi
 
 # Move the config.py file into the config directory. It has been shipped as an input file separate of the payload.
 mv config.py ${gitdir}/config/config.py
@@ -61,8 +49,5 @@ rm -r ${outdir_local}
 rm ${outname}
 rm *.py
 rm -r $gitdir
-# rm -r util
-# rm -r config
-# rm -r setup
 if [ -d fastjet ]; then rm -r fastjet; fi
 if [ -d delphes ]; then rm -r delphes; fi
