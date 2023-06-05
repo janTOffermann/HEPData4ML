@@ -5,7 +5,7 @@
 ####################
 
 executable              = condor_job.sh
-arguments               = "$(job_arguments) $OUTDIR $(Process)"
+arguments               = "$(job_arguments) $OUTDIR $(Process $N_THREAD"
 initialdir              = job$(Process)
 should_transfer_files   = IF_NEEDED
 when_to_transfer_output = ON_EXIT
