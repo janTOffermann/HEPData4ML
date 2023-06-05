@@ -73,7 +73,7 @@ def main(args):
 
     for i,line in enumerate(condor_submit_lines):
         condor_submit_lines[i] = condor_submit_lines[i].replace("$OUTDIR",outdir)
-        condor_submit_lines[i] = condor_submit_lines[i].replace("$N_THREAD",nblas)
+        condor_submit_lines[i] = condor_submit_lines[i].replace("$N_THREAD",str(nblas))
         condor_submit_lines[i] = condor_submit_lines[i].replace('$SHORT_QUEUE',short_queue_line + '\n')
 
     condor_submit_file = '{}/condor.sub'.format(rundir)
