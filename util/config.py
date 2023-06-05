@@ -22,17 +22,19 @@ class Configurator:
         self.print_fastjet = True
         self.print_delphes = True
 
-    def GetPythiaConfigFile(self):
-        path_to_this = os.path.dirname(os.path.realpath(__file__))
-        proc = self.config['proc']
-        template_file = '{}/pythia_templates/{}.txt'.format(path_to_this,proc)
+    def GetPythiaConfigFile(self,filename=None):
+        if(filename is None):
+            path_to_this = os.path.dirname(os.path.realpath(__file__))
+            proc = self.config['proc']
+            template_file = '{}/pythia_templates/{}.txt'.format(path_to_this,proc)
+        else: template_file = filename
         if(not pathlib.Path(template_file).exists()):
             print('Error: Template file {} not found.'.format(template_file))
             assert(False)
         return template_file
 
-    def GetPythiaConfigFileContents(self):
-        filepath = self.GetPythiaConfigFile()
+    def GetPythiaConfigFileContents(self,filename=None):
+        filepath = self.GetPythiaConfigFile(filename)
         with open(filepath,'r') as f:
             contents = f.readlines()
         return ''.join(contents)

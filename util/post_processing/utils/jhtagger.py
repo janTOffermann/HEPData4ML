@@ -145,8 +145,11 @@ class JHTopTagger:
         self.status = self.tagger.GetStatus()
         self.w_candidate = None
         if(self.status):
-            w = self.tagger.GetWCandidate() # Fastjet::PseudoJet (C++ type, PyROOT seems to handle interface here!)
-            self.w_candidate = np.array([w.e(),w.px(),w.py(),w.pz()]) # TODO: Can this array return be handled by the C++/ROOT class?
+            try:
+                w = self.tagger.GetWCandidate() # Fastjet::PseudoJet (C++ type, PyROOT seems to handle interface here!)
+                self.w_candidate = np.array([w.e(),w.px(),w.py(),w.pz()]) # TODO: Can this array return be handled by the C++/ROOT class?
+            except:
+                self.w_candidate = np.full(4,np.nan)
         return
 
     def GetStatus(self):
@@ -166,8 +169,11 @@ class JHTopTagger:
             return None
         ordering = np.argsort(-pt)
         vecs = np.zeros((n,4))
-        vecs[:,0] = np.array(self.tagger.GetWCandidateConstituentsProperty("E"))[ordering]
-        vecs[:,1] = np.array(self.tagger.GetWCandidateConstituentsProperty("px"))[ordering]
-        vecs[:,2] = np.array(self.tagger.GetWCandidateConstituentsProperty("py"))[ordering]
-        vecs[:,3] = np.array(self.tagger.GetWCandidateConstituentsProperty("pz"))[ordering]
+        try:
+            vecs[:,0] = np.array(self.tagger.GetWCandidateConstituentsProperty("E"))[ordering]
+            vecs[:,1] = np.array(self.tagger.GetWCandidateConstituentsProperty("px"))[ordering]
+            vecs[:,2] = np.array(self.tagger.GetWCandidateConstituentsProperty("py"))[ordering]
+            vecs[:,3] = np.array(self.tagger.GetWCandidateConstituentsProperty("pz"))[ordering]
+        except:
+            vecs = np.full((n,4),np.nan)
         return vecs

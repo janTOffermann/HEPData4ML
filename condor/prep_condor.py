@@ -16,6 +16,7 @@ def main(args):
     parser.add_argument('-pc','--pythia_config',type=str, nargs='+', default=[None],help='Path to Pythia configuration template (for setting the process).')
     parser.add_argument('-N','--Njobs',type=int,default=1,help='Number of jobs per config.')
     parser.add_argument('-sq', '--shortqueue', type=int,default=0,help='Whether or not to use the condor short queue (for UChicago Analysis Facility).')
+    parser.add_argument('-nblas','--n_openblas',type=int,default=16,help='Sets the $OPENBLAS_NUM_THREADS variable (used for numpy multithreading). Advanced usage.')
     args = vars(parser.parse_args())
 
     nevents = args['nevents']
@@ -32,6 +33,7 @@ def main(args):
     pythia_configs = args['pythia_config']
     njobs = args['Njobs']
     short_queue = args['shortqueue'] > 0
+    nblas = args['n_openblas']
 
     rundir = str(pathlib.Path(rundir).absolute())
     outdir = str(pathlib.Path(outdir).absolute())
@@ -45,31 +47,15 @@ def main(args):
     ptbins_str = ','.join([str(x) for x in ptbins])
     template = '{} {} {} {} {} {} {} {}'.format(nevents,ptbins_str,sep_truth, n_sep_truth, do_h5, '{}',split,'{}') # double-quotes for silly condor argument syntax
     with open(jobs_filename,'w') as f:
-        for pythia_config in pythia_configs:
-            for i in range(njobs):
-                rng = rng_seed + i
+        rng_counter = 0
+        for i,pythia_config in enumerate(pythia_configs):
+            for j in range(njobs):
+                rng = rng_seed + rng_counter
                 command_arguments = template.format(rng,pythia_config) + '\n'
                 f.write(command_arguments)
+                rng_counter += 1
 
-    # Prepare the code.
     this_dir = os.path.dirname(os.path.abspath(__file__))
-    # include_files = [
-    #     '{}/../config'.format(this_dir), # Note that we will ship the config.py file separately so that it can be easily modified!
-    #     '{}/../util'.format(this_dir),
-    #     '{}/../setup'.format(this_dir),
-    #     '{}/../run.py'.format(this_dir),
-    # ]
-
-    # tmp_dir = 'dir_'.format(rundir) + str(uuid.uuid4())
-    # os.makedirs(tmp_dir + '/payload',exist_ok=True)
-
-    # for file in include_files:
-    #     comm = ['cp','-r',file,tmp_dir + '/payload/'] # -r flag since some of these are directories
-    #     sub.check_call(comm)
-
-    # sub.check_call(['tar','-cjf','payload.tar.bz2','payload'],cwd=tmp_dir)
-    # sub.check_call(['mv','{}/payload.tar.bz2'.format(tmp_dir),rundir])
-    # sub.check_call(['rm','-r',tmp_dir])
 
     # We also ship the config.py file separately so that it can be easily modified outside the payload.
     # There is one inside the payload too but it will be overwritten by this one within the job.
@@ -87,6 +73,7 @@ def main(args):
 
     for i,line in enumerate(condor_submit_lines):
         condor_submit_lines[i] = condor_submit_lines[i].replace("$OUTDIR",outdir)
+        condor_submit_lines[i] = condor_submit_lines[i].replace("$N_THREAD",nblas)
         condor_submit_lines[i] = condor_submit_lines[i].replace('$SHORT_QUEUE',short_queue_line + '\n')
 
     condor_submit_file = '{}/condor.sub'.format(rundir)
@@ -98,6 +85,10 @@ def main(args):
     executable = '{}/util/condor_job.sh'.format(this_dir)
     comm = ['cp',executable,rundir]
     sub.check_call(comm)
+
+    print('Prepared jobs. Using RNG seeds:')
+    print('\tstart = {}'.format(rng_seed))
+    print('\t  end = {}'.format(rng))
 
 if(__name__=='__main__'):
     main(sys.argv)

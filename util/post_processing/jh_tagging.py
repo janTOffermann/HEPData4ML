@@ -102,7 +102,7 @@ class JHTagger:
                     self.jh_W_pred_nobj[i] = np.minimum(constituents.shape[0],self.w_nobj_max)
                     self.jh_W_pred_constituents[i,:self.jh_W_pred_nobj[i],:] = constituents
                 except:
-                    self.jh_W_pred_nobj[i] = np.nan
+                    self.jh_W_pred_nobj[i] = -1
                     self.jh_W_pred_constituents[i,:,:] = np.nan
                     error_flag = True
 

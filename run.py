@@ -347,7 +347,7 @@ def main(args):
 
     # Now, add some metadata to the file -- we use the HDF5 file attributes to store lists of metadata, and create columns that reference these lists.
     # This is handled correctly by metadata.
-    AddMetaDataWithReference(h5_file,cwd=outdir,value=configurator.GetPythiaRNGSeed(),                            key='pythia_random_seed'    ) # Add the Pythia8 RNG seed. Storing this way doesn't really save space -- it's just an int -- but we'll do this for consistency with how metadata is handled.
+    AddMetaDataWithReference(h5_file,cwd=outdir,value=pythia_rng,                                                 key='pythia_random_seed'    ) # Add the Pythia8 RNG seed. Storing this way doesn't really save space -- it's just an int -- but we'll do this for consistency with how metadata is handled.
     AddMetaDataWithReference(h5_file,cwd=outdir,value=" ".join(map(shlex.quote, sys.argv[1:])),                   key='command_line_arguments') # Add the command line arguments.
     AddMetaDataWithReference(h5_file,cwd=outdir,value='\n'.join(GetConfigFileContent()),                          key='config_file'           ) # Add the full config file a string.
     AddMetaDataWithReference(h5_file,cwd=outdir,value=start_time,                                                 key='timestamp'             ) # Add the epoch time for the start of generation.
@@ -355,7 +355,7 @@ def main(args):
     AddMetaDataWithReference(h5_file,cwd=outdir,value=unique_id,                                                  key='unique_id'             ) # A unique random string to identify this dataset.
     AddMetaDataWithReference(h5_file,cwd=outdir,value=unique_id_short,                                            key='unique_id_short'       ) # A unique random string to identify this dataset. (A shorter one, at the risk of increased likelihood of collisions)
     AddMetaDataWithReference(h5_file,cwd=outdir,value=get_git_revision_short_hash(),                              key='git_hash'              ) # Git hash for the data generation code.
-    AddMetaDataWithReference(h5_file,cwd=outdir,value=configurator.GetPythiaConfigFileContents(),                 key='pythia_config'         ) # Pythia configuration (except for "\hat{p_T}", which is handled externally)
+    AddMetaDataWithReference(h5_file,cwd=outdir,value=configurator.GetPythiaConfigFileContents(pythia_config),    key='pythia_config'         ) # Pythia configuration (except for "\hat{p_T}", which is handled externally)
 
     # TODO: Might want to think about offering the ability to split the HepMC3 and Delphes files too?
     #       Could be useful for certain post-processing where we need to access those files, and we

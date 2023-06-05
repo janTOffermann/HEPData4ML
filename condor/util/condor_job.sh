@@ -11,6 +11,7 @@
 # $8 Pythia config (can be used to overwrite the builtin config file)
 # $9 Output directory (for the condor job).
 # $10 Process number (for naming the output).
+# $11 OpenBLAS max thread count (for multithreading).
 
 # Clone the git repo -- this is cleaner than packaging up the code with a tarball.
 git clone -b devel git@github.com:janTOffermann/HEPData4ML.git # get the development branch, maybe make this configurable?
@@ -18,6 +19,11 @@ gitdir=HEPData4ML
 
 # Run the setup script.
 source ${gitdir}/setup/cvmfs/setup.sh
+
+# Set the number of threads (for OpenBLAS). Might be necessary in order to deal with memory limits.
+export OPENBLAS_NUM_THREADS=$11
+export GOTO_NUM_THREADS=$11
+export OMP_NUM_THREADS=$11
 
 # Move the config.py file into the config directory. It has been shipped as an input file separate of the payload.
 mv config.py ${gitdir}/config/config.py
