@@ -23,6 +23,8 @@ class JHTagger:
         self.setup = None
         self.tagger = None
 
+        self.error = False
+
     def RequiresIndexing(self):
         return False
 
@@ -82,22 +84,49 @@ class JHTagger:
             if(self.is_signal[i] < 0): continue
             self.tagger.TagEvent(self.Pmu[i])
             self.jh_tag[i] = self.tagger.GetStatus()
+            error_flag = False
 
             if(self.jh_tag[i]):
-                self.jh_W_pmu[i] = self.tagger.GetWCandidate()
-                constituents = self.tagger.GetWCandidateConstituents()
-                self.jh_W_pred_nobj[i] = np.minimum(constituents.shape[0],self.w_nobj_max)
-                self.jh_W_pred_constituents[i,:self.jh_W_pred_nobj[i],:] = constituents
+
+                #TODO: Running into some errors on the UChicago Analysis Facility (CVMFS, with LCG_103).
+                #      "cling JIT session error: Cannot allocate memory"
+                #      Followed by crash in some line that uses a custom C++/ROOT library, like self.tagger funcs.
+                #      As a workaround we can allow this to gracefully fail, and leave output empty.
+                try: self.jh_W_pmu[i] = self.tagger.GetWCandidate()
+                except:
+                    self.jh_W_pmu[i,:] = np.nan # makes it obvious that something went wrong
+                    error_flag = True
+
+                try:
+                    constituents = self.tagger.GetWCandidateConstituents()
+                    self.jh_W_pred_nobj[i] = np.minimum(constituents.shape[0],self.w_nobj_max)
+                    self.jh_W_pred_constituents[i,:self.jh_W_pred_nobj[i],:] = constituents
+                except:
+                    self.jh_W_pred_nobj[i] = np.nan
+                    self.jh_W_pred_constituents[i,:,:] = np.nan
+                    error_flag = True
 
                 W_cyl      = self.calculator.EPxPyPzToPtEtaPhiM_single(*self.truth_Pmu[i])
-                W_pred_cyl = self.calculator.EPxPyPzToPtEtaPhiM_single(*self.jh_W_pmu[i])
-                self.jh_pt_pred[i] = W_pred_cyl[0]
-                self.jh_m_pred[i]  = W_pred_cyl[-1]
-                self.jh_pt_res[i] = W_pred_cyl[0]  / W_cyl[0]
-                self.jh_m_res[i]  = W_pred_cyl[-1] / W_cyl[-1]
+
+                try:
+                    W_pred_cyl = self.calculator.EPxPyPzToPtEtaPhiM_single(*self.jh_W_pmu[i])
+                    self.jh_pt_pred[i] = W_pred_cyl[0]
+                    self.jh_m_pred[i]  = W_pred_cyl[-1]
+                    self.jh_pt_res[i] = W_pred_cyl[0]  / W_cyl[0]
+                    self.jh_m_res[i]  = W_pred_cyl[-1] / W_cyl[-1]
+                except:
+                    W_pred_cyl = np.full(4,np.nan)
+                    self.jh_pt_pred[i] = np.nan
+                    self.jh_m_pred[i] = np.nan
+                    self.jh_pt_res[i] = np.nan
+                    self.jh_m_res[i] = np.nan
+                    error_flag = True
 
             if(self.verbose):
                 qu.printProgressBarColor(i+1,self.nevents,prefix=self.progress_bar_prefix,suffix=self.progress_bar_suffix,length=self.progress_bar_length)
+            if(error_flag and not self.error):
+                self.error = True
+                print('Warning: Encountered error in JHTagger (e.g. a cling JIT memory allocation error). Will fill JHTagger output with nan\'s.')
         return
 
     # Using a generic signature -- should consider making the various post-processors inherit from a single parent class!
