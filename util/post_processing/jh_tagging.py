@@ -126,7 +126,11 @@ class JHTagger:
                 qu.printProgressBarColor(i+1,self.nevents,prefix=self.progress_bar_prefix,suffix=self.progress_bar_suffix,length=self.progress_bar_length)
             if(error_flag and not self.error):
                 self.error = True
-                print('Warning: Encountered error in JHTagger (e.g. a cling JIT memory allocation error). Will fill JHTagger output with nan\'s.')
+                print(50*'=')
+                print('\tWarning: Encountered error in JHTagger (e.g. a cling JIT memory allocation error).')
+                print('\tWill continue, but fill JHTagger output with nan\'s.')
+                print('\tThis will have to be remedied manually -- sorry for the inconvenience.')
+                print(50*'=')
         return
 
     # Using a generic signature -- should consider making the various post-processors inherit from a single parent class!
