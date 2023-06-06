@@ -22,9 +22,11 @@ class JHTaggerSetup:
 
     def FullPreparation(self):
         self.status = False
-        self.PrepareCMake() # writes a CMakeLists.txt file with current ROOT version, based on template.
-        self.BuildJHTagger()
-        self.LoadJHTagger()
+        try: self.LoadJHTagger()
+        except:
+            self.PrepareCMake() # writes a CMakeLists.txt file with current ROOT version, based on template.
+            self.BuildJHTagger()
+            self.LoadJHTagger()
         self.status = True
         return
 
@@ -65,7 +67,7 @@ class JHTaggerSetup:
         sub.check_call(command,shell=False,cwd=self.dir,env=env,executable=self.executable,stderr=sub.DEVNULL,stdout=sub.DEVNULL)
         return
 
-    def LoadJHTagger(self):
+    def LoadJHTagger(self,quiet=False):
         # Load our custom ROOT library.
         try:
             a = rt.JHTagger
@@ -89,7 +91,7 @@ class JHTaggerSetup:
                 break
 
         if(not found_libary):
-            print('Error: The JHTagger lib has not been built!')
+            if(not quiet): print('Error: The JHTagger lib has not been built!')
             assert False
 
         for inc_path in custom_inc_paths:
