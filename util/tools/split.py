@@ -9,7 +9,7 @@ def main(args):
     parser.add_argument('-o','--output', type=str, help='Output directory.',default=None)
     parser.add_argument('-f1', '--ftrain', type=float, help='Fraction of input events for training.',required=True)
     parser.add_argument('-f2', '--ftest', type=float, help='Fraction of input events for testing',required=True)
-    parser.add_argument('-s', '--seed',type=int,help='RNG seed for shuffle before split', default=0)
+    parser.add_argument('-s', '--seed',type=int,help='RNG seed for shuffle before split', default=1)
     parser.add_argument('-c','--compression_opts',type=int,help='Compression level for h5py.',default=9)
 
     args = vars(parser.parse_args())
