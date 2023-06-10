@@ -86,7 +86,9 @@ class Calculator:
     def _EPxPyPzToPtEtaPhiM_single_numpy(self,e,px,py,pz,transpose=True):
         pt = np.linalg.norm([px,py])
         p = np.linalg.norm([px,py,pz])
-        eta = np.arctanh(pz/p)
+        if(p == 0.): eta = 0.
+        else:
+            eta = np.arctanh(pz/p)
         phi = np.arctan2(py,px)
         m2 = np.square(e) - np.square(p)
         m = np.sign(m2) * np.sqrt(np.abs(m2))
