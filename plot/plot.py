@@ -210,50 +210,73 @@ class Plotter:
         self.SavePltOutput(name)
         return
 
-    def Root2Plt_hist2d(self,h,grid=True,zmin=None,zmax=None,zlog=False,name='plot'):
+    def Plt_hist2d(self,data_x,data_y,binning_x,binning_y,title,normalize=True,name='plot'):
         """
+        Make a matplotlib 2D histogram. Would be nicer to convert from existing ROOT hist,
+        but this seems ludicrously complicated or at least totally unclear from matplotlib's documentation.
+        """
+
+        fig,ax = plt.subplots(1,1)
+
+        _,_,_,c = ax.hist2d(
+            data_x,
+            data_y,
+            (
+                np.linspace(binning_x[1],binning_x[2],binning_x[0],endpoint=True),
+                np.linspace(binning_y[1],binning_y[2],binning_y[0],endpoint=True)
+            ),
+            density=normalize
+        )
+
+        ax.set_xlabel(title.split(';')[1],family=self.props['axis_font'])
+        ax.set_ylabel(title.split(';')[2],family=self.props['axis_font'])
+
+        ax.set_facecolor(self.props['facecolor'])
+        fig.set_facecolor(self.props['background_color'])
+
+        self.PltTextBox(ax)
+        self.SavePltOutput(name)
+        plt.close()
+        return
+
+    def Root2Plt_hist2d(self,h,grid=False,zmin=None,zmax=None,zlog=False,name='plot'):
+        """
+        TODO: Do not use this for now, it is broken. Matplotlib histogram interface is terrible!
         Given a ROOT histogram (TH2), draw it using matplotlib.
         Note: We will rebin things since mpl's hist2d seems incredibly clunky and memory-intensive, at least in this use.
-        (Why is it so difficult to go from a 2D array of bin weights to a 2D histogram?)
+        (Why is it so difficult in matplotlib to go from a 2D array of bin weights to a 2D histogram??????!!!)
         """
         fig,ax = plt.subplots(1,1)
 
         nbins_x = h.GetNbinsX()
         nbins_y = h.GetNbinsY()
 
-        nbins_x = 20
-        nbins_y = 20
-
         x_vals = np.array([[h.GetXaxis().GetBinLowEdge(i+1) for i in range(nbins_x)] for j in range(nbins_y)])
         y_vals = np.array([[h.GetYaxis().GetBinLowEdge(i+1) for i in range(nbins_x)] for j in range(nbins_y)])
         weights = np.array([[h.GetBinContent(i+1,j+1) for i in range(nbins_x)] for j in range(nbins_y)])
 
-        # print(weights.shape)
-
-        # ax.imshow(weights)
-        # c = ax.pcolormesh(x_vals,y_vals,weights,shading='auto',cmap='viridis')
-        # c = ax.imshow(weights,)
+        xbins = np.array([h.GetXaxis().GetBinLowEdge(i+1) for i in range(nbins_x)] + [h.GetXaxis().GetBinLowEdge(nbins_x) + h.GetXaxis().GetBinWidth(nbins_x)])
+        ybins = np.array([h.GetYaxis().GetBinLowEdge(i+1) for i in range(nbins_y)] + [h.GetYaxis().GetBinLowEdge(nbins_y) + h.GetYaxis().GetBinWidth(nbins_y)])
+        # c = ax.imshow(weights,) # not what we want, doesn't do binning correctly (no use if bin edge info!)
+        # _,_,_,c = ax.hist2d(x_vals.flatten(),y_vals.flatten(),bins=(xbins,ybins),weights=weights.flatten(),cmap='viridis') # doesn't work, not sure why not?
+        ## pcolormesh *also* didn't work, gives no output
         # fig.colorbar(c,ax=ax)
-        ax.hist2d(x_vals.flatten(),y_vals.flatten(),bins=(len(x_vals),len(y_vals)),weights=weights.flatten(),cmap='viridis')
-        ax.colorbar()
 
         ax.set_xlabel(h.GetXaxis().GetTitle(),family=self.props['axis_font'])
         ax.set_ylabel(h.GetYaxis().GetTitle(),family=self.props['axis_font'])
-        # ax.set_zlabel(h.GetZaxis().GetTitle(),family=self.props['axis_font'])
+        # ax.set_zlabel(h.GetZaxis().GetTitle(),family=self.props['axis_font']) # doesn't work -- why not???
 
         # if(zmin is None): zmin = 1.0e-3
         # if(zmax is None): zmax = 1.0
-        # ax.set_zlim((zmin,zmax))
+        # ax.set_zlim((zmin,zmax)) # doesn't work -- why doesn't z-axis follow same conventions as x and y????
 
-        # if(zlog): ax.set_zscale('log')
+        # if(zlog): ax.set_zscale('log') # doesn't work
         if(grid): ax.grid()
-        # if(self.stat_box): self.PltStatBox(h,ax)
 
         ax.set_facecolor(self.props['facecolor'])
         fig.set_facecolor(self.props['background_color'])
 
         self.PltTextBox(ax)
-
         self.SavePltOutput(name)
         plt.close()
         return
@@ -349,6 +372,7 @@ class Plotter:
         self.RootTextBox(c)
 
         if('TH2' in h.ClassName()):
+            rt.gPad.SetLeftMargin(0.1)
             rt.gPad.SetRightMargin(0.175)
 
         c.Draw()
@@ -549,6 +573,7 @@ def main(args):
                 title = ';{};{};Count'.format(jet_titles[key],jet_titles[key_y])
             h2 = plotter.SimpleHist2D(jet_data[key_x],jet_data[key_y],binning[key_x],binning[key_y],title,normalize=normalize)
             name = 'jet_{}_vs_{}'.format(key_y,key_x)
+            plotter.Plt_hist2d(jet_data[key_x],jet_data[key_y],binning[key_x],binning[key_y],title,normalize=normalize,name=name)
             # plotter.Root2Plt_hist2d(h2,name=name,zlog=True)
             plotter.Plt2RootRelabeling(h2)
             plotter.SaveRootOutputCanvas(h2,None,name,ndim=2,draw_option='COLZ')
@@ -634,6 +659,7 @@ def main(args):
                     title = ';{};{};Count'.format(titles[key],titles[key_y])
                 h2 = plotter.SimpleHist2D(data[key_x],data[key_y],binning[key_x],binning[key_y],title,normalize=normalize)
                 name = '{}_{}_vs_{}'.format(particle_name,key_y,key_x)
+                plotter.Plt_hist2d(data[key_x],data[key_y],binning[key_x],binning[key_y],title,normalize=normalize,name=name)
                 plotter.Plt2RootRelabeling(h2)
                 plotter.SaveRootOutputCanvas(h2,None,name,ndim=2,draw_option='COLZ')
                 plotter.SaveRootOutput(h2,name,ndim=2)
@@ -647,6 +673,7 @@ def main(args):
                     title = ';{};{};Count'.format(titles[key],titles[key_y])
                 h2 = plotter.SimpleHist2D(jet_data[key_x],data[key_y],binning[key_x],binning[key_y],title,normalize=normalize)
                 name = '{}_{}_vs_jet_{}'.format(particle_name,key_y,key_x)
+                plotter.Plt_hist2d(jet_data[key_x],data[key_y],binning[key_x],binning[key_y],title,normalize=normalize,name=name)
                 plotter.Plt2RootRelabeling(h2)
                 plotter.SaveRootOutputCanvas(h2,None,name,ndim=2,draw_option='COLZ')
                 plotter.SaveRootOutput(h2,name,ndim=2)
