@@ -33,7 +33,7 @@ def main(args):
     test_name = '{}/test.h5'.format(outdir)
     valid_name = '{}/valid.h5'.format(outdir)
 
-    SplitH5(input_file,(ftrain,ftest,fvalid),train_name,valid_name,test_name,copts=compression_opts,verbose=True,seed=seed)
+    SplitH5(input_file,(ftrain,fvalid,ftest),train_name,valid_name,test_name,copts=compression_opts,verbose=True,seed=seed)
 
 if __name__ == '__main__':
     main(sys.argv)
