@@ -7,6 +7,7 @@ mpl.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.offsetbox import AnchoredText
 import argparse as ap
+from scipy.ndimage import gaussian_filter
 from plot_util.plot_util import RN
 
 # custom imports
@@ -210,7 +211,7 @@ class Plotter:
         self.SavePltOutput(name)
         return
 
-    def Plt_hist2d(self,data_x,data_y,binning_x,binning_y,title,normalize=True,name='plot'):
+    def Plt_hist2d(self,data_x,data_y,binning_x,binning_y,title,normalize=True,name='plot',smoothing=0):
         """
         Make a matplotlib 2D histogram. Would be nicer to convert from existing ROOT hist,
         but this seems ludicrously complicated or at least totally unclear from matplotlib's documentation.
@@ -218,18 +219,40 @@ class Plotter:
 
         fig,ax = plt.subplots(1,1)
 
-        _,_,_,c = ax.hist2d(
-            data_x,
-            data_y,
-            (
+        norm = mpl.colors.SymLogNorm(linthresh=1.0e-3,vmin=1.0e-4,vmax=1.0e-1)
+        if(not normalize): norm = mpl.colors.SymLogNorm(linthresh=1.0e-1)
+
+        if(smoothing > 0):
+            heatmap, xedges, yedges = np.histogram2d(
+                data_x,
+                data_y,
+                bins=(
                 np.linspace(binning_x[1],binning_x[2],binning_x[0],endpoint=True),
-                np.linspace(binning_y[1],binning_y[2],binning_y[0],endpoint=True)
-            ),
-            density=normalize
-        )
+                np.linspace(binning_y[1],binning_y[2],binning_y[0],endpoint=True),
+                ),
+                density=normalize
+            )
+            heatmap = gaussian_filter(heatmap,sigma=smoothing)
+            extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
+            c = ax.imshow(heatmap,extent=extent,origin='lower', cmap=plt.cm.jet, norm=norm)
+            ax.set_aspect('auto')
+
+        else:
+            _,_,_,c = ax.hist2d(
+                data_x,
+                data_y,
+                (
+                    np.linspace(binning_x[1],binning_x[2],binning_x[0],endpoint=True),
+                    np.linspace(binning_y[1],binning_y[2],binning_y[0],endpoint=True)
+                ),
+                density=normalize,
+                norm=norm,
+            )
 
         ax.set_xlabel(title.split(';')[1],family=self.props['axis_font'])
         ax.set_ylabel(title.split(';')[2],family=self.props['axis_font'])
+        colorbar = fig.colorbar(c,ax=ax)
+        colorbar.set_label(title.split(';')[3],family=self.props['axis_font'])
 
         ax.set_facecolor(self.props['facecolor'])
         fig.set_facecolor(self.props['background_color'])
@@ -429,6 +452,7 @@ def main(args):
     parser.add_argument('-d','--descriptor',type=str,help='String describing dataset. For multiple lines, use semicolon separation.')
     parser.add_argument('-N','--Nevents',type=int,default=-1,help='Number of events to plot (plots for the first N events). If <= 0, plots from whole dataset.')
     parser.add_argument('-s','--style',type=int,default=0)
+    parser.add_argument('-smoothing','--smoothing',type=float,default=0,help='Smoothing coefficient for 2D matplotlib plots. If <= 0, no smoothing is applied.')
     args = vars(parser.parse_args())
 
     rt.gROOT.SetBatch(True)
@@ -446,6 +470,7 @@ def main(args):
         descriptor_strings = descriptor_strings.split(';')
     nevents = args['Nevents']
     style = args['style']
+    smoothing = args['smoothing']
 
     os.makedirs(outdir,exist_ok=True)
     calculator = Calculator(use_vectorcalcs=False)
@@ -573,7 +598,7 @@ def main(args):
                 title = ';{};{};Count'.format(jet_titles[key],jet_titles[key_y])
             h2 = plotter.SimpleHist2D(jet_data[key_x],jet_data[key_y],binning[key_x],binning[key_y],title,normalize=normalize)
             name = 'jet_{}_vs_{}'.format(key_y,key_x)
-            plotter.Plt_hist2d(jet_data[key_x],jet_data[key_y],binning[key_x],binning[key_y],title,normalize=normalize,name=name)
+            plotter.Plt_hist2d(jet_data[key_x],jet_data[key_y],binning[key_x],binning[key_y],title,normalize=normalize,name=name,smoothing=smoothing)
             # plotter.Root2Plt_hist2d(h2,name=name,zlog=True)
             plotter.Plt2RootRelabeling(h2)
             plotter.SaveRootOutputCanvas(h2,None,name,ndim=2,draw_option='COLZ')
@@ -659,7 +684,7 @@ def main(args):
                     title = ';{};{};Count'.format(titles[key],titles[key_y])
                 h2 = plotter.SimpleHist2D(data[key_x],data[key_y],binning[key_x],binning[key_y],title,normalize=normalize)
                 name = '{}_{}_vs_{}'.format(particle_name,key_y,key_x)
-                plotter.Plt_hist2d(data[key_x],data[key_y],binning[key_x],binning[key_y],title,normalize=normalize,name=name)
+                plotter.Plt_hist2d(data[key_x],data[key_y],binning[key_x],binning[key_y],title,normalize=normalize,name=name,smoothing=smoothing)
                 plotter.Plt2RootRelabeling(h2)
                 plotter.SaveRootOutputCanvas(h2,None,name,ndim=2,draw_option='COLZ')
                 plotter.SaveRootOutput(h2,name,ndim=2)
@@ -673,7 +698,7 @@ def main(args):
                     title = ';{};{};Count'.format(titles[key],titles[key_y])
                 h2 = plotter.SimpleHist2D(jet_data[key_x],data[key_y],binning[key_x],binning[key_y],title,normalize=normalize)
                 name = '{}_{}_vs_jet_{}'.format(particle_name,key_y,key_x)
-                plotter.Plt_hist2d(jet_data[key_x],data[key_y],binning[key_x],binning[key_y],title,normalize=normalize,name=name)
+                plotter.Plt_hist2d(jet_data[key_x],data[key_y],binning[key_x],binning[key_y],title,normalize=normalize,name=name,smoothing=smoothing)
                 plotter.Plt2RootRelabeling(h2)
                 plotter.SaveRootOutputCanvas(h2,None,name,ndim=2,draw_option='COLZ')
                 plotter.SaveRootOutput(h2,name,ndim=2)
