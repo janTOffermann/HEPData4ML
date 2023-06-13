@@ -47,7 +47,9 @@ pdg_names = {
     521 : 'B^{+}',
     -521 : 'B^{-}',
     2212 : 'p',
-    2112 : 'n'
+    2112 : 'n',
+    -2212: '#bar{p}',
+    -2112: '#bar{n}'
 }
 
 # Map PDG codes to more convenient values, for plotting

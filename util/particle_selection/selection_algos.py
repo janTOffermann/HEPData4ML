@@ -43,9 +43,7 @@ class SelectFinalStateDaughters:
 
     def __call__(self,pythia_wrapper):
         starting_particles = self.truth_selection(pythia_wrapper)
-        # print('\nSTARTING PARTICLES: {}, {}'.format(starting_particles,type(starting_particles)))
         if(type(starting_particles) not in [list,np.ndarray]): starting_particles = [starting_particles]
-        # if(type(starting_particles) != list): starting_particles = [starting_particles]
         particles = []
         for p in starting_particles:
             gatherer = GatherStableDaughters()

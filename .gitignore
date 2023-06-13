@@ -24,9 +24,9 @@ pip-delete-this-directory.txt
 .vscode
 
 # Ignore build folders for some libraries.
-util/root/vectorcalcs/build
-delphes
-fastjet
+/util/root/vectorcalcs/build
+/delphes
+/fastjet
 
 # Ignore ROOT files, images, etc.
 *.root

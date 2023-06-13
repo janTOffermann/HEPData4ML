@@ -1,6 +1,4 @@
 import numpy as np
-import pyhepmc as pyhep
-from util.hepmc import HepMCArrayToNumpy
 
 # ==============================
 # These are particle selectors, that the user should
@@ -46,10 +44,12 @@ class FirstSelector:
         self.selection_status = True
 
         pdgid_idx  = np.where(pdgid == self.pdgid)[0]
-        status_idx = np.where(status == self.status)[0]
-
-        intersection = np.intersect1d(pdgid_idx, status_idx)
-        del pdgid_idx, status_idx
+        if(self.status is not None):
+            status_idx = np.where(status == self.status)[0]
+            intersection = np.intersect1d(pdgid_idx, status_idx)
+            del status_idx
+        else: intersection = np.copy(pdgid_idx)
+        del pdgid_idx
         if(len(intersection) == 0):
             self.selection_status = False
             return None
@@ -97,12 +97,15 @@ class BasicSelection:
 class AlgoSelection():
     def __init__(self,selection_algo,n, fixed_length=False):
         self.particle_selection_algo = selection_algo
-        self.n = n
+        self.SetN(n)
         self.fixed_length = fixed_length # whether or not this selector will always return the exact same number of particles
         self.selection_status = True
 
     def GetN(self):
         return self.n
+
+    def SetN(self,n):
+        self.n = n
 
     def GetSelectionStatus(self):
         return self.selection_status
@@ -114,7 +117,6 @@ class AlgoSelection():
         self.selection_status, particle_list = self.particle_selection_algo(pythia_wrapper)
         if(len(particle_list) > self.n and self.n > 0): particle_list = particle_list[:self.n]
         return particle_list
-        # return np.sort(particle_list)
 
 # This is a simple class for passing a list comprised of the above selectors.
 # This allows one to construct more complex particle selections, implementing multiple algorithms.
@@ -142,73 +144,20 @@ class MultiSelection:
     def __call__(self,pythia_wrapper):
         self.selection_status = True
         particle_lists = []
-        statuses = []
+        # statuses = []
         for i,selector in enumerate(self.particle_selection_list):
             particle_list = selector(pythia_wrapper)
             if(particle_list is None): particle_list = -1 # a selector failed -- the status should be reported as False
             if(type(particle_list) not in [list,np.ndarray]): particle_list = np.array(particle_list,dtype=int)
             particle_lists.append(particle_list)
-            statuses.append(selector.GetSelectionStatus())
+            individual_status = selector.GetSelectionStatus()
+            if(not individual_status):
+                self.selection_status = False
+                break
+            # statuses.append(selector.GetSelectionStatus())
 
-        if(False in statuses): self.selection_status = False
+        # if(False in statuses): self.selection_status = False
         # return np.hstack(particle_list).flatten()
         particle_list = np.hstack(particle_lists)
         if(self.enforce_unique): particle_list = np.unique(particle_list) # TODO: May have unexpected consequences for particle ordering
         return particle_list
-
-# selections = {
-#     't->Wb': [
-#         BasicSelection(22,6), # top from ttbar
-#         BasicSelection(23,5), # bottom from t -> W b
-#         BasicSelection(22,24) # W boson from t -> W b
-#     ],
-#     't->Wb_nohad': [ # TODO: Should be redundant thanks to hadronization toggle
-#         BasicSelection(22,6), # top from ttbar
-#         BasicSelection(1,5), # bottom from t -> W b
-#         BasicSelection(22,24) # W boson from t -> W b
-#     ],
-#     'Wb': [
-#         BasicSelection(23,5), # bottom from t -> W b
-#         BasicSelection(22,24) # W boson from t -> W b
-#     ],
-#     'Wb_nohad': [ # TODO: Should be redundant thanks to hadronization toggle
-#         BasicSelection(1,5), # bottom from t -> W b
-#         BasicSelection(22,24) # W boson from t -> W b
-#     ],
-#     'W': [
-#         BasicSelection(22,24) # W boson from t -> W b
-#     ],
-#     'b': [
-#         BasicSelection(23,5), # bottom from bbar production
-#     ],
-#     'bbar': [
-#         BasicSelection(23,-5), # anti-bottom from bbar production
-#     ]
-# }
-
-# # This is a basic truth particle selection class. It takes an entry from the above dictionary.
-# class TruthSelection:
-#     def __init__(self,selection,hadronization=True):
-#         self.SetHadronization(hadronization)
-#         self.selection = selection
-#         self.n = len(selection)
-#         self.fixed_length = True # By design, this selector should always return a list of truth-level particles of some fixed length.
-
-#     def SetHadronization(self,hadronization=True):
-#         self.hadronization=hadronization
-
-#     def GetN(self):
-#         return self.n
-
-#     def IsFixedLength(self):
-#         return self.fixed_length
-
-#     def __call__(self,event,return_hepmc=False):
-#         selection_list = selections[self.selection]
-#         particle_list = []
-#         for x in selection_list:
-#             x.SetHadronization(self.hadronization)
-#             particle_list.append(x(event,return_hepmc=return_hepmc))
-#         if(not return_hepmc): particle_list = np.concatenate(particle_list, axis=0)
-#         # if(not return_hepmc): particle_list = HepMCArrayToNumpy(particle_list)
-#         return particle_list
