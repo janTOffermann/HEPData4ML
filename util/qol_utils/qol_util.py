@@ -104,7 +104,7 @@ class PlotStyle:
 
         # list of matplotlib colors
         self.colors = [
-            'xkcd:medium purple', # first pass thruugh rainbow
+            'xkcd:medium purple', # first pass through rainbow
             'xkcd:periwinkle blue',
             'xkcd:aqua blue',
             'xkcd:electric lime',
