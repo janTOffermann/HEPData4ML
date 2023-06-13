@@ -195,11 +195,11 @@ class Plotter:
         ax.set_xlabel(h.GetXaxis().GetTitle(),family=self.props['axis_font'])
         ax.set_ylabel(h.GetYaxis().GetTitle(),family=self.props['axis_font'])
 
-        if(ymin is None): ymin = 1.0e-3
+        if(ymin is None): ymin = 0.
         if(ymax is None): ymax = 1.0
         ax.set_ylim((ymin,ymax))
 
-        if(ylog): ax.set_yscale('log')
+        if(ylog): ax.set_yscale('symlog',linthresh=1.0e-6)
         if(grid): ax.grid()
         if(self.stat_box): self.PltStatBox(h,ax)
 
@@ -219,7 +219,7 @@ class Plotter:
 
         fig,ax = plt.subplots(1,1)
 
-        norm = mpl.colors.SymLogNorm(linthresh=1.0e-3,vmin=1.0e-4,vmax=1.0e-1)
+        norm = mpl.colors.SymLogNorm(linthresh=1.0e-4,vmin=0.,vmax=3.0e-2)
         if(not normalize): norm = mpl.colors.SymLogNorm(linthresh=1.0e-1)
 
         if(smoothing > 0):
@@ -234,7 +234,7 @@ class Plotter:
             )
             heatmap = gaussian_filter(heatmap,sigma=smoothing)
             extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
-            c = ax.imshow(heatmap,extent=extent,origin='lower', cmap=plt.cm.jet, norm=norm)
+            c = ax.imshow(heatmap.T,extent=extent,origin='lower', cmap=plt.cm.jet, norm=norm)
             ax.set_aspect('auto')
 
         else:
@@ -490,7 +490,7 @@ def main(args):
 
     # Define a bunch of binning settings.
     binning = {
-        'n':(200,0.,200.),
+        'n':(100,0.,100.),
         'pt':(100,0.,1000.),
         'eta':(200,-2.5,2.5),
         'phi':(100,-np.pi,np.pi),
