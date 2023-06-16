@@ -111,6 +111,9 @@ class Configurator:
     def GetEventFilter(self):
         return self.config['event_filter']
 
+    def GetEventFilterFlag(self):
+        return self.config['event_filter_flag']
+
     def GetDelphesDirectory(self):
         return self.config['delphes_dir']
 

@@ -38,6 +38,16 @@ config = {
             eventfilter.ContainedJetFilter(0.8,selections['t->Wb'],selections['b daughters'],pt_threshold_sum=2.5,pt_min_jet=15.,eta_max_jet=2.) # require stable b daughters within jet -- allow som of uncontained daughters to carry off up to 2.5 GeV in pT
         ]
     ),
+    # 'event_filter_flag': None, # an event_filter algorithm, but instead of filtering out events it will simply add a boolean flag to the dataset
+    'event_filter_flag' : eventfilter.FilterFlag(
+        eventfilter.MultiFilter( # multi-filter -- applies filters (cuts) sequentially, if an event fails a filter we generate another to replace it
+            [
+                eventfilter.ContainedJetFilter(0.8,selections['t->Wb'],selections['W daughters'],pt_threshold_sum=2.5,pt_min_jet=15.,eta_max_jet=2.,matching_radius=0.8), # require stable W daughters within jet -- allow sum of uncontained daughters to carry off up to 2.5 GeV in pT
+                eventfilter.ContainedJetFilter(0.8,selections['t->Wb'],selections['b daughters'],pt_threshold_sum=2.5,pt_min_jet=15.,eta_max_jet=2.,matching_radius=0.8) # require stable b daughters within jet -- allow som of uncontained daughters to carry off up to 2.5 GeV in pT
+            ]
+        ),
+        name = 'jet_top_daughters_contained_dR08'
+    ),
     'truth_selection' : selections['t->Wb w/ qq and W daughters'],
     'final_state_selection': parsel.AlgoSelection(algos.SelectFinalState(),200),
     'event_selection' : eventsel.TruthDistanceSelection(distance=2.4, n_truth=3), # filters an event to remove some final-state particles, primarily for lowering HepMC file-size. Ideally does not affect the final output.
@@ -49,10 +59,10 @@ config = {
         jh_tagging.JHTagger(2,120,verbose=True), # Johns Hopkins top tagger -- W is in positiong 2 (used for computing prediction's resolution), gives up to 120 constituents of candidate W subjet
         truth_sum.TruthParticleSum(np.arange(5,125),0.8,verbose=True), # produce 4-vector sum of W daughters within the jet cone
         rotate.Rotation(2,1,['Pmu'],verbose=True), # create rotated copies of 4-vectors
-        containment.Containment([3,4],  jet_distance=0.8,containment_key='jet_W_contained_dR08',  max_dr_key='jet_qq_dr_max', verbose=True), # compute W containment, using jet radius
-        containment.Containment([1,3,4],jet_distance=0.8,containment_key='jet_top_contained_dR08',max_dr_key='jet_bqq_dr_max',verbose=True), # compute top containment, using jet radius
-        containment.Containment([3,4],  jet_distance=0.6,containment_key='jet_W_contained_dR06',  max_dr_key=None, verbose=True), # compute W containment, using 0.75 * jet radius
-        containment.Containment([1,3,4],jet_distance=0.6,containment_key='jet_top_contained_dR06',max_dr_key=None,verbose=True), # compute top containment, using 0.75 * jet radius
+        containment.Containment([3,4],  jet_distance=0.8,containment_key='jet_qq_contained_dR08',  max_dr_key='jet_qq_dr_max', verbose=True), # compute W containment, using jet radius
+        containment.Containment([1,3,4],jet_distance=0.8,containment_key='jet_bqq_contained_dR08',max_dr_key='jet_bqq_dr_max',verbose=True), # compute top containment, using jet radius
+        containment.Containment([3,4],  jet_distance=0.6,containment_key='jet_qq_contained_dR06',  max_dr_key=None, verbose=True), # compute W containment, using 0.75 * jet radius
+        containment.Containment([1,3,4],jet_distance=0.6,containment_key='jet_bqq_contained_dR06',max_dr_key=None,verbose=True), # compute top containment, using 0.75 * jet radius
     ],
     'record_final_state_indices' : True, # Whether or not to record jet constituents' indices w.r.t. the order they were passed to jet clustering (order of particles in HepMC file, or order of Delphes objects if using Delphes).
     'split_seed' : 1, # seed to be used for the RNG when splitting dataset into train/test/validation samples

@@ -631,6 +631,37 @@ class Processor:
                 post_proc(fs_file,h5_file,idx_file)
         return
 
+    def MergeEventFilterFlag(self,h5_file,event_filter_flag_files,copts=9):
+        if(type(event_filter_flag_files) not in [list,tuple]):
+            event_filter_flag_files = [event_filter_flag_files]
+        f = h5.File('{}/{}'.format(self.outdir,h5_file),'a')
+        keys = list(f.keys())
+
+        try:
+            g = [h5.File('{}/{}'.format(self.outdir,x),'r') for x in event_filter_flag_files]
+        except:
+            pass
+            f.close()
+            return
+
+        gkeys = list(g[0].keys())
+
+        keys_to_merge = []
+        for key in gkeys:
+            if(key in keys):
+                print('\tWarning: Found key {} among the event_filter_flag keys, but this matches an existing key in the dataset. Skipping.'.format(key))
+                continue
+            keys_to_merge.append(key)
+
+        for key in keys_to_merge:
+            data = np.concatenate([x[key][:] for x in g],axis=0)
+            f.create_dataset(key,data=data,compression='gzip',compression_opts=copts)
+
+        f.close()
+        for x in g:
+            x.close()
+        return
+
     def ExtractHepMCEvents(self,files,get_nevents=False, silent=False):
         events = []
         nevents = 0
