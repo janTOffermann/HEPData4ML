@@ -17,6 +17,11 @@ authors:
     family-names: Liu
     email: xiaoyang1@uchicago.edu
     affiliation: University of Chicago
+  - given-names: Timothy
+    family-names: Hoffman
+    email: hoffmant@uchicago.edu
+    affiliation: University of Chicago
+    orcid: 'https://orcid.org/0000-0002-8580-3034'
 identifiers:
   - type: url
     value: 'https://github.com/janTOffermann/HEPData4ML'
