@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from matplotlib.offsetbox import AnchoredText
 import argparse as ap
 from scipy.ndimage import gaussian_filter
-from plot_util.plot_util import RN
+from plot_util.plot_util import RN,MetaDataHandler
 
 # custom imports
 path_prefix = os.path.dirname(os.path.abspath(__file__)) + '/../'
@@ -28,30 +28,6 @@ def DeltaR(vec1,vec2):
         rvec2.SetCoordinates(0.,*vec2[i],0.)
         dr[i] = rt.Math.VectorUtil.DeltaR(rvec1,rvec2)
     return dr
-
-class MetaDataHandler:
-    def __init__(self,filenames):
-        files = [h5.File(x,'r') for x in filenames]
-        attrs_list = [dict(x.attrs).copy() for x in files]
-
-        # Now merge the dictionary is attrs_list
-        self.attrs = {}
-        keys = [list(x.keys()) for x in attrs_list]
-        keys = list(set([j for i in keys for j in i]))
-
-        for key in keys:
-            self.attrs[key] = []
-            for attrs in attrs_list:
-                self.attrs[key].append(attrs[key])
-
-            self.attrs[key] = np.unique(np.concatenate(self.attrs[key],axis=0))
-            # print(key,self.attrs[key])
-
-        for f in files:
-            f.close()
-
-    def GetMetaData(self):
-        return self.attrs
 
 class Plotter:
     def __init__(self,outdir=None):
@@ -653,7 +629,7 @@ def main(args):
             'phi': vec_cyl[:,2],
             'm'  : vec_cyl[:,3],
             'e'  : vec[:,0],
-            'jet_dr' : DeltaR(vec_cyl[:,1:3],jet_Pmu_cyl[:,1:3])
+            'jet_dr' : DeltaR(vec_cyl[:,1:3],jet_Pmu_cyl[:,1:3]) # TODO: Replace with Calculator usage
         }
 
         # Some 1D truth particle kinematic plots.

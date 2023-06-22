@@ -6,6 +6,41 @@ import numpy as np
 from util.calcs import Calculator
 from util.fastjet import FastJetSetup
 
+class FilterFlag:
+    """
+    A wrapper class for a filter. This is used for the "event_filter_flag" configuration option,
+    which runs an event filter -- but instead of literally filtering out events that fail the filter,
+    it creates a boolean flag that will be added to the final dataset. This is achieved by producing
+    a special HDF5 file during the generation step, as that is the step where the event filter algo is run.
+    """
+    def __init__(self,filter,name='event_filter'):
+        self.filter = filter
+        self.name = name
+
+    def __call__(self,pythia_wrapper,final_state_indices):
+        return self.filter(pythia_wrapper,final_state_indices)
+
+    def GetName(self):
+        return self.name
+
+    def Initialize(self,configurator):
+        self.filter.Initialize(configurator)
+        return
+
+class NotFilter:
+    """
+    A class for making an inverse of an event filter.
+    """
+    def __init__(self,filter):
+        self.filter = filter
+
+    def __call__(self,pythia_wrapper,final_state_indices):
+        return (not filter(pythia_wrapper,final_state_indices))
+
+    def Initialize(self,configurator):
+        self.filter.Initialize(configurator)
+        return
+
 class MultiFilter:
     """
     A class for combining multiple event filters.

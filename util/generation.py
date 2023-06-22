@@ -42,6 +42,7 @@ class Generator:
         self.SetFilename('events.hepmc')
         self.stats_filename = 'stats.h5'
         self.SetIndexOverlapFilename() # will give a default name
+        self.SetEventFilterFlagFilename() # will give a default name
         self.filename_full = None
         self.filename_truth_full = None
 
@@ -86,6 +87,13 @@ class Generator:
         if(self.event_filter is not None):
             self.event_filter.Initialize(self.configurator) # may be necessary for things like dynamic fastjet import
 
+    def SetEventFilterFlag(self,filter):
+        self.event_filter_flag = filter
+        if(self.event_filter_flag is not None):
+            self.event_filter_flag.Initialize(self.configurator) # may be necessary for things like dynamic fastjet import
+        else:
+            self.event_filter_flag_filename = None
+
     def SetJetConfig(self,config):
         self.jet_config = config
 
@@ -103,6 +111,7 @@ class Generator:
         self.SetHistFilename('hists.root')
         self.stats_filename = 'stats.h5'
         self.SetIndexOverlapFilename()
+        self.SetEventFilterFlagFilename()
 
     def SetProgressBar(self,flag):
         self.progress_bar = flag
@@ -123,6 +132,7 @@ class Generator:
         self.filename = name
         self.SetTruthFilename()
         self.SetIndexOverlapFilename(None)
+        self.SetEventFilterFlagFilename(None)
         return
 
     def SetTruthFilename(self,name=None):
@@ -155,8 +165,16 @@ class Generator:
         else: self.fs_truth_overlap_filename = name
         return
 
+    def SetEventFilterFlagFilename(self,name=None):
+        if(name is None): self.event_filter_flag_filename = self.filename.replace('.hepmc','_event_filter_flag.h5')
+        else: self.event_filter_flag_filename = name
+        return
+
     def GetIndexOverlapFilename(self):
         return self.fs_truth_overlap_filename
+
+    def GetEventFilterFlagFilename(self):
+        return self.event_filter_flag_filename
 
     def ConfigPythia(self, config_file=None):
         """
@@ -316,6 +334,25 @@ class Generator:
                 if(not passed_filter):
                     n_fail += 1
                     continue
+
+            # ==========================================
+            # Now we apply an (optional) "event filter" flag. This applies some condition to the set
+            # of truth and final-state particles selected above, and checks if the event passes
+            # this condition. The result is recorded in an HDF5 file that will be merged into the
+            # final dataset.
+            # ==========================================
+            if(self.event_filter_flag is not None):
+                event_filter_flag_filename_full = '{}/{}'.format(self.outdir,self.event_filter_flag_filename)
+                f = h5.File(event_filter_flag_filename_full,'a')
+                key = self.event_filter_flag.GetName()
+                filter_flag = self.event_filter_flag(self.pythia, final_state_indices)
+                if(i_real == 1):
+                    filter_flag = np.expand_dims(filter_flag,axis=0)
+                    f.create_dataset(key,data=filter_flag,compression='gzip',chunks=True,maxshape=(None,))
+                else:
+                    f[key].resize(f[key].shape[0] + 1,axis=0)
+                    f[key][-1] = filter_flag
+                f.close()
 
             # ==========================================
             # In some cases we may be interested in particles which are counted as both truth particles and final-state particles.
