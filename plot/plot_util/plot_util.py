@@ -1,100 +1,32 @@
-import sys, os, uuid
+import uuid
 import numpy as np
-import ROOT as rt
+import h5py as h5
 
 def RN():
     return str(uuid.uuid4())
 
-# Helper function for fetching four-momenta from a jagged array.
-def GetJagged(pmu, nobj):
-    nentries_final = np.sum(nobj)
-    result = np.zeros((nentries_final,pmu.shape[-1]))
-    nentries = pmu.shape[0]
-    counter = 0
-    for i in range(nentries):
-        result[counter:counter+nobj[i],:] = pmu[i,:nobj[i],:]
-        counter += nobj[i]
-    return result
+class MetaDataHandler:
+    def __init__(self,filenames):
+        files = [h5.File(x,'r') for x in filenames]
+        attrs_list = [dict(x.attrs).copy() for x in files]
 
-# Helper function for coordinate conversion.
-def PxPyPzEToPtEtaPhiM(px,py,pz,e):
-    nvec = len(px)
-    result = np.zeros((nvec,4))
-    lvec = rt.Math.PxPyPzEVector()
-    for i in range(nvec):
-        lvec.SetCoordinates(px[i],py[i],pz[i],e[i])
-        result[i,:] = np.array([lvec.Pt(),lvec.Eta(),lvec.Phi(),lvec.M()])
-    return result
+        # Now merge the dictionary is attrs_list
+        self.attrs = {}
+        keys = [list(x.keys()) for x in attrs_list]
+        keys = list(set([j for i in keys for j in i]))
 
-# Helper function for calculating dR between two sets pf vectors.
-# Here, vecs are of form (eta, phi), one entry per event.
-def DeltaR(vec1, vec2):
-    result = np.zeros(vec1.shape[0])
-    lvec1 = rt.Math.PtEtaPhiMVector()
-    lvec2 = rt.Math.PtEtaPhiMVector()
-    for i in range(len(result)):
+        for key in keys:
+            self.attrs[key] = []
+            for attrs in attrs_list:
+                self.attrs[key].append(attrs[key])
 
-        lvec1.SetCoordinates(0.,vec1[i,0],vec1[i,1],0.)
-        lvec2.SetCoordinates(0.,vec2[i,0],vec2[i,1],0.)
-        result[i] = np.sqrt(rt.Math.VectorUtil.DeltaR2(lvec1,lvec2))
+            self.attrs[key] = np.unique(np.concatenate(self.attrs[key],axis=0))
+            # print(key,self.attrs[key])
 
-        # result[i] = np.sqrt(DeltaR2(*vec1[i], *vec2[i]))
-    return result
+        for f in files:
+            f.close()
 
-# Function for making a kinematic plot (1D).
-def KinematicDraw(keys, data, bin_info, title, logx=True, logy=True, colors=None):
-    c = rt.TCanvas(RN(),'c0',800,600)
-    legend = rt.TLegend(0.8,0.8,0.95,0.95)
-    hstack = rt.THStack(RN(),title)
-    hlist = []
-    nbins, xmin, xmax = bin_info
+    def GetMetaData(self):
+        return self.attrs
 
-    dummy = {'a':'a'}
 
-    if(type(keys) not in (list, type(dummy.keys()))):
-        keys = [keys]
-        data = {keys[0]:data}
-
-    for key in keys:
-
-        h = rt.TH1F(RN(),'',nbins,xmin,xmax)
-        for elem in data[key]: h.Fill(elem)
-        if(colors is not None): h.SetLineColor(colors[key])
-        integral = h.Integral()
-        if(integral == 0): integral = 1.
-        h.Scale(1./integral)
-        hstack.Add(h)
-        legend.AddEntry(h,key,'l')
-        hlist.append(h)
-
-    draw_option = "NOSTACK HIST"
-    if(colors is None): draw_option += " PLC PMC"
-    hstack.Draw(draw_option)
-    legend.Draw()
-    if(logx): c.SetLogx()
-    if(logy): c.SetLogy()
-    c.Draw()
-    return c, legend, hlist, hstack
-
-# Function for making a kinematic plot (2D).
-def KinematicDraw2D(data_x, data_y, bin_info, title, logx=True, logy=True):
-    c = rt.TCanvas(RN(),'c0',800,600)
-    # legend = rt.TLegend(0.8,0.8,0.95,0.95)
-    nx, xmin, xmax, ny, ymin, ymax = bin_info
-    # dummy = {'a':'a'}
-
-    h = rt.TH2F(RN(),title,nx, xmin, xmax, ny, ymin, ymax)
-
-    for i in range(len(data_x)):
-        h.Fill(data_x[i], data_y[i])
-
-    integral = h.Integral()
-    if(integral == 0): integral = 1.
-    h.Scale(1./integral)
-    h.Draw('COLZ')
-    if(logx): c.SetLogx()
-    if(logy): c.SetLogy()
-    c.SetLogz()
-    c.SetRightMargin(0.15)
-    c.Draw()
-    return c, h
