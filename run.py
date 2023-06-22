@@ -59,8 +59,6 @@ def main(args):
 
     start_time = time.time()
 
-    print(os.getcwd())
-
     # Produce a random identifier for this dataset.
     unique_id = str(uuid.uuid4())
     unique_id_short = str(uuid.uuid4())[:5] # a second, shorter random string -- probably more convenient to use, at the risk of a higher collision rate
@@ -142,6 +140,7 @@ def main(args):
     hist_files = []
     stat_files = []
     final_state_truth_overlap_indices_files = [] # only used in certain cases, these files record indices of particles that show up in both truth and final-state selections (indices w.r.t. final-state HepMC files)
+    filter_flag_files = [] # only used in certain cases, these files hold a boolean flag given by the "event_filter_flag"
 
     # Prepare the output directory.
     if(outdir is None): outdir = os.getcwd()
@@ -168,6 +167,8 @@ def main(args):
 
         if(pythia_rng is not None):
             print('\tSetting Pythia RNG seed to {}. (overriding config)'.format(pythia_rng))
+        else:
+            pythia_config = configurator.GetPythiaRNGSeed()
         if(pythia_config is not None):
             print('\tSetting Pythia process configuration from {}. (overriding config)'.format(pythia_config))
 
@@ -193,6 +194,7 @@ def main(args):
         generator.SetTruthSelection(configurator.GetTruthSelection())
         generator.SetFinalStateSelection(configurator.GetFinalStateSelection())
         generator.SetEventFilter(configurator.GetEventFilter())
+        generator.SetEventFilterFlag(configurator.GetEventFilterFlag())
         generator.SetJetConfig(configurator.GetJetConfig())
         generator.SetNTruth(configurator.GetNPars()['n_truth'])
 
@@ -224,8 +226,8 @@ def main(args):
         truthfile = generator.GetTruthFilename()
         truth_files.append(truthfile)
 
-        overlap_index_file = generator.GetIndexOverlapFilename()
-        final_state_truth_overlap_indices_files.append(overlap_index_file)
+        final_state_truth_overlap_indices_files.append(generator.GetIndexOverlapFilename())
+        filter_flag_files.append(generator.GetEventFilterFlagFilename())
 
         if(use_delphes): # Case 1: Using Delphes
             # Pass the HepMC file to Delphes. Will output a ROOT file.
@@ -276,7 +278,9 @@ def main(args):
         # and this file will optionally be split (in a later step) into training, testing and validation samples.
         print('\tProducing a single HDF5 file, from all the HepMC or Delphes/ROOT files.')
         print('\tWarning: This will skip any requested post-processing steps. If you want these, re-run with "-separate_h5 1".')
+
         processor.Process(jet_files,truth_files,h5_file,verbosity=h5_conversion_verbosity,nentries_per_chunk=nentries_per_chunk)
+        processor.MergeEventFilterFlag(h5_file,filter_flag_files,copts=compression_opts)
     else:
         # Slightly more complex way of running things -- we first create pT-binned HDF5 files, corresponding with the binning of the
         # HepMC/Delphes files. These binned files are then concatenatd into a single HDF5 file with all events.
@@ -303,6 +307,9 @@ def main(args):
 
             # Optional post-processing. Any post-processing steps have been configured in the config file, config/config.py.
             processor.PostProcess(jet_file,[h5_file_individual],[final_state_truth_overlap_indices_files[i]])
+
+            # Optionally add any "event_filter_flags" that were set in the configuration. If none were set, this doesn't do anything.
+            processor.MergeEventFilterFlag(h5_file_individual,filter_flag_files[i],copts=compression_opts)
 
             h5_files.append('/'.join((outdir,h5_file_individual)))
 
