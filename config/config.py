@@ -29,15 +29,15 @@ config = {
     'jet_max_eta': 2., # absolute value eta cut
     'jet_n_par': 200, # max number of jet constituents to save per jet (pT-ordered)
     'n_truth' : 3 + 2 + 120, # max number of truth particles to save per jet
-    # 'event_filter' : None, # if not using any event filter
-    'event_filter' : eventfilter.MultiFilter( # multi-filter -- applies filters (cuts) sequentially, if an event fails a filter we generate another to replace it
-        [
-            eventfilter.PtMatchedJetFilter(0.8,selections['t->Wb'],pt_window_frac=0.005,pt_min_jet=15.,eta_max_jet=2.), # require jet pT to match top pT closely
-            eventfilter.ContainedJetFilter(0.8,selections['t->Wb'],selections['bqq'],matching_radius=0.6,pt_min_jet=15.,eta_max_jet=2.), # require W(qq) & b within 0.6 of jet centroid
-            eventfilter.ContainedJetFilter(0.8,selections['t->Wb'],selections['W daughters'],pt_threshold_sum=2.5,pt_min_jet=15.,eta_max_jet=2.), # require stable W daughters within jet -- allow sum of uncontained daughters to carry off up to 2.5 GeV in pT
-            eventfilter.ContainedJetFilter(0.8,selections['t->Wb'],selections['b daughters'],pt_threshold_sum=2.5,pt_min_jet=15.,eta_max_jet=2.) # require stable b daughters within jet -- allow som of uncontained daughters to carry off up to 2.5 GeV in pT
-        ]
-    ),
+    'event_filter' : None, # if not using any event filter
+    # 'event_filter' : eventfilter.MultiFilter( # multi-filter -- applies filters (cuts) sequentially, if an event fails a filter we generate another to replace it
+    #     [
+    #         eventfilter.PtMatchedJetFilter(0.8,selections['t->Wb'],pt_window_frac=0.005,pt_min_jet=15.,eta_max_jet=2.), # require jet pT to match top pT closely
+    #         eventfilter.ContainedJetFilter(0.8,selections['t->Wb'],selections['bqq'],matching_radius=0.6,pt_min_jet=15.,eta_max_jet=2.), # require W(qq) & b within 0.6 of jet centroid
+    #         eventfilter.ContainedJetFilter(0.8,selections['t->Wb'],selections['W daughters'],pt_threshold_sum=2.5,pt_min_jet=15.,eta_max_jet=2.), # require stable W daughters within jet -- allow sum of uncontained daughters to carry off up to 2.5 GeV in pT
+    #         eventfilter.ContainedJetFilter(0.8,selections['t->Wb'],selections['b daughters'],pt_threshold_sum=2.5,pt_min_jet=15.,eta_max_jet=2.) # require stable b daughters within jet -- allow som of uncontained daughters to carry off up to 2.5 GeV in pT
+    #     ]
+    # ),
     # 'event_filter_flag': None, # an event_filter algorithm, but instead of filtering out events it will simply add a boolean flag to the dataset
     'event_filter_flag' : eventfilter.FilterFlag(
         eventfilter.MultiFilter( # multi-filter -- applies filters (cuts) sequentially, if an event fails a filter we generate another to replace it
@@ -55,7 +55,7 @@ config = {
     'jet_selection':jetsel.GetNearestJet(truth_code=6,max_dr=0.8),
     'signal_flag' : 1, # What to provide as the "signal_flag" for these events. (relevant if combining datasets). Must be >= 0.
     'post_processing': [
-        tracing.Tracer(verbose=True), # Delphes tracing, computes the "W daughteriness" of Delphes detector towers
+        # tracing.Tracer(verbose=True), # Delphes tracing, computes the "W daughteriness" of Delphes detector towers
         jh_tagging.JHTagger(2,120,verbose=True), # Johns Hopkins top tagger -- W is in positiong 2 (used for computing prediction's resolution), gives up to 120 constituents of candidate W subjet
         truth_sum.TruthParticleSum(np.arange(5,125),0.8,verbose=True), # produce 4-vector sum of W daughters within the jet cone
         rotate.Rotation(2,1,['Pmu'],verbose=True), # create rotated copies of 4-vectors
