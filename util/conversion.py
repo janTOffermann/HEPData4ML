@@ -347,7 +347,8 @@ class Processor:
         jetdef = fj.JetDefinition(fj.antikt_algorithm, jet_config['jet_radius'])
         return jet_config,jetdef
 
-    def ClusterJets(self,vecs, jet_config):
+    def ClusterJets(self,vecs, jet_config=None):
+        if(jet_config is None): jet_config = self.jet_config
         import fastjet as fj # hacky, but will work because SetupFastJet() was run in __init__()
 
         cartesian = not self.delphes
@@ -431,7 +432,7 @@ class Processor:
             self.FillDataBuffer(j,vecs,None,truth_particles)
         else:
             # Any necessary cylindrical->Cartesian conversion (i.e. Delphes case) is handled within ClusterJets().
-            self.ClusterJets(vecs,self.jet_config)
+            self.ClusterJets(vecs)
             jets = self.jets_filtered
 
             if(len(jets) == 0): # If there are no jets, throw out this event.
