@@ -15,6 +15,7 @@ class PythiaWrapper:
 
         self.event = None
         self.verbose = verbose
+        self.initialized = False
 
     def SetVerbose(self,flag):
         self.verbose = flag
@@ -79,9 +80,11 @@ class PythiaWrapper:
     def InitializePythia(self):
         self.ReadConfigDict()
         self.pythia.init()
+        self.initialized = True
 
     # Generates an event, places it in self.event .
     def Generate(self):
+        if(not self.initialized): self.InitializePythia()
         self.pythia.next()
         self.event = self.pythia.event
 
@@ -202,11 +205,43 @@ class PythiaWrapper:
         if(indices is not None): names = names[indices]
         return names
 
+    def GetDaughter1(self,index):
+        idx = index + 1 # using index + 1 to effectively drop entry 0, which represents "full event"
+        return np.array(self.event[idx].daughter1(),dtype='i4') - 1 # subtract 1 again to deal with Pythia's entry 0
+
+    def GetDaughter2(self,index):
+        idx = index + 1 # using index + 1 to effectively drop entry 0, which represents "full event"
+        return np.array(self.event[idx].daughter2(),dtype='i4') - 1 # subtract 1 again to deal with Pythia's entry 0
+
+    def GetMother1(self,index):
+        idx = index + 1 # using index + 1 to effectively drop entry 0, which represents "full event"
+        return np.array(self.event[idx].mother1(),dtype='i4') - 1 # subtract 1 again to deal with Pythia's entry 0
+
+    def GetMother2(self,index):
+        idx = index + 1 # using index + 1 to effectively drop entry 0, which represents "full event"
+        return np.array(self.event[idx].mother2(),dtype='i4') - 1 # subtract 1 again to deal with Pythia's entry 0
+
+    def GetDaughters1(self):
+        n = self.GetN()
+        return [self.GetDaughter1(i) for i in range(n)]
+
+    def GetDaughters2(self):
+        n = self.GetN()
+        return [self.GetDaughter2(i) for i in range(n)]
+
+    def GetMothers1(self):
+        n = self.GetN()
+        return [self.GetMother1(i) for i in range(n)]
+
+    def GetMothers2(self):
+        n = self.GetN()
+        return [self.GetMother2(i) for i in range(n)]
+
     # Return indices of particle's daughters.
     def GetDaughtersSingle(self,index, recursive=False):
         idx = index + 1 # using index + 1 to effectively drop entry 0, which represents "full event"
         if(recursive): d = np.array(self.event[idx].daughterListRecursive(),dtype='i4')
-        else: d = np.array(self.event[index+1].daughterList(),dtype='i4')
+        else: d = np.array(self.event[idx].daughterList(),dtype='i4')
         return d - 1 # subtract 1 again to deal with Pythia's entry 0
 
     # Return type is list, not array! This is because it is jagged -- could also consider awkward array.
@@ -218,7 +253,7 @@ class PythiaWrapper:
     def GetMothersSingle(self,index, recursive=False):
         idx = index + 1 # using index + 1 to effectively drop entry 0, which represents "full event"
         if(recursive): m = np.array(self.event[idx].motherListRecursive(),dtype='i4')
-        else: m = np.array(self.event[index+1].motherList(),dtype='i4')
+        else: m = np.array(self.event[idx].motherList(),dtype='i4')
         return m - 1 # subtract 1 again to deal with Pythia's entry 0
 
     def GetMothers(self, recursive=False):

@@ -2,7 +2,7 @@ import os
 import numpy as np
 import ROOT as rt
 import h5py as h5
-import pyhepmc as hep
+# import pyhepmc as hep
 import subprocess as sub
 
 from util.pythia.utils import PythiaWrapper
