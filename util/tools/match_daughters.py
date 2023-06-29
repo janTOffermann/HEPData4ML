@@ -10,6 +10,22 @@ import argparse as ap
 sys.path.append( os.path.dirname(os.path.abspath(__file__)) + '/../..' )
 import util.qol_utils.qol_util as qu
 
+def check_outfile(outfile,infile):
+    f = h5.File(infile,'r')
+    g = h5.File(outfile,'r')
+
+    try:
+        n1 = f['Nobj'].shape[0]
+        n2 = f['Nobj'].shape[1]
+        ok = n1 == n2
+
+    except:
+        ok = False
+
+    f.close()
+    g.close()
+    return ok
+
 def main(args):
     parser = ap.ArgumentParser()
     parser.add_argument('-i','--inputs',type=str,required=True,help='Input HDF5 file(s), can be glob-compatible string.')
@@ -21,8 +37,14 @@ def main(args):
     for infile in infiles:
         print('Input file = {}'.format(infile))
         n_ignore = args['n_ignore']
+
         outfile = infile.replace('.h5','_matching_indices.h5')
-        assert(not pathlib.Path(outfile).exists())
+
+        if(pathlib.Path(outfile).exists()):
+            status = check_outfile(outfile,infile)
+            if(status):
+                print('Skipping {}.\n'.format(infile))
+                continue
 
         sub.check_call(['cp',infile,outfile])
         f = h5.File(outfile,'a')
