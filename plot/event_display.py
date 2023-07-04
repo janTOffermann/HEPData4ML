@@ -52,6 +52,12 @@ def main(args):
     truth_Pmu = f['truth_Pmu{}'.format(key_suffix)][event_index,:truth_Nobj]
     truth_Pdg = f['truth_Pdg'][event_index,:truth_Nobj]
     jet_Pmu = f['jet_Pmu{}'.format(key_suffix)][event_index]
+
+
+    # TODO: This is a temporary test.
+    energy_ratio_truth = f['energy_ratio_truth'][event_index,:Nobj]
+    print(energy_ratio_truth)
+
     # keys = sorted(list(f.keys()))
     # for k in keys: print(k)
     f.close()
