@@ -10,6 +10,49 @@ if(path_prefix not in sys.path): sys.path.append(path_prefix)
 from util.qol_utils.qol_util import RN
 from util.calcs import Calculator
 
+def JetCurveInThetaEdges(eta0=0,radius=0.8):
+    edge_1 = 2. * np.arctan(np.exp(-radius + eta0)) - 0.5 * np.pi + 1.0e-12
+    edge_2 = 2. * np.arctan(np.exp( radius + eta0)) - 0.5 * np.pi - 1.0e-12
+    return (edge_1,edge_2)
+
+def JetCurveInEtaEdges(eta0=0,radius=0.8):
+    edge_1 = -radius + eta0 + 1.0e-12 # to deal with numerical instability
+    edge_2 = radius + eta0 - 1.0e-12 # to deal with numerical instability
+    return (edge_1,edge_2)
+
+def JetCurveInTheta(theta,phi0=0.,eta0=0.,radius=0.8):
+    """
+    While this is a circle in (eta,phi), it will be distorted
+    in (theta,phi).
+    """
+    result = np.square(radius)
+    b = np.square(np.log(-np.tan(0.5 * (-theta - 0.5 * np.pi))) - eta0)
+    result -= b
+    good_points = np.where(result >= 0)
+
+    result_pos = np.full(result.shape,np.nan)
+    result_neg = np.full(result.shape,np.nan)
+
+    result_pos[good_points] =  np.sqrt(result[good_points]) + phi0
+    result_neg[good_points] = -np.sqrt(result[good_points]) + phi0
+    return (result_neg,result_pos)
+
+def JetCurveinEta(eta,phi0=0.,eta0=0.,radius=0.8):
+    """
+    This is just a circle in (eta,phi).
+    """
+    result = np.square(radius)
+    b = np.square(eta - eta0)
+    result -= b
+    good_points = np.where(result >= 0)
+
+    result_pos = np.full(result.shape,np.nan)
+    result_neg = np.full(result.shape,np.nan)
+
+    result_pos[good_points] =  np.sqrt(result[good_points]) + phi0
+    result_neg[good_points] = -np.sqrt(result[good_points]) + phi0
+    return (result_neg,result_pos)
+
 def main(args):
 
     rt.gROOT.SetBatch(True)
@@ -56,34 +99,42 @@ def main(args):
     jet_Pmu = f['jet_Pmu{}'.format(key_suffix)][event_index]
 
     # TODO: This is a temporary test.
-    energy_ratio_truth = f['energy_ratio_truth'][event_index,:Nobj]
-    daughters = Pmu[np.where(energy_ratio_truth == 1)[0][0]]
-    # print(energy_ratio_truth)
-
-    # keys = sorted(list(f.keys()))
-    # for k in keys: print(k)
+    # energy_ratio_truth = f['energy_ratio_truth'][event_index,:Nobj]
+    # daughters = Pmu[np.where(energy_ratio_truth == 1)[0][0]]
     f.close()
 
     jet_Pmu = calculator.EPxPyPzToPtEtaPhiM_single(*jet_Pmu)
-    if(use_theta):
+    jet_eta = jet_Pmu[1]
+    jet_phi = jet_Pmu[2]
+    jet_theta = np.nan
+
+    if(use_theta): # TODO: Is this a good idea?
         jet_Pmu[1] = calculator.EtaToTheta(jet_Pmu[1])
+        jet_theta = jet_Pmu[1]
 
     offset = np.array([0.,0.])
+    offset_eta = 0.
+    offset_phi = 0.
+    offset_theta = 0.
+
     if(center):
         offset = jet_Pmu[1:3] # (eta,phi) of jet
+        offset_eta = jet_eta
+        offset_phi = jet_phi
+        offset_theta = jet_theta
 
     dims = (800,800)
     c = rt.TCanvas(RN(),'',*dims)
 
     binning_eta = (10,-np.pi,np.pi)
     binning_phi = (10,-np.pi,np.pi)
-    binning_theta = (10,-0.5 * np.pi, 0.5 * np.pi)
+    binning_theta = (10,-np.pi,np.pi)
 
     if(center):
-        mult = 1.25
+        mult = 1.5
         binning_eta = (10,- mult *jet_radius, mult * jet_radius)
         binning_phi = (10,- mult *jet_radius, mult * jet_radius)
-        binning_dtheta = (10,-0.5 * np.pi, 0.5 * np.pi)
+        binning_theta = (10,- mult *jet_radius, mult * jet_radius)
 
     histogram_name = 'Event Display;#eta;#phi'
     binning_x = binning_eta
@@ -114,6 +165,8 @@ def main(args):
     scatter_Pmu.SetMarkerColor(rt.kBlack)
     scatter_Pmu.SetMarkerStyle(rt.kCircle)
     scatter_Pmu.SetMarkerSize(0.6)
+    if(center):
+        scatter_Pmu.SetMarkerSize(1.2)
 
     # For truth_Pmu, we will make individual scatters for the different particle types,
     # based on the PDG ID. Above some particle index we will group them together -- can be used
@@ -122,8 +175,8 @@ def main(args):
     unique_pid = np.unique(truth_Pdg[:max_unique])
 
     truth_scatters = {}
-    colors = [rt.kGreen, rt.kOrange, rt.kViolet, rt.kRed, rt.kBlue] # TODO can this be done more nicely?
-    styles = [rt.kDiamond, rt.kStar, rt.kStar, rt.kCircle, rt.kCircle]
+    colors = [rt.kGreen + 1, rt.kOrange, rt.kViolet, rt.kRed, rt.kBlue] # TODO can this be done more nicely?
+    styles = [rt.kPlus, rt.kPlus, rt.kPlus, rt.kCircle, rt.kCircle]
 
     for i,pid in enumerate(unique_pid):
         idxs = np.where(truth_Pdg == pid)[0]
@@ -132,9 +185,11 @@ def main(args):
         style = styles[idxs[0]%len(styles)]
 
         truth_scatters[pid] = rt.TGraph()
-        truth_scatters[pid].SetMarkerColorAlpha(color,0.7)
+        truth_scatters[pid].SetMarkerColorAlpha(color,0.9)
         truth_scatters[pid].SetMarkerStyle(style)
         truth_scatters[pid].SetMarkerSize(1.)
+        if(center):
+            truth_scatters[pid].SetMarkerSize(2.)
         vecs = calculator.PxPyPzEToPtEtaPhiM(*np.roll(truth_Pmu[idxs],-1,axis=-1).T)
         if(use_theta):
             vecs[:,1] = calculator.EtaToTheta(vecs[:,1])
@@ -153,39 +208,74 @@ def main(args):
     scatter_daughter.SetMarkerColor(rt.kCyan)
     scatter_daughter.SetMarkerStyle(rt.kCircle)
     scatter_daughter.SetMarkerSize(0.4)
-
-    scatter_daughter_tmp = rt.TGraph()
-    print(daughters.shape)
-    vecs = calculator.PxPyPzEToPtEtaPhiM(*np.roll(daughters,-1,axis=-1).T)
-    if(use_theta):
-        vecs[:,1] = calculator.EtaToTheta(vecs[:,1])
-    for vec in vecs:
-        vec[1:3] -= offset
-        scatter_daughter_tmp.AddPoint(*vec[1:3])
-
-    scatter_daughter_tmp.SetMarkerColor(rt.kViolet)
-    scatter_daughter_tmp.SetMarkerStyle(rt.kCircle)
-    scatter_daughter_tmp.SetMarkerSize(0.6)
+    if(center):
+        scatter_daughter.SetMarkerSize(1.0)
 
     dummy_hist.Draw('COL')
     scatter_Pmu.Draw('P SAME')
 
     scatter_daughter.Draw('P SAME')
-    scatter_daughter_tmp.Draw('P SAME')
 
     for pid,scatter in truth_scatters.items():
         scatter.Draw('P SAME')
 
     # Draw the jet radius.
+    npoints = 1000
+    jet_circle_color = rt.kGreen + 1
+    jet_circle_top = rt.TGraph()
+    jet_circle_bottom = rt.TGraph()
+
     if(not use_theta):
-        jet_Pmu[1:3] -= offset
-        jet_circle = rt.TEllipse(*jet_Pmu[1:3],jet_radius,jet_radius)
-        jet_circle.SetLineColor(rt.kSpring)
-        jet_circle.SetFillColorAlpha(rt.kWhite,0.)
-        jet_circle.Draw()
+        # We use TGraph instead of TEllipse so we don't get weird overlap effects near axes.
+        eta_jet_edges = np.array(JetCurveInEtaEdges(jet_eta,jet_radius))
+        eta_jet_edges.sort()
+        eta_carrier = np.zeros(npoints + 2)
+        eta_carrier[0] = eta_jet_edges[0]
+        eta_carrier[-1] = eta_jet_edges[1]
+        eta_carrier[1:npoints+1] = np.linspace(-np.pi, np.pi,npoints)
+        eta_carrier = np.sort(eta_carrier)
+
+        curves = JetCurveinEta(eta_carrier,jet_phi,jet_eta,radius=jet_radius)
+        curves = [c - offset_phi for c in curves]
+
+        for i,circ in enumerate((jet_circle_bottom,jet_circle_top)):
+            circ.SetLineColor(jet_circle_color)
+            curve = curves[i]
+            idxs = np.where(np.isnan(curve) == False)[0]
+            x = eta_carrier[idxs] - offset_eta
+            y = curve[idxs]
+
+            for point in zip(x,y):
+                circ.AddPoint(*point)
+
+            circ.Draw('SAME L')
 
     else: # if using theta, this gets a bit more complex to visualize
-        pass # TODO: make a curve to plot?
+        theta_jet_edges = np.array(JetCurveInThetaEdges(jet_eta,jet_radius))
+        theta_jet_edges.sort()
+        theta_carrier = np.zeros(npoints + 2)
+        theta_carrier[0] = theta_jet_edges[0]
+        theta_carrier[-1] = theta_jet_edges[1]
+        theta_carrier[1:npoints+1] = np.linspace(binning_theta[1],binning_theta[2],npoints)
+        theta_carrier = np.sort(theta_carrier)
+
+        curves = JetCurveInTheta(theta_carrier,jet_phi,jet_eta,radius=jet_radius)
+        curves = [c - offset_phi for c in curves]
+
+        for entry in zip(theta_carrier,curves[0]):
+            print(entry)
+
+        for i,circ in enumerate((jet_circle_bottom,jet_circle_top)):
+            circ.SetLineColor(jet_circle_color)
+            curve = curves[i]
+            idxs = np.where(np.isnan(curve) == False)[0]
+            x = theta_carrier[idxs] - offset_theta
+            y = curve[idxs]
+
+            for point in zip(x,y):
+                circ.AddPoint(*point)
+
+            circ.Draw('SAME L')
 
     rt.gPad.SetGrid()
     c.Draw()
