@@ -74,7 +74,8 @@ class Generator:
 
     def SetEventSelection(self,selection):
         self.event_selection = selection
-        self.event_selection.Initialize(self.configurator)
+        try: self.event_selection.Initialize(self.configurator)
+        except: pass
 
     def SetTruthSelection(self,selection):
         self.truth_selection = selection
