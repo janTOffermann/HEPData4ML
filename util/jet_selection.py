@@ -111,8 +111,8 @@ class GetLeadingJet:
     def __init__(self):
         pass
 
-    def Initialize(self):
-        pass
+    def Initialize(self,configurator):
+        self.configurator = configurator
 
     def __call__(self,**kwargs):
         jets = kwargs['jets']
