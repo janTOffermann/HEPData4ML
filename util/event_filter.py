@@ -59,6 +59,20 @@ class MultiFilter:
             filter.Initialize(configurator)
         return
 
+class DefaultFilter:
+    """
+    A class for making an event filter
+    that simply defaults to True/False.
+    """
+    def __init__(self,value=True):
+        self.value = value
+
+    def __call__(self,pythia_wrapper,final_state_indices):
+        return self.value
+
+    def Initialize(self,configurator):
+        pass
+
 class PtMatchedJetFilter:
     """
     A multi-step filter:
