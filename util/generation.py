@@ -2,7 +2,7 @@ import os
 import numpy as np
 import ROOT as rt
 import h5py as h5
-import pyhepmc as hep
+# import pyhepmc as hep
 import subprocess as sub
 
 from util.pythia.utils import PythiaWrapper
@@ -74,7 +74,8 @@ class Generator:
 
     def SetEventSelection(self,selection):
         self.event_selection = selection
-        self.event_selection.Initialize(self.configurator)
+        try: self.event_selection.Initialize(self.configurator)
+        except: pass
 
     def SetTruthSelection(self,selection):
         self.truth_selection = selection

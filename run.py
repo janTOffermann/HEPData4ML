@@ -168,7 +168,7 @@ def main(args):
         if(pythia_rng is not None):
             print('\tSetting Pythia RNG seed to {}. (overriding config)'.format(pythia_rng))
         else:
-            pythia_config = configurator.GetPythiaRNGSeed()
+            pythia_rng = configurator.GetPythiaRNGSeed()
         if(pythia_config is not None):
             print('\tSetting Pythia process configuration from {}. (overriding config)'.format(pythia_config))
 

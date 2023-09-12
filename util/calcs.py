@@ -173,3 +173,6 @@ class Calculator:
         elif(dphi <= -np.pi):
             dphi += 2. * np.pi
         return dphi
+
+    def EtaToTheta(self,eta):
+        return 2. * np.arctan(np.exp(eta)) - 0.5 * np.pi
