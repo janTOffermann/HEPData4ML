@@ -9,7 +9,7 @@ from util.pythia.utils import PythiaWrapper
 from util.qol_utils.pdg import pdg_names, pdg_plotcodes, FillPdgHist
 from util.calcs import Calculator
 from util.particle_selection.algos import IsNeutrino
-from util.hepmc import CreateHepMCEvent, HepMCOutput
+from util.hepmc import CreateHepMCEvent, CreateFullHepMCEvent, HepMCOutput
 import util.qol_utils.qol_util as qu
 
 class Generator:
@@ -43,8 +43,9 @@ class Generator:
         self.stats_filename = 'stats.h5'
         self.SetIndexOverlapFilename() # will give a default name
         self.SetEventFilterFlagFilename() # will give a default name
-        self.filename_full = None
-        self.filename_truth_full = None
+        self.filename_fullpath = None
+        self.filename_truth_fullpath = None
+        self.filename_full_fullpath = None # TODO: fix naming scheme
 
         self.diagnostic_plots = True
         self.InitializeHistograms()
@@ -61,6 +62,7 @@ class Generator:
 
         self.hepev_buffer_fs = [] # list containing HepMC events, to be written to a file
         self.hepev_buffer_truth = []
+        self.hepev_buffer_full = []
         self.SetBufferSize(100) # TODO: Should this be configurable? Could be too much detail.
         self.buffername = None
         self.buffername_truth = None
@@ -127,13 +129,14 @@ class Generator:
     def SetHistFilename(self,name):
         self.hist_filename = name
 
-    def SetFilename(self,name):
+    def SetFilename(self,name, rename_extra_files=True):
         if('.hepmc' not in name):
             name = '{}.hepmc'.format(name)
         self.filename = name
         self.SetTruthFilename()
-        self.SetIndexOverlapFilename(None)
-        self.SetEventFilterFlagFilename(None)
+        if(rename_extra_files):
+            self.SetIndexOverlapFilename(None)
+            self.SetEventFilterFlagFilename(None)
         return
 
     def SetTruthFilename(self,name=None):
@@ -160,6 +163,9 @@ class Generator:
 
     def GetStatsFilename(self):
         return self.stats_filename
+
+    def GetHistFilename(self):
+        return self.hist_filename
 
     def SetIndexOverlapFilename(self,name=None):
         if(name is None): self.fs_truth_overlap_filename = self.filename.replace('.hepmc','_final-state_truth_overlap_indices.h5')
@@ -260,16 +266,19 @@ class Generator:
     def ClearEventBuffers(self):
         self.hepev_buffer_fs.clear()
         self.hepev_buffer_truth.clear()
+        self.hepev_buffer_full.clear()
 
-    def FillEventBuffers(self,hepev_fs,hepev_truth=None):
+    def FillEventBuffers(self,hepev_fs,hepev_truth=None,hepev_full=None):
         self.hepev_buffer_fs.append(hepev_fs)
         if(hepev_truth is not None): self.hepev_buffer_truth.append(hepev_truth)
+        if(hepev_full is not None): self.hepev_buffer_full.append(hepev_full)
 
     def WriteEventBuffersToFile(self,header=False,footer=False):
         if(header): self.header_status = True
         if(footer): self.footer_status = True
-        HepMCOutput(self.hepev_buffer_fs,self.buffername,self.filename_full,header,footer)
-        HepMCOutput(self.hepev_buffer_truth,self.buffername_truth,self.filename_truth_full,header,footer)
+        HepMCOutput(self.hepev_buffer_fs,self.buffername,self.filename_fullpath,header,footer)
+        HepMCOutput(self.hepev_buffer_truth,self.buffername_truth,self.filename_truth_fullpath,header,footer)
+        HepMCOutput(self.hepev_buffer_full,self.buffername_full,self.filename_full_fullpath,header,footer)
         self.ClearEventBuffers()
 
     def GenerationLoop(self, nevents,i_real = 1, nevents_disp=None):
@@ -281,10 +290,12 @@ class Generator:
         # is written, and then copied to the "main" file before the next event is generated. This I/O might slow
         # down things, so we ultimately want to find some way to do a write with "append" functionality.
 
-        self.filename_full = '{}/{}'.format(self.outdir,self.filename)
-        self.filename_truth_full = self.filename_full.replace('.hepmc','_truth.hepmc')
-        self.buffername = self.filename_full.replace('.hepmc','_buffer.hepmc')
+        self.filename_fullpath = '{}/{}'.format(self.outdir,self.filename)
+        self.filename_truth_fullpath = self.filename_fullpath.replace('.hepmc','_truth.hepmc')
+        self.filename_full_fullpath = self.filename_fullpath.replace('.hepmc','_full.hepmc')
+        self.buffername = self.filename_fullpath.replace('.hepmc','_buffer.hepmc')
         self.buffername_truth = self.buffername.replace('.hepmc','_truth.hepmc')
+        self.buffername_full = self.buffername.replace('.hepmc','_full.hepmc')
 
         for i in range(nevents):
             self.pythia.Generate() # generate an event!
@@ -324,7 +335,6 @@ class Generator:
                     n_fail += 1
                     continue
 
-
             # ==========================================
             # Now we apply an (optional) "event filter". This applies some condition to the set
             # of truth and final-state particles selected above, and requires that the event pass
@@ -360,8 +370,8 @@ class Generator:
             # For example, we may be using our "truth particles" list to store the stable daughter particles of a particular
             # particle (like the stable daughters of a W boson decay).
             # These particles may be interesting to keep track of if we're using Delphes -- the Delphes output contains information
-            # on the indices of particles that hit each detector element, and in practice we may want to be able to map between
-            # the detector hits and any (stable) particles we within among our truth particle array. To do this, we will ultimately
+            # on the indices of particles that hit each detector element, and we may need to map between the detector
+            # hits and any (stable) particles within among our truth particle array. To do this, we will ultimately
             # need to determine these truth particles' indices w.r.t. the final_state_hepev that we create further below.
             # ==========================================
             final_state_truth_overlap = np.intersect1d(final_state_indices,truth_indices) # still gives indices w.r.t. the full Pythia event, not what we want to save.
@@ -412,16 +422,17 @@ class Generator:
             #       make it easier to utilize HepMC files from outside sources (e.g. events generated
             #       externally with a different generator like MadGraph).
             # ==========================================
+
             final_state_hepev = CreateHepMCEvent(self.pythia,final_state_indices,i_real)
-            # HepMCOutput(final_state_hepev,self.buffername,filename_full,self.loop_number,i,i_real,nevents,n_fail) # writes event to disk
 
             truth_hepev = None
             if(len(truth_indices) > 0): # TODO: If this condition isn't met for whatever reason, will final-state and truth files' events not line up?
                 truth_hepev = CreateHepMCEvent(self.pythia,truth_indices, i_real)
-                # HepMCOutput(truth_hepev,self.buffername_truth,filename_truth,self.loop_number,i,i_real,nevents,n_fail) # writes event to disk
+
+            full_hepev = CreateFullHepMCEvent(self.pythia,i_real) # TODO: Adding full event recording, with vertices. Currently unused in pipeline.
 
             # Fill the memory buffer with this event.
-            self.FillEventBuffers(final_state_hepev, truth_hepev)
+            self.FillEventBuffers(final_state_hepev, truth_hepev,full_hepev)
 
             # If buffer is full (i.e. has reached max size), write it to file & flush.
             if(self.GetCurrentBufferSize() == self.buffer_size):
@@ -505,8 +516,8 @@ class Generator:
         for i,pcode in enumerate(self.process_codes):
             self.xsecs[i,:] = xsec_dictionary[pcode]
 
-        # Create a stats file, and put in information on event weights & cross-sections.
-        f = h5.File('{}/{}'.format(self.outdir,self.stats_filename),'w')
+        # Create/append a stats file, and put in information on event weights & cross-sections.
+        f = h5.File('{}/{}'.format(self.outdir,self.stats_filename),'a')
         compression = 'gzip'
         copts = 9
         f.create_dataset('mc_weight',data=self.weights,compression=compression,compression_opts=copts)

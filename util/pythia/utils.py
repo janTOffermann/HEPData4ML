@@ -199,6 +199,36 @@ class PythiaWrapper:
         if(indices is not None): et = et[indices]
         return et
 
+    def GetXProd(self,indices=None):
+        if(self.event is None): return None
+        x = np.array([p.xProd() for p in self.event],dtype='f8')[1:] # drop entry 0, which represents "full event"
+        if(indices is not None): x = x[indices]
+        return x
+
+    def GetYProd(self,indices=None):
+        if(self.event is None): return None
+        x = np.array([p.yProd() for p in self.event],dtype='f8')[1:] # drop entry 0, which represents "full event"
+        if(indices is not None): x = x[indices]
+        return x
+
+    def GetZProd(self,indices=None):
+        if(self.event is None): return None
+        x = np.array([p.zProd() for p in self.event],dtype='f8')[1:] # drop entry 0, which represents "full event"
+        if(indices is not None): x = x[indices]
+        return x
+
+    def GetTProd(self,indices=None):
+        if(self.event is None): return None
+        x = np.array([p.tProd() for p in self.event],dtype='f8')[1:] # drop entry 0, which represents "full event"
+        if(indices is not None): x = x[indices]
+        return x
+
+    def GetProd(self,indices=None):
+        if(self.event is None): return None
+        x = np.array([[p.tProd(),p.xProd(),p.yProd(),p.zProd()] for p in self.event],dtype='f8')[1:] # drop entry 0, which represents "full event"
+        if(indices is not None): x = x[indices]
+        return x
+
     def GetNames(self,indices=None):
         if(self.event is None): return None
         names = [p.name() for p in self.event][1:] # drop entry 0, which represents "full event"

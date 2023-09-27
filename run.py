@@ -4,7 +4,7 @@ import argparse as ap
 import subprocess as sub
 from util.generation import Generator
 from util.delphes import DelphesWrapper
-from util.conversion import Processor, RemoveFailedFromHDF5, SplitH5, AddEventIndices, ConcatenateH5, MergeStatsInfo, AddConstantValue, AddMetaDataWithReference
+from util.conversion import Processor, RemoveFailedFromHDF5, SplitH5, AddEventIndices, ConcatenateH5, MergeH5, AddConstantValue, AddMetaDataWithReference
 from util.hepmc import CompressHepMC
 from util.config import Configurator,GetConfigFileContent
 import config.config as config
@@ -200,15 +200,26 @@ def main(args):
 
         generator.SetOutputDirectory(outdir)
 
-        hist_filename = 'hists_{}.root'.format(i)
-        hist_files.append(hist_filename)
+        # hist_filename = 'hists_{}.root'.format(i)
+        hist_filename = hep_file.replace('.hepmc','_hists.root')
         generator.SetHistFilename(hist_filename)
 
-        stat_filename = 'stats_{}.h5'.format(i)
-        stat_files.append(stat_filename)
-        generator.SetStatsFilename(stat_filename)
+        # stat_filename = 'stats_{}.h5'.format(i)
+        # stat_files.append(stat_filename)
+        # generator.SetStatsFilename(stat_filename)
 
-        generator.SetFilename(hep_file)
+        generator.SetFilename(hep_file, rename_extra_files=False)
+
+        # We will use one file to hold additional event data -- cross-sections,
+        # information on any "event filter flags", and on any overlapping listing
+        # of particles between our truth- and final-state selections. These can
+        # be handled by separate files but combining them will limit clutter.
+        extra_data_file = hep_file.replace('.hepmc','_data.h5')
+        generator.SetStatsFilename(extra_data_file)
+        generator.SetEventFilterFlagFilename(extra_data_file)
+        generator.SetIndexOverlapFilename(extra_data_file)
+
+
         generator.SetDiagnosticPlots(diagnostic_plots)
         generator.SetProgressBar(progress_bar)
 
@@ -226,8 +237,10 @@ def main(args):
         truthfile = generator.GetTruthFilename()
         truth_files.append(truthfile)
 
+        stat_files.append(generator.GetStatsFilename())
         final_state_truth_overlap_indices_files.append(generator.GetIndexOverlapFilename())
         filter_flag_files.append(generator.GetEventFilterFlagFilename())
+        hist_files.append(generator.GetHistFilename())
 
         if(use_delphes): # Case 1: Using Delphes
             # Pass the HepMC file to Delphes. Will output a ROOT file.
@@ -336,7 +349,7 @@ def main(args):
     except: pass # as long as the full stats file exists, it's okay if the individual ones were deleted already
 
     try:
-        MergeStatsInfo(h5_file,stats_filename,cwd=outdir,delete_stats_file=False, copts=9)
+        MergeH5(h5_file,stats_filename,cwd=outdir,delete_stats_file=False, copts=9)
     except:
         print('Warning: Stats information not found!')
         pass

@@ -815,26 +815,26 @@ def ConcatenateH5(input_files,output_file,cwd=None,delete_inputs=False, compress
         for f in input_files:
             sub.check_call(['rm',f])
 
-def MergeStatsInfo(h5_file, stats_file, cwd=None, delete_stats_file=False, compression='gzip',copts=9):
+def MergeH5(target_file, input_file, cwd=None, delete_stats_file=False, compression='gzip',copts=9):
     if(cwd is not None):
-        h5_file = '{}/{}'.format(cwd,h5_file)
-        stats_file = '{}/{}'.format(cwd,stats_file)
+        target_file = '{}/{}'.format(cwd,target_file)
+        input_file = '{}/{}'.format(cwd,input_file)
 
-    f = h5.File(h5_file,'a')
-    g = h5.File(stats_file,'r')
+    f = h5.File(target_file,'a')
+    g = h5.File(input_file,'r')
     keys = list(g.keys())
     f_keys = list(f.keys())
 
     for key in keys:
         if key in f_keys:
-            print('Warning: key {} found in {} before merging in stats info.'.format(key,h5_file))
+            print('Warning: key {} found in {} before merging in {}.'.format(key,target_file,input_file))
             continue
         f.create_dataset(key,data=g[key][:],compression=compression,compression_opts=copts)
 
     f.close()
     g.close()
     if(delete_stats_file):
-        sub.check_call(['rm',stats_file])
+        sub.check_call(['rm',input_file])
     return
 
 def RemoveFailedFromHDF5(h5_file, cwd=None, copts=9):
