@@ -277,6 +277,7 @@ def main(args):
     if(verbose): print('\nRunning jet clustering and producing final HDF5 output.\n')
     processor = Processor(configurator,use_delphes)
     processor.SetOutputDirectory(outdir)
+    print("processor.outdir = {}".format(outdir))
     processor.SetHistFilename(hist_filename)
     processor.SetDiagnosticPlots(diagnostic_plots)
     processor.SetSeparateTruthParticles(separate_truth_particles)

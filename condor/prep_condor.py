@@ -47,7 +47,17 @@ def main(args):
     # Prepare a plaintext file with all the different sets of arguments, for the various jobs.
     jobs_filename = '{}/job_arguments.txt'.format(rundir)
     ptbins_str = ','.join([str(x) for x in ptbins])
-    template = '{} {} {} {} {} {} {} {} {}'.format(nevents,ptbins_str,sep_truth, n_sep_truth, do_h5, '{}',split,'{}','{}') # double-quotes for silly condor argument syntax
+    template = '{} {} {} {} {} {} {} {} {}'.format(
+        nevents, # $1 Number of events per pT bin.
+        ptbins_str, #$2 pT bins (list of bin edges)
+        sep_truth, #$3 whether or not to save separate truth particle keys (0 or 1)
+        n_sep_truth, #$4 number of separate truth particles to save (i.e. save the first n from the list)
+        do_h5, #$5 whether or not to do jet clustering and make HDF5 files (HepMC -> HDF5). If not, stops after making the HepMC files.
+        '{}', #$6 RNG seed for generation. (can be used to overwrite the builtin config file)
+        split, #$7 whether or not to split final HDF5 file into train/validation/test files. Only relevant if making the HDF5 file.
+        '{}', #$8 Pythia config (can be used to overwrite the builtin config file)
+        '{}' #$9 Event index offset.
+    ) # double-quotes for silly condor argument syntax
     with open(jobs_filename,'w') as f:
         rng_counter = 0
         for i,pythia_config in enumerate(pythia_configs):
