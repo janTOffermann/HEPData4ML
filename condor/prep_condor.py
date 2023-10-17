@@ -47,13 +47,14 @@ def main(args):
     # Prepare a plaintext file with all the different sets of arguments, for the various jobs.
     jobs_filename = '{}/job_arguments.txt'.format(rundir)
     ptbins_str = ','.join([str(x) for x in ptbins])
-    template = '{} {} {} {} {} {} {} {}'.format(nevents,ptbins_str,sep_truth, n_sep_truth, do_h5, '{}',split,'{}') # double-quotes for silly condor argument syntax
+    template = '{} {} {} {} {} {} {} {} {}'.format(nevents,ptbins_str,sep_truth, n_sep_truth, do_h5, '{}',split,'{}','{}') # double-quotes for silly condor argument syntax
     with open(jobs_filename,'w') as f:
         rng_counter = 0
         for i,pythia_config in enumerate(pythia_configs):
             for j in range(njobs):
                 rng = rng_seed + rng_counter
-                command_arguments = template.format(rng,pythia_config) + '\n'
+                event_idx_offset = j * len(ptbins) * nevents
+                command_arguments = template.format(rng,pythia_config,event_idx_offset) + '\n'
                 f.write(command_arguments)
                 rng_counter += 1
 
