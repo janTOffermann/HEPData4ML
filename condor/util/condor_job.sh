@@ -31,7 +31,7 @@ mv config.py ${gitdir}/config/config.py
 outdir_local="output_${10}"
 
 # Run the generation.
-python ${gitdir}/run.py -n $1 -p_s $2 -O ${outdir_local} -s $3 -ns $4 -h5 $5 -rng $6 -pb 1 --split $7 -cd 1 -pc $8 -df 1 # will have to put in a bunch of user options.
+python ${gitdir}/run.py -n $1 -p_s $2 -O ${outdir_local} -s $3 -ns $4 -h5 $5 -rng $6 -pb 1 --split $7 -cd 1 -pc $8 -df 1 --index_offset $9 # will have to put in a bunch of user options.
 
 # Compress the output and extract it.
 outname="output.tar.bz2"

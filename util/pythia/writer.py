@@ -1,9 +1,8 @@
 import numpy as np
 import ROOT as rt
-# from util.pythia.utils import PythiaWrapper
+import pyhepmc as hep
 
-
-class PythiaWriter:
+class PythiaROOTWriter:
     """
     A class for writing Pythia output (from our PythiaWrapper class)
     to a ROOT file.
@@ -13,6 +12,20 @@ class PythiaWriter:
 
         self.file = rt.TFile(self.outname,'RECREATE')
         self.InitializeTree()
+        self.SetMaxParticles(int(1e4))
+        self.SetMaxNDaughters() # will inherit from argument to SetMaxParticles()
+
+    def SetMaxParticles(self,n=10000):
+        """
+        Maximum number of particles per event that we can save.
+        This should be set to be largr than necessary (at the cost
+        of more memory usage).
+        """
+        self.nmax = n
+
+    def SetMaxNDaughters(self,n=None):
+        if(n is None): n = self.nmax
+        self.ndaughter_max = n
 
     def InitializeTree(self,treename='CollectionTree'):
         self.file.cd()
@@ -20,32 +33,30 @@ class PythiaWriter:
         print(self.tree)
 
         self.particle_buffer = rt.TObjArray()
-        nmax = int(1e4) # maximum number of particles per event we can save -- should be larger than necessary!
-        ndaughter_max = int(1e4)
 
         self.buffer = {
             'nparticles':np.zeros(1,dtype=int),
-            'pdgid' :np.zeros(nmax,dtype=int),
-            'status':np.zeros(nmax,dtype=int),
-            'e'  :np.zeros(nmax,dtype=float),
-            'px' :np.zeros(nmax,dtype=float),
-            'py' :np.zeros(nmax,dtype=float),
-            'pz' :np.zeros(nmax,dtype=float),
-            'pt' :np.zeros(nmax,dtype=float),
-            'eta':np.zeros(nmax,dtype=float),
-            'phi':np.zeros(nmax,dtype=float),
-            'm'  :np.zeros(nmax,dtype=float),
-            'rap':np.zeros(nmax,dtype=float),
-            'theta':np.zeros(nmax,dtype=float),
-            'et':np.zeros(nmax,dtype=float),
-            'ndaughters':np.zeros(nmax,dtype=int),
-            'nmothers'  :np.zeros(nmax,dtype=int),
-            'daughters':np.zeros((nmax,ndaughter_max),dtype=int),
-            'mothers'  :np.zeros((nmax,ndaughter_max),dtype=int)
+            'pdgid' :np.zeros(self.nmax,dtype=int),
+            'status':np.zeros(self.nmax,dtype=int),
+            'e'  :np.zeros(self.nmax,dtype=float),
+            'px' :np.zeros(self.nmax,dtype=float),
+            'py' :np.zeros(self.nmax,dtype=float),
+            'pz' :np.zeros(self.nmax,dtype=float),
+            'pt' :np.zeros(self.nmax,dtype=float),
+            'eta':np.zeros(self.nmax,dtype=float),
+            'phi':np.zeros(self.nmax,dtype=float),
+            'm'  :np.zeros(self.nmax,dtype=float),
+            'rap':np.zeros(self.nmax,dtype=float),
+            'theta':np.zeros(self.nmax,dtype=float),
+            'et':np.zeros(self.nmax,dtype=float),
+            'ndaughters':np.zeros(self.nmax,dtype=int),
+            'nmothers'  :np.zeros(self.nmax,dtype=int),
+            'daughters':np.zeros((self.nmax,self.ndaughter_max),dtype=int),
+            'mothers'  :np.zeros((self.nmax,self.ndaughter_max),dtype=int)
         }
 
         keys_0d = ['nparticles']
-        keys_1d = [key for key,val in self.buffer.items() if val.ndim == 1 and val.shape[0]==nmax]
+        keys_1d = [key for key,val in self.buffer.items() if val.ndim == 1 and val.shape[0]==self.nmax]
         keys_2d = [key for key,val in self.buffer.items() if val.ndim == 2]
 
         # Prep the tree -- we store the TObjArray of TParticles, plus flattened info
@@ -138,4 +149,33 @@ class PythiaWriter:
 
         print('Calling fill. n_particles = ',n_particles)
         self.tree.Fill()
+
+class PythiaHepMC3Writer:
+    """
+    A class for writing Pythia output (from our PythiaWrapper class)
+    to a HepMC file. Slightly different structure than our ROOT writer,
+    since the actual I/O is handled a little differently -- here we will
+    have a buffer of HepMC events, which will be occasionally flushed
+    to a file (so that we don't have too many write operations).
+    """
+    def __init__(self,outfile='output.root'):
+        self.outname = outfile
+
+    def _extract_particle_momenta(pythia_wrapper, particle_indices=None):
+        if(particle_indices is None):
+            n = pythia_wrapper.GetN()
+            particle_indices = np.arange(n)
+        momentum = pythia_wrapper.GetPxPyPzE(particle_indices)
+        pdgid = pythia_wrapper.GetPdgId(particle_indices)
+        status = pythia_wrapper.GetStatus(particle_indices, hepmc=True)
+        return momentum, pdgid, status
+
+    def CreateHepMCEvent(self,pythia_wrapper, particle_indices, event_number):
+        hepev = hep.GenEvent()
+        hepev.event_number = event_number
+        momentum,pdgid,status = self._extract_particle_momenta(pythia_wrapper,particle_indices)
+        for j, pmu in enumerate(momentum):
+            par = hep.GenParticle(momentum=pmu, pid=pdgid[j], status=status[j])
+            hepev.add_particle(par)
+        return hepev
 

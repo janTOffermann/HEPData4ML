@@ -134,3 +134,15 @@ class Configurator:
 
     def GetUseVectorCalcs(self):
         return self.config['use_vectorcalcs']
+
+    def GetDelphesObjects(self):
+        key = 'delphes_outputs'
+        if(key in self.config.keys()):
+            return self.config[key]
+        else: return ['Tower'] # some default result, maybe good for backwards compatibility!
+
+    def GetMakeFullHepMCFile(self):
+        key = 'full_hepmc_output'
+        if(key in self.config.keys()):
+            return self.config[key]
+        else: return False # some default result, maybe good for backwards compatibility!
