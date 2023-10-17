@@ -146,3 +146,9 @@ class Configurator:
         if(key in self.config.keys()):
             return self.config[key]
         else: return False # some default result, maybe good for backwards compatibility!
+
+    def GetPileupHandling(self):
+        key = 'pileup_handling'
+        if(key in self.config.keys()):
+            return self.config[key]
+        else: return None # some default result, maybe good for backwards compatibility!

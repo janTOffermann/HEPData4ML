@@ -76,9 +76,7 @@ class Generator:
 
         # Variables related to handling of pileup.
         # TODO: Might want to eventually reorganize this, or move it into a separate class?
-        self.pileup_flag = False
-        self.pileup_mu_profile = None # a ROOT histogram (TH1D) giving a PDF of the # of pileup interactions
-        self.pileup_rng_seed = 1 # RNG seed for pileup handling
+        self.pileup_handler = self.configurator.GetPileupHandling()
 
         self.calculator = Calculator(use_vectorcalcs=self.configurator.GetUseVectorCalcs())
 
