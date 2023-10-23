@@ -127,6 +127,62 @@ class PtJetFilter:
         if(len(jets) < self.njet): return False
         return True
 
+class MassJetFilter:
+    """
+    A filter that requires an event to have at least
+    n jets (truth-level) with mass within some range.
+    Defaults to just using a lower threshold.
+    """
+    def __init__(self,jet_radius,njet,mass_min_jet=35., mass_max_jet=None, eta_max_jet=None):
+        self.SetJetRadius(jet_radius)
+        self.mass_min_jet = mass_min_jet
+        self.mass_max_jet = mass_max_jet
+        self.eta_max_jet = eta_max_jet
+        self.njet = njet
+
+        self.configurator = None
+
+    def Initialize(self,configurator):
+        self.configurator = configurator
+        verbose = self.configurator.GetPrintFastjet()
+        self.fastjet_setup = FastJetSetup(self.configurator.GetFastjetDirectory(),full_setup=True,verbose=verbose)
+        self.configurator.SetPrintFastjet(False)
+        self.fastjet_dir = self.fastjet_setup.GetPythonDirectory()
+        sys.path.append(self.fastjet_dir)
+        import fastjet as fj # this import should work, will be others peppered throughout for scope reasons but Python caches imports!
+        self.jetdef = fj.JetDefinition(fj.antikt_algorithm, self.radius)
+        self.calculator = Calculator(use_vectorcalcs=self.configurator.GetUseVectorCalcs())
+
+    def SetJetRadius(self,radius):
+            self.radius = radius
+
+    def __call__(self,pythia_wrapper,final_state_indices):
+        import fastjet as fj
+        # Get the four-vectors of the final-state particles.
+        # Using the signature (px, py, pz, E) since this is what fastjet uses
+        fs_particles = pythia_wrapper.GetPxPyPzE(final_state_indices)
+
+        # Perform jet clustering.
+        pseudojets = [fj.PseudoJet(*x) for x in fs_particles]
+        cluster_sequence = fj.ClusterSequence(pseudojets, self.jetdef)
+        jets = cluster_sequence.inclusive_jets()
+
+        # Apply optional eta window cut to the jets we consider.
+        if(self.eta_max_jet is not None):
+            jets_eta = np.array([jet.eta() for jet in jets])
+            jets = jets[np.where(np.abs(jets_eta) < self.eta_max_jet)[0]]
+
+        if(len(jets) < self.njet): return False # not enough jets -> already failed
+
+        # Check if there are sufficient jets with mass above/below thresholds.
+        jets_mass = np.array([jet.m() for jet in jets],dtype=float)
+        if(self.mass_min_jet is not None): jets = jets[np.where(jets_mass > self.mass_min_jet)[0]]
+        if(self.mass_max_jet is not None): jets = jets[np.where(jets_mass < self.mass_max_jet)[0]]
+        if(len(jets) < self.njet): return False
+        return True
+
+
+
 class PtMatchedJetFilter:
     """
     A multi-step filter:

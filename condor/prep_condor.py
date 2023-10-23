@@ -18,6 +18,7 @@ def main(args):
     parser.add_argument('-sq', '--shortqueue', type=int,default=0,help='Whether or not to use the condor short queue (for UChicago Analysis Facility).')
     parser.add_argument('-ncpu','--n_cpu',type=int,default=1,help='Number of (logical) CPU cores per job.')
     parser.add_argument('-nblas','--n_openblas',type=int,default=16,help='Sets the $OPENBLAS_NUM_THREADS variable (used for numpy multithreading). Advanced usage.')
+    parser.add_argument('-event_idx_offset','--event_idx_offset',type=int,default=0,help='Initial offset for event_idx. Advanced usage.')
     args = vars(parser.parse_args())
 
     nevents = args['nevents']
@@ -36,6 +37,7 @@ def main(args):
     short_queue = args['shortqueue'] > 0
     ncpu = args['n_cpu']
     nblas = args['n_openblas']
+    event_idx_offset_initial = args['event_idx_offset']
 
     rundir = str(pathlib.Path(rundir).absolute())
     outdir = str(pathlib.Path(outdir).absolute())
@@ -63,7 +65,7 @@ def main(args):
         for i,pythia_config in enumerate(pythia_configs):
             for j in range(njobs):
                 rng = rng_seed + rng_counter
-                event_idx_offset = j * len(ptbins) * nevents
+                event_idx_offset = event_idx_offset_initial + j * len(ptbins) * nevents
                 command_arguments = template.format(rng,pythia_config,event_idx_offset) + '\n'
                 f.write(command_arguments)
                 rng_counter += 1
