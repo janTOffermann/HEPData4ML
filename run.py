@@ -1,5 +1,4 @@
 import sys,os,pathlib,time,datetime,re,shlex,uuid
-import numpy as np, h5py as h5
 import argparse as ap
 import subprocess as sub
 from util.generation import Generator
@@ -43,7 +42,8 @@ def main(args):
     parser.add_argument('-h5',           '--hdf5',              type=int,          default=1,                help='Whether or not to produce final HDF5 files. If false, stops after HepMC or Delphes/ROOT file production.')
     parser.add_argument('-f',            '--force',             type=int,          default=0,                help='Whether or not to force generation -- if true, will possibly overwrite existing HepMC files in output directory.')
     parser.add_argument('-c',            '--compress',          type=int,          default=0,                help='Whether or not to compress HepMC files.')
-    parser.add_argument('-cd',           '--clean_delphes',     type=int,          default=0,                help='Whether or not to clean up DELPHES/ROOT files.')
+    parser.add_argument('-del_delphes',  '--del_delphes',       type=int,          default=0,                help='Whether or not to delete DELPHES/ROOT files.')
+    parser.add_argument('-del_hepmc',    '--del_hepmc',         type=int,          default=0,                help='Whether or not to delete HepMC3 files.')
     parser.add_argument('-rng',          '--rng',               type=int,          default=None,             help='Pythia RNG seed. Will override the one provided in the config file.')
     parser.add_argument('-npc',          '--nentries_per_chunk',type=int,          default=int(1e4),         help='Number of entries to process per chunk, for jet clustering & conversion to HDF5.')
     parser.add_argument('-pb',           '--progress_bar',      type=int,          default=1,                help='Whether or not to print progress bar during event generation')
@@ -76,7 +76,8 @@ def main(args):
     verbose = args['verbose'] > 0
     do_h5 = args['hdf5']
     compress_hepmc = args['compress']
-    delete_delphes = args['clean_delphes']
+    delete_delphes = args['del_delphes']
+    delete_hepmc = args['del_hepmc']
     force = args['force']
     pythia_rng = args['rng']
     nentries_per_chunk = args['nentries_per_chunk']
@@ -252,8 +253,9 @@ def main(args):
             delphes_file = delphes_wrapper.HepMC3ToDelphes(hepmc_file=hep_file, output_file=delphes_file, cwd=outdir, delphes_card=delphes_card)
             jet_files.append(delphes_file)
 
-            # We can now compress the HepMC file. Once it's compressed, we delete the original file to recover space.
-            if(compress_hepmc): CompressHepMC(['{}/{}'.format(outdir,hep_file)],True)
+            # We can now delete or compress the HepMC file. If it's compressed, we delete the original file to recover space.
+            if(delete_hepmc): sub.check_call(['rm','{}/{}'.format(outdir,hep_file)])
+            elif(compress_hepmc): CompressHepMC(['{}/{}'.format(outdir,hep_file)],True)
 
         else: # Case 2: No Delphes
             jet_files.append(hep_file)
@@ -337,7 +339,10 @@ def main(args):
 
     else:
         #Cleanup: Compress the HepMC files.
-        if(compress_hepmc): CompressHepMC(jet_files,True,cwd=outdir)
+        if(delete_hepmc):
+            for file in jet_files:
+                sub.check_call(['rm','{}/{}'.format(outdir,file)])
+        elif(compress_hepmc): CompressHepMC(jet_files,True,cwd=outdir)
 
     # Combine the stats files.
     # TODO: Can we handle some of the stats file stuff under-the-hood? Or just access all the files
@@ -351,8 +356,11 @@ def main(args):
     try: MergeH5(h5_file,stats_filename,cwd=outdir,delete_stats_file=delete_full_stats, copts=9)
     except: print('Warning: Stats information not found!')
 
-    # Now also compress the truth files.
-    if(compress_hepmc): CompressHepMC(truth_files,True,cwd=outdir)
+    # Now also delete or compress the truth files.
+    if(delete_hepmc):
+        for file in truth_files:
+            sub.check_call(['rm','{}/{}'.format(outdir,file)])
+    elif(compress_hepmc): CompressHepMC(truth_files,True,cwd=outdir)
 
     # Add some event indices to our dataset.
     if(index_offset < 0): index_offset = 0

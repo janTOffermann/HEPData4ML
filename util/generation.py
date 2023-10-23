@@ -2,7 +2,6 @@ import os
 import numpy as np
 import ROOT as rt
 import h5py as h5
-# import pyhepmc as hep
 import subprocess as sub
 
 from util.pythia.utils import PythiaWrapper
@@ -323,6 +322,8 @@ class Generator:
                 continue
 
             # Here, we optionally apply pileup (or more generally, merging in some other event(s)).
+            if(self.pileup_handler is not None):
+                self.pileup_handler(self.pythia)
 
             # Get the final-state particles that we're saving (however we've defined our final state!).
             final_state_indices = np.atleast_1d(np.array(self.final_state_selection(self.pythia),dtype=int))
@@ -422,14 +423,9 @@ class Generator:
             # split things across two files) we're also not saving vertex information to
             # these HepMC files.
             #
-            # TODO: We may want to totally rework this part of the code, so that the HepMC files
-            #       contain the *full* event (incl. vertex information), and the selections
-            #       (event selection, truth selection, final-state selection) are applied later
-            #       when in the HepMC -> Delphes/HDF5 pipeline. The current method has the advantage
-            #       of reducing the HepMC filesize but what we get aren't really "full" HepMC files,
-            #       plus redesigning things to use more standard HepMC files (with vertex info) would
-            #       make it easier to utilize HepMC files from outside sources (e.g. events generated
-            #       externally with a different generator like MadGraph).
+            # TODO: Might want to include vertex info! This is being done with CreateFullHepMCEvent,
+            #       but there might be some issues with it (events produced with it cannot be
+            #       be visualized by pyhepmc, suggests some vertices might be missing from output.)
             # ==========================================
 
             final_state_hepev = CreateHepMCEvent(self.pythia,final_state_indices,i_real)
