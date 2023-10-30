@@ -3,7 +3,6 @@ import numpy as np
 import ROOT as rt
 import h5py as h5
 import subprocess as sub
-
 from util.pythia.utils import PythiaWrapper
 from util.qol_utils.pdg import pdg_names, pdg_plotcodes, FillPdgHist
 from util.calcs import Calculator
@@ -304,6 +303,7 @@ class Generator:
         self.buffername_full = self.buffername.replace('.hepmc','_full.hepmc')
 
         for i in range(nevents):
+
             self.pythia.Generate() # generate an event!
 
             # Get the truth-level particles, using our truth selector.
@@ -590,7 +590,7 @@ class Generator:
         for par in arr:
             par_array = np.array([par[0],par[1],par[2],par[3]] )
             full_sum += par_array
-            invisible = IsNeutrino(par,use_hepmc=False)
+            invisible = IsNeutrino(p=par) # TODO: Not sure if this will still work based on other updates to the code?
             if(invisible): inv_sum += par_array
             else: vis_sum += par_array
 

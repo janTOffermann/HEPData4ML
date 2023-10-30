@@ -2,6 +2,7 @@ import sys,os,glob
 import numpy as np
 import h5py as h5
 import argparse as ap
+import time
 
 def concatenate(input_patterns,output,copts):
     # Determine what are the input files.
@@ -89,7 +90,11 @@ def main(args):
     output = args['output']
     copts = args['compression']
 
+    t1 = time.time()
     concatenate(input_patterns,output,copts)
+    t2 = time.time()
+    dt = t2 - t1
+    print('\Elapsed time: {:.2f} seconds.'.format(dt))
 
 if __name__ == '__main__':
     main(sys.argv)

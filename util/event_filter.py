@@ -181,8 +181,6 @@ class MassJetFilter:
         if(len(jets) < self.njet): return False
         return True
 
-
-
 class PtMatchedJetFilter:
     """
     A multi-step filter:
@@ -349,7 +347,7 @@ class ContainedJetFilter:
         self.truth_index = truth_indices[0] # assume we are only using a selector giving 1 output, otherwise just take the first one
 
         # Get the four-vectors of the final-state particles.
-        # Using the signature (px, py, pz, E) since this is what fastjet
+        # Using the signature (px, py, pz, E) since this is what fastjet uses
         fs_particles = pythia_wrapper.GetPxPyPzE(final_state_indices)
 
         # Perform jet clustering.
