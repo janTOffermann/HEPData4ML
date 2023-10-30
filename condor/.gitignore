@@ -1,1 +1,9 @@
-runs
+# Ignore everything
+*
+
+# But now these files...
+!README.md
+!prep_condor.py
+!run_condor.py
+!util/
+

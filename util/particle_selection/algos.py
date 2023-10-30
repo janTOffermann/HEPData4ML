@@ -69,7 +69,6 @@ def IsStable(pythia_wrapper=None, idx=None, p=None, hepmc_particle=None):
         return np.abs(hepmc_particle.status) == 1
     if(p is None):
         status = pythia_wrapper.GetStatus(idx,hepmc=True)
-        # print('IsStable:',idx,status)
         return status == 1
     return p[-1] # TODO: Should double-check this, not sure where it is invoked?
 

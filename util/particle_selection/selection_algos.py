@@ -45,7 +45,6 @@ class SelectFinalStateDaughters:
         if(type(starting_particles) not in [list,np.ndarray]): starting_particles = [starting_particles]
         particles = []
         for i,p in enumerate(starting_particles):
-            print(i,p)
             gatherer = GatherStableDaughters()
             daughters = gatherer(pythia_wrapper,p)
             particles.append(daughters)
