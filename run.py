@@ -44,6 +44,7 @@ def main(args):
     parser.add_argument('-c',            '--compress',          type=int,          default=0,                help='Whether or not to compress HepMC files.')
     parser.add_argument('-del_delphes',  '--del_delphes',       type=int,          default=0,                help='Whether or not to delete DELPHES/ROOT files.')
     parser.add_argument('-del_hepmc',    '--del_hepmc',         type=int,          default=0,                help='Whether or not to delete HepMC3 files.')
+    parser.add_argument('-delphes',      '--delphes',           type=int,          default=-1,               help='Optional Delphes flag -- will override the \'delphes\' option in the config file. 0 == False, 1 == True, otherwise ignored.')
     parser.add_argument('-rng',          '--rng',               type=int,          default=None,             help='Pythia RNG seed. Will override the one provided in the config file.')
     parser.add_argument('-npc',          '--nentries_per_chunk',type=int,          default=int(1e4),         help='Number of entries to process per chunk, for jet clustering & conversion to HDF5.')
     parser.add_argument('-pb',           '--progress_bar',      type=int,          default=1,                help='Whether or not to print progress bar during event generation')
@@ -51,6 +52,7 @@ def main(args):
     parser.add_argument('-tf',           '--train_fraction',    type=float,        default=0.7,              help='Fraction of events to place in the training file.')
     parser.add_argument('-vf',           '--val_fraction',      type=float,        default=0.2,              help='Fraction of events to place in the validation file.')
     parser.add_argument('-df',           '--delete_full',       type=int,          default=0,                help='Whether or not to delete the full HDF5 file after splitting into train/validation/testing files.')
+    parser.add_argument('-ds',           '--delete_stats',      type=int,          default=1,                help='Whether or not to delete the full stats file. This file\'s info is merged into HDF5 dataset, but the file may be useful in some advanced use cases.')
     parser.add_argument('-co',           '--compression_opts',  type=int,          default=7,                help='Compression option for final HDF5 file (0-9). Higher value means more compression.')
     parser.add_argument('-separate_h5',  '--separate_h5',       type=int,          default=1,                help='Whether or not to make separate HDF5 files for each pT bin.')
     parser.add_argument('-pc',           '--pythia_config',     type=none_or_str,  default=None,             help='Path to Pythia configuration template (for setting the process).')
@@ -87,6 +89,8 @@ def main(args):
     pythia_config = args['pythia_config']
     debug = args['debug'] > 0
     index_offset = args['index_offset']
+    delete_full_stats = args['delete_stats'] > 0
+    delphes_override = args['delphes']
 
     if(pt_bin_edges is not None and pt_bin_edges_string is not None):
         print('Warning: Both "ptbins" and "ptbins_string" arguments were given. Using the "ptbins" argument.')
@@ -135,6 +139,10 @@ def main(args):
     if(nevents_per_bin >= 100): h5_conversion_verbosity = 1
     elif(nevents_per_bin >= 10000): h5_conversion_verbosity = 2
 
+    if(delphes_override == 0):
+        configurator.SetDelphesConfig(False)
+    elif(delphes_override == 1):
+        configurator.SetDelphesConfig(True)
     use_delphes = configurator.GetDelphesConfig()
 
     # Keep track of some files we create.
@@ -180,6 +188,9 @@ def main(args):
             for bin_edge in pt_bin_edges:
                 print('\t\t{}'.format(bin_edge))
             print()
+
+    else:
+        pythia_rng = -1 # TODO: Make this better -- currently this means seed is unknown!
 
     print()
     for i in range(nbins):
@@ -235,7 +246,6 @@ def main(args):
         truth_files.append(truthfile)
 
         stat_files.append(generator.GetStatsFilename())
-        print('Stats filename = {}'.format(generator.GetStatsFilename()))
         final_state_truth_overlap_indices_files.append(generator.GetIndexOverlapFilename())
         filter_flag_files.append(generator.GetEventFilterFlagFilename())
         hist_files.append(generator.GetHistFilename())
@@ -349,7 +359,6 @@ def main(args):
     # without making the aggregate stats file.
     stats_filename = 'stats.h5'
     delete_individual_stats = True
-    delete_full_stats = True # file is now just used for merging purposes, it is temporary
     try: ConcatenateH5(stat_files,stats_filename,cwd=outdir,delete_inputs=delete_individual_stats, copts=9)
     except: pass # as long as the full stats file exists, it's okay if the individual ones were deleted already
 
@@ -374,6 +383,7 @@ def main(args):
 
     # Now, add some metadata to the file -- we use the HDF5 file attributes to store lists of metadata, and create columns that reference these lists.
     # This is handled correctly by metadata.
+    print('pythia_rng = ',pythia_rng)
     AddMetaDataWithReference(h5_file,cwd=outdir,value=pythia_rng,                                                 key='pythia_random_seed'    ) # Add the Pythia8 RNG seed. Storing this way doesn't really save space -- it's just an int -- but we'll do this for consistency with how metadata is handled.
     AddMetaDataWithReference(h5_file,cwd=outdir,value=" ".join(map(shlex.quote, sys.argv[1:])),                   key='command_line_arguments') # Add the command line arguments.
     AddMetaDataWithReference(h5_file,cwd=outdir,value='\n'.join(GetConfigFileContent()),                          key='config_file'           ) # Add the full config file a string.

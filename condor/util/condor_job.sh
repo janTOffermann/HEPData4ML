@@ -31,8 +31,101 @@ mv config.py ${gitdir}/config/config.py
 
 outdir_local="output_${11}"
 
-# Run the generation.
-python ${gitdir}/run.py -n $1 -p_s $2 -O ${outdir_local} -s $3 -ns $4 -h5 $5 -rng $6 -pb 1 --split $7 -del_delphes 1 -pc $8 -df 1 --index_offset $9 # will have to put in a bunch of user options.
+truth_file="${outdir_local}/events.h5"
+delphes_file="${outdir_local}/event_delphes.h5"
+
+# Run the generation. First with Delphes, then again without.
+# (for the second run, use the HepMC files that have already been generated)
+python ${gitdir}/run.py \
+  -n $1 \
+  -p_s $2 \
+  -O ${outdir_local} \
+  -s $3 \
+  -ns $4 \
+  -h5 $5 \
+  -rng $6 \
+  -pb 1 \
+  --delete_stats 0 \
+  --split 0 \
+  -del_delphes 1 \
+  -pc $8 \
+  -df 1 \
+  --index_offset $9 \
+  --delphes 1
+
+mv $truth_file $delphes_file # first output is from Delphes -> rename it.
+
+# Run a 2nd time, now without Delphes output. Produces truth-level "events.h5"
+python ${gitdir}/run.py \
+  -n $1 \
+  -p_s $2 \
+  -O ${outdir_local} \
+  -s $3 \
+  -ns $4 \
+  -h5 $5 \
+  -rng $6 \
+  -pb 1 \
+  --delete_stats 0 \
+  --split 0 \
+  -del_delphes 1 \
+  -pc $8 \
+  -df 1 \
+  --index_offset $9 \
+  --delphes 0
+
+# TODO: Optionally do something here with events.h5 and events_delphes.h5 -- slim down to only shared events
+#       that passed both truth-level and Delphes jet selections?
+
+# Optionally split files into train,test and validation sets.
+# TODO: Split is currently hard-coded, make this configurable?
+if [ "${7}" == "1" ]; then
+  python ${gitdir}/util/tools/split.py \
+    -i $delphes_file \
+    -o ${outdir_local} \
+    -f1 0.6 \
+    -f2 0.2 \
+    -s 1 \
+    -c 9
+
+  rm $delphes_file
+  # Prepend "delphes" to help with possible sorting of outputs (delphes vs. truth),
+  # useful when there are many files.
+  mv ${outdir_local}/train.h5 ${outdir_local}/delphes_train.h5
+  mv ${outdir_local}/test.h5 ${outdir_local}/delphes_test.h5
+  mv ${outdir_local}/valid.h5 ${outdir_local}/delphes_valid.h5
+
+  python ${gitdir}/util/tools/split.py \
+    -i $truth_file \
+    -o ${outdir_local} \
+    -f1 0.6 \
+    -f2 0.2 \
+    -s 1 \
+    -c 9
+
+  rm $truth_file
+fi
+
+# Ship the output HDF5 file(s).
+# We will also ship the other files that are produced, but will bundle them up.
+# (we keep these separate since in practice they are the most useful to directly access)
+if [ "${7}" == "1" ]; then
+  python copy_output.py -i ${outdir_local}/train.h5 -e "h5" -o ${10} -n ${11}
+  python copy_output.py -i ${outdir_local}/test.h5  -e "h5" -o ${10} -n ${11}
+  python copy_output.py -i ${outdir_local}/valid.h5 -e "h5" -o ${10} -n ${11}
+  rm ${outdir_local}/train.h5 ${outdir_local}/test.h5 ${outdir_local}/valid.h5
+
+  python copy_output.py -i ${outdir_local}/delphes_train.h5 -e "h5" -o ${10} -n ${11}
+  python copy_output.py -i ${outdir_local}/delphes_test.h5  -e "h5" -o ${10} -n ${11}
+  python copy_output.py -i ${outdir_local}/delphes_valid.h5 -e "h5" -o ${10} -n ${11}
+  rm ${outdir_local}/delphes_train.h5 ${outdir_local}/delphes_test.h5 ${outdir_local}/delphes_valid.h5
+
+else
+  python copy_output.py -i $truth_file -e "h5" -o ${10} -n ${11}
+  python copy_output.py -i $delphes_file -e "h5" -o ${10} -n ${11}
+
+  rm $truth_file
+  rm $delphes_file
+fi
 
 # Compress the output and extract it.
 outname="output.tar.bz2"
@@ -41,20 +134,10 @@ tar -cjf ${outname} ${outdir_local}
 # Ship the output tarball.
 python copy_output.py -i ${outname} -e "tar.bz2" -o ${10} -n ${11}
 
-# Additionally, ship the full event HDF5 file(s).
-# This is technically redundant but might save us some time, since we don't need to unpack all the job output for them.
-if [ "${7}" == "1" ]; then
-  python copy_output.py -i ${outdir_local}/train.h5 -e "h5" -o ${10} -n ${11}
-  python copy_output.py -i ${outdir_local}/test.h5  -e "h5" -o ${10} -n ${11}
-  python copy_output.py -i ${outdir_local}/valid.h5 -e "h5" -o ${10} -n ${11}
-else
-  python copy_output.py -i ${outdir_local}/events.h5 -e "h5" -o ${10} -n ${11}
-fi
-
 # Cleanup. Not strictly necessary.
 rm -r ${outdir_local}
 rm ${outname}
 rm *.py
-rm -r $gitdir
+rm -rf $gitdir
 if [ -d fastjet ]; then rm -r fastjet; fi
 if [ -d delphes ]; then rm -r delphes; fi

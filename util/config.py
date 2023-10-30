@@ -82,6 +82,16 @@ class Configurator:
     def GetDelphesConfig(self):
         return self.config['delphes']
 
+    def SetDelphesConfig(self,value=True):
+        """
+        Allows us to (re)set the Delphes flag.
+        """
+        if(type(value) != bool):
+            print('Configurator.SetDelphesConfig(): Input {} not understood, setting delphes=False.'.format(value))
+            value = False
+        self.config['delphes'] = value
+        return
+
     def GetDelphesCard(self):
         return self.config['delphes_card']
 

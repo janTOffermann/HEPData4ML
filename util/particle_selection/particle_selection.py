@@ -1,5 +1,5 @@
 import numpy as np
-
+import time
 # ==============================
 # These are particle selectors, that the user should
 # use (via the configuration). Some are built to
@@ -39,6 +39,8 @@ class FirstSelector:
                 self.status = 1
 
     def __call__(self,pythia_wrapper):
+        # print('call FirstSelector, with pdgid = {}, status = {}'.format(self.pdgid,self.status))
+        # t1 = time.time()
         pdgid = pythia_wrapper.GetPdgId()
         status = pythia_wrapper.GetStatus(hepmc=True)
         self.selection_status = True
@@ -53,6 +55,9 @@ class FirstSelector:
         if(len(intersection) == 0):
             self.selection_status = False
             return None
+        # t2 = time.time()
+        # dt = t2 - t1
+        # print('\tDone, dt = {}'.format(dt))
         return intersection[0]
 
     def Print(self):
