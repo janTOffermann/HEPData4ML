@@ -10,7 +10,7 @@ def main(args):
     rundirs = glob.glob(args['rundir'])
 
     for rundir in rundirs:
-        argument_file = rundir + '/job_arguments.txt'
+        argument_file = rundir + '/arguments.txt'
         submit_file = 'condor.sub'
 
         with open(argument_file,'r') as f:
