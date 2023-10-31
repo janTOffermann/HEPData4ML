@@ -36,6 +36,9 @@ def main(args):
     outfile = '{}/{}'.format(outdir,output)
 
     comm = ['cp','-r',input,outfile] # add the -r flag in case we are copying a directory
+    print('Copying:')
+    print('\t Input: {}'.format(input))
+    print('\tOutput: {}'.format(outfile))
     sub.check_call(comm)
     return
 
