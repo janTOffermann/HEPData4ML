@@ -79,8 +79,8 @@ python ${gitdir}/run.py \
 # Delphes files (events that have passed jet cuts for both the truth-level
 # and Delphes jets).
 # TODO: Make this optional?
-truth_file_matched=events_matched.h5
-delphes_file_matched=events_delphes_matched.h5
+truth_file_matched="${outdir_local}/events_matched.h5"
+delphes_file_matched="${outdir_local}/events_delphes_matched.h5"
 python util/tools/match.py \
   -i1 $truth_file \
   -i2 $delphes_file \
