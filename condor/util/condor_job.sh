@@ -32,10 +32,11 @@ mv config.py ${gitdir}/config/config.py
 outdir_local="output_${11}"
 
 truth_file="${outdir_local}/events.h5"
-delphes_file="${outdir_local}/event_delphes.h5"
+delphes_file="${outdir_local}/events_delphes.h5"
 
 # Run the generation. First with Delphes, then again without.
 # (for the second run, use the HepMC files that have already been generated)
+echo "Generating events, applying DELPHES fast detector sim, clustering jets."
 python ${gitdir}/run.py \
   -n $1 \
   -p_s $2 \
@@ -56,6 +57,7 @@ python ${gitdir}/run.py \
 mv $truth_file $delphes_file # first output is from Delphes -> rename it.
 
 # Run a 2nd time, now without Delphes output. Produces truth-level "events.h5"
+echo "Now clustering truth-level jets from previously-generated events."
 python ${gitdir}/run.py \
   -n $1 \
   -p_s $2 \
@@ -73,12 +75,26 @@ python ${gitdir}/run.py \
   --index_offset $9 \
   --delphes 0
 
-# TODO: Optionally do something here with events.h5 and events_delphes.h5 -- slim down to only shared events
-#       that passed both truth-level and Delphes jet selections?
+# Slim down to only events shared between the truth-level and
+# Delphes files (events that have passed jet cuts for both the truth-level
+# and Delphes jets).
+# TODO: Make this optional?
+truth_file_matched=events_matched.h5
+delphes_file_matched=events_delphes_matched.h5
+python util/tools/match.py \
+  -i1 $truth_file \
+  -i2 $delphes_file \
+  -o1 $truth_file_matched \
+  -o2 $delphes_file_matched \
+  -k event_idx
+
+mv $truth_file_matched $truth_file
+mv $delphes_file_matched $delphes_file
 
 # Optionally split files into train,test and validation sets.
 # TODO: Split is currently hard-coded, make this configurable?
 if [ "${7}" == "1" ]; then
+  echo "Splitting files."
   python ${gitdir}/util/tools/split.py \
     -i $delphes_file \
     -o ${outdir_local} \

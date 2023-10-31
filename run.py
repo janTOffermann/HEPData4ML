@@ -383,7 +383,6 @@ def main(args):
 
     # Now, add some metadata to the file -- we use the HDF5 file attributes to store lists of metadata, and create columns that reference these lists.
     # This is handled correctly by metadata.
-    print('pythia_rng = ',pythia_rng)
     AddMetaDataWithReference(h5_file,cwd=outdir,value=pythia_rng,                                                 key='pythia_random_seed'    ) # Add the Pythia8 RNG seed. Storing this way doesn't really save space -- it's just an int -- but we'll do this for consistency with how metadata is handled.
     AddMetaDataWithReference(h5_file,cwd=outdir,value=" ".join(map(shlex.quote, sys.argv[1:])),                   key='command_line_arguments') # Add the command line arguments.
     AddMetaDataWithReference(h5_file,cwd=outdir,value='\n'.join(GetConfigFileContent()),                          key='config_file'           ) # Add the full config file a string.
