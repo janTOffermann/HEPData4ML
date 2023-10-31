@@ -30,9 +30,10 @@ export OMP_NUM_THREADS=$12
 mv config.py ${gitdir}/config/config.py
 
 outdir_local="output_${11}"
-
-truth_file="${outdir_local}/events.h5"
-delphes_file="${outdir_local}/events_delphes.h5"
+truth_file_short=events.h5
+delphes_file_short=events_delphes.h5
+truth_file="${outdir_local}/${truth_file_short}"
+delphes_file="${outdir_local}/${delphes_file_short}"
 
 # Run the generation. First with Delphes, then again without.
 # (for the second run, use the HepMC files that have already been generated)
@@ -41,6 +42,7 @@ python ${gitdir}/run.py \
   -n $1 \
   -p_s $2 \
   -O ${outdir_local} \
+  -o ${delphes_file_short} \
   -s $3 \
   -ns $4 \
   -h5 $5 \
@@ -54,22 +56,20 @@ python ${gitdir}/run.py \
   --index_offset $9 \
   --delphes 1
 
-mv $truth_file $delphes_file # first output is from Delphes -> rename it.
-
 # Run a 2nd time, now without Delphes output. Produces truth-level "events.h5"
 echo "Now clustering truth-level jets from previously-generated events."
 python ${gitdir}/run.py \
   -n $1 \
   -p_s $2 \
   -O ${outdir_local} \
+  -o ${truth_file_short} \
   -s $3 \
   -ns $4 \
   -h5 $5 \
   -rng $6 \
-  -pb 1 \
+  -pb 0 \
   --delete_stats 0 \
   --split 0 \
-  -del_delphes 1 \
   -pc $8 \
   -df 1 \
   --index_offset $9 \
