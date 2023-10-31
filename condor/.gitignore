@@ -1,9 +1,10 @@
 # Ignore everything
 *
 
-# But now these files...
+# But not these files...
 !README.md
 !prep_condor.py
 !run_condor.py
 !util/
+!util/*
 

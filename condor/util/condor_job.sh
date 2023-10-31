@@ -15,8 +15,8 @@
 # $12 OpenBLAS max thread count (for multithreading).
 
 # Clone the git repo -- this is cleaner than packaging up the code with a tarball.
-git clone -b devel git@github.com:janTOffermann/HEPData4ML.git # get the development branch, maybe make this configurable?
 gitdir=HEPData4ML
+git clone -b devel git@github.com:janTOffermann/HEPData4ML.git ${gitdir} # get the development branch, maybe make this configurable?
 
 # Run the setup script.
 source ${gitdir}/setup/cvmfs/setup.sh
@@ -81,7 +81,7 @@ python ${gitdir}/run.py \
 # TODO: Make this optional?
 truth_file_matched="${outdir_local}/events_matched.h5"
 delphes_file_matched="${outdir_local}/events_delphes_matched.h5"
-python util/tools/match.py \
+python ${gitdir}/util/tools/match.py \
   -i1 $truth_file \
   -i2 $delphes_file \
   -o1 $truth_file_matched \
