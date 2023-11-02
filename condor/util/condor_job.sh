@@ -13,23 +13,48 @@
 # $10 Output directory (for the condor job).
 # $11 Process number (for naming the output).
 # $12 OpenBLAS max thread count (for multithreading).
+# $13 Git option. Determines if we do a git clone here, or if the code has been shipped in as a tarball.
+# $14 Git branch.
 
-# Clone the git repo -- this is cleaner than packaging up the code with a tarball.
-gitdir=HEPData4ML
-git clone -b devel git@github.com:janTOffermann/HEPData4ML.git ${gitdir} # get the development branch, maybe make this configurable?
+nevents_per_bin=$1
+pt_bins=$2
+separate_truth_flag=$3
+separate_truth_number=$4
+do_h5=$5
+rng_seed=$6
+do_split=$7
+pythia_config=$8
+event_idx_offset=$9
+outdir=${10}
+proc_number=${11}
+openblas_max_thread=${12}
+git_option=${13}
+git_branch=${14}
+
+# Set up the code. This may involve shipping in a payload, or running `git clone` here.
+gitdir=HEPData4ML # TODO: payload curently set to use this name, is this OK or too much hardcoding?
+if [ "${git_option}" == "0" ]; then
+  # run git clone here
+  git clone -b ${git_branch} git@github.com:janTOffermann/HEPData4ML.git ${gitdir}
+else
+  # assume the payload has been shipped in, as payload.tar.bz2
+  payload=payload.tar.bz2
+  tar -xjf ${payload}
+  rm ${payload}
+fi
 
 # Run the setup script.
 source ${gitdir}/setup/cvmfs/setup.sh
 
 # Set the number of threads (for OpenBLAS). Might be necessary in order to deal with memory limits.
-export OPENBLAS_NUM_THREADS=$12
-export GOTO_NUM_THREADS=$12
-export OMP_NUM_THREADS=$12
+export OPENBLAS_NUM_THREADS=${openblas_max_thread}
+export GOTO_NUM_THREADS=${openblas_max_thread}
+export OMP_NUM_THREADS=${openblas_max_thread}
 
 # Move the config.py file into the config directory. It has been shipped as an input file separate of the payload.
 mv config.py ${gitdir}/config/config.py
 
-outdir_local="output_${11}"
+outdir_local="output_${proc_number}"
 truth_file_short=events.h5
 delphes_file_short=events_delphes.h5
 truth_file="${outdir_local}/${truth_file_short}"
@@ -39,40 +64,40 @@ delphes_file="${outdir_local}/${delphes_file_short}"
 # (for the second run, use the HepMC files that have already been generated)
 echo "Generating events, applying DELPHES fast detector sim, clustering jets."
 python ${gitdir}/run.py \
-  -n $1 \
-  -p_s $2 \
+  -n ${nevents_per_bin} \
+  -p_s ${pt_bins} \
   -O ${outdir_local} \
   -o ${delphes_file_short} \
-  -s $3 \
-  -ns $4 \
-  -h5 $5 \
-  -rng $6 \
+  -s ${separate_truth_flag} \
+  -ns ${separate_truth_number} \
+  -h5 ${do_h5} \
+  -rng ${rng_seed} \
   -pb 1 \
   --delete_stats 0 \
   --split 0 \
   -del_delphes 1 \
-  -pc $8 \
+  -pc ${pythia_config} \
   -df 1 \
-  --index_offset $9 \
+  --index_offset ${event_idx_offset} \
   --delphes 1
 
 # Run a 2nd time, now without Delphes output. Produces truth-level "events.h5"
 echo "Now clustering truth-level jets from previously-generated events."
 python ${gitdir}/run.py \
-  -n $1 \
-  -p_s $2 \
+  -n ${nevents_per_bin} \
+  -p_s ${pt_bins} \
   -O ${outdir_local} \
   -o ${truth_file_short} \
-  -s $3 \
-  -ns $4 \
-  -h5 $5 \
-  -rng $6 \
+  -s ${separate_truth_flag} \
+  -ns ${separate_truth_number} \
+  -h5 ${do_h5} \
+  -rng ${rng_seed} \
   -pb 0 \
   --delete_stats 0 \
   --split 0 \
-  -pc $8 \
+  -pc ${pythia_config} \
   -df 1 \
-  --index_offset $9 \
+  --index_offset ${event_idx_offset} \
   --delphes 0
 
 # Slim down to only events shared between the truth-level and
@@ -93,7 +118,7 @@ mv $delphes_file_matched $delphes_file
 
 # Optionally split files into train,test and validation sets.
 # TODO: Split is currently hard-coded, make this configurable?
-if [ "${7}" == "1" ]; then
+if [ "${do_split}" == "1" ]; then
   echo "Splitting files."
   python ${gitdir}/util/tools/split.py \
     -i $delphes_file \
@@ -124,20 +149,20 @@ fi
 # Ship the output HDF5 file(s).
 # We will also ship the other files that are produced, but will bundle them up.
 # (we keep these separate since in practice they are the most useful to directly access)
-if [ "${7}" == "1" ]; then
-  python copy_output.py -i ${outdir_local}/train.h5 -e "h5" -o ${10} -n ${11}
-  python copy_output.py -i ${outdir_local}/test.h5  -e "h5" -o ${10} -n ${11}
-  python copy_output.py -i ${outdir_local}/valid.h5 -e "h5" -o ${10} -n ${11}
+if [ "${do_split}" == "1" ]; then
+  python copy_output.py -i ${outdir_local}/train.h5 -e "h5" -o ${outdir} -n ${proc_number}
+  python copy_output.py -i ${outdir_local}/test.h5  -e "h5" -o ${outdir} -n ${proc_number}
+  python copy_output.py -i ${outdir_local}/valid.h5 -e "h5" -o ${outdir} -n ${proc_number}
   rm ${outdir_local}/train.h5 ${outdir_local}/test.h5 ${outdir_local}/valid.h5
 
-  python copy_output.py -i ${outdir_local}/delphes_train.h5 -e "h5" -o ${10} -n ${11}
-  python copy_output.py -i ${outdir_local}/delphes_test.h5  -e "h5" -o ${10} -n ${11}
-  python copy_output.py -i ${outdir_local}/delphes_valid.h5 -e "h5" -o ${10} -n ${11}
+  python copy_output.py -i ${outdir_local}/delphes_train.h5 -e "h5" -o ${outdir} -n ${proc_number}
+  python copy_output.py -i ${outdir_local}/delphes_test.h5  -e "h5" -o ${outdir} -n ${proc_number}
+  python copy_output.py -i ${outdir_local}/delphes_valid.h5 -e "h5" -o ${outdir} -n ${proc_number}
   rm ${outdir_local}/delphes_train.h5 ${outdir_local}/delphes_test.h5 ${outdir_local}/delphes_valid.h5
 
 else
-  python copy_output.py -i $truth_file -e "h5" -o ${10} -n ${11}
-  python copy_output.py -i $delphes_file -e "h5" -o ${10} -n ${11}
+  python copy_output.py -i $truth_file -e "h5" -o ${outdir} -n ${proc_number}
+  python copy_output.py -i $delphes_file -e "h5" -o ${outdir} -n ${proc_number}
 
   rm $truth_file
   rm $delphes_file
@@ -148,7 +173,7 @@ outname="output.tar.bz2"
 tar -cjf ${outname} ${outdir_local}
 
 # Ship the output tarball.
-python copy_output.py -i ${outname} -e "tar.bz2" -o ${10} -n ${11}
+python copy_output.py -i ${outname} -e "tar.bz2" -o ${outdir} -n ${proc_number}
 
 # Cleanup. Not strictly necessary.
 rm -r ${outdir_local}
