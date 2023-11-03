@@ -50,7 +50,7 @@ def PreparePayloadFromClone(rundir,payload,gitdir='HEPData4ML',branch='main'):
     command = ['tar','-cjf',payload,gitdir]
     sub.check_call(command,cwd=tmp_dir)
     payload_full = '{}/{}'.format(tmp_dir,payload)
-    command = ['rm','-r',gitdir_full]
+    command = ['rm','-rf',gitdir_full]
     sub.check_call(command)
     command = ['mv',payload_full,rundir]
     sub.check_call(command)
