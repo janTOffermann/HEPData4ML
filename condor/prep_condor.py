@@ -21,7 +21,7 @@ def main(args):
     parser.add_argument('-nblas',            '--n_openblas',      type=int, help='Sets the $OPENBLAS_NUM_THREADS variable (used for numpy multithreading). Advanced usage.',default=16)
     parser.add_argument('-event_idx_offset', '--event_idx_offset',type=int, help='Initial offset for event_idx. Advanced usage.',default=0)
     parser.add_argument('-batch_name',       '--batch_name',      type=str, help='Name for the condor batch. If left empty, unused.',default=None)
-    parser.add_argument('-git',              '--git_option',      type=int, help='If < 0, ships code directly from this repo. If == 0, runs \'git clone\' within each job. If > 0, runs \'git clone\' locally and ships result to jobs.')
+    parser.add_argument('-git',              '--git_option',      type=int, help='If < 0, ships code directly from this repo. If == 0, runs \'git clone\' within each job. If > 0, runs \'git clone\' locally and ships result to jobs.',default=0)
     parser.add_argument('-branch',           '--branch',          type=str, help='If using git for jobs, which branch to clone. Defaults to current.', default=None)
     args = vars(parser.parse_args())
 
