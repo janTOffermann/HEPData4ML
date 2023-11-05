@@ -41,6 +41,12 @@ class DataLoader:
     def Get(self,key):
         return np.concatenate([x[key][:] for x in self.h5_files],axis=0)
 
+    def GetWithIdx1(self,key,idx=None):
+        if(idx is None):
+            return np.concatenate([x[key][:] for x in self.h5_files],axis=0)
+        else:
+            return np.concatenate([x[key][:,idx] for x in self.h5_files],axis=0)
+
 def main(args):
     parser = ap.ArgumentParser()
     parser.add_argument('-i','--infiles',type=str,help='Input HDF5 file(s). Can be a single filename, or a glob-compatible string',required=True)
@@ -82,8 +88,9 @@ def main(args):
     Nobj = Nobj[:nevents]
     jet_E = dataloader.Get('jet_Pmu')[:nevents,0]
     jet_Pmu_cyl = dataloader.Get('jet_Pmu_cyl')[:nevents]
-    truth_Pdg = dataloader.Get('truth_Pdg')[0]
-    truth_Pmu = dataloader.Get('truth_Pmu')
+    truth_Pdg = dataloader.GetWithIdx1('truth_Pdg',0)
+        # truth_Pdg = dataloader.Get('truth_Pdg')[0]
+        # truth_Pmu = dataloader.Get('truth_Pmu')
 
     # Define a bunch of binning settings.
     binning = {
@@ -128,11 +135,19 @@ def main(args):
             git_hash_text.append('(+ {} more)'.format(nhash - 3))
     unique_ids = metahandler.GetMetaData()['unique_id_short']
     unique_ids.sort()
-    unique_id_text = [
-        'Dataset ID (short):',
-        '{}, {}, {}'.format(*unique_ids[:3]),
-        '(+ {} more)'.format(len(unique_ids)-3)
-        ]
+    n_unique_ids = np.minimum(len(unique_ids),3)
+
+    unique_id_text = ['Dataset ID (short):']
+    substring = ', '.join([n_unique_ids * '{}']).format(*unique_ids[:n_unique_ids])
+    unique_id_text.append(substring)
+    if(n_unique_ids > 3):
+        unique_id_text.append('(+ {} more)'.format(len(unique_ids)-3))
+
+    # unique_id_text = [
+    #     'Dataset ID (short):',
+    #     '{}, {}, {}'.format(*unique_ids[:3]),
+    #     '(+ {} more)'.format(len(unique_ids)-3)
+    #     ]
 
     timestamps = metahandler.GetMetaData()['timestamp']
     min_timestamp = np.min(timestamps)
@@ -232,7 +247,8 @@ def main(args):
         particle_name_fancy = particle_name_fancy.replace('#','\\')
 
         print('Making plots for {}.'.format(particle_name))
-        vec = truth_Pmu[:nevents,i,:]
+        vec = dataloader.GetWithIdx1('truth_Pmu',i)
+        # vec = truth_Pmu[:nevents,i,:]
 
         vec_cyl = np.array([calculator.EPxPyPzToPtEtaPhiM_single(*x) for x in vec])
 
