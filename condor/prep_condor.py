@@ -72,7 +72,7 @@ def main(args):
         for i,pythia_config in enumerate(pythia_configs):
             for j in range(njobs):
                 rng = rng_seed + rng_counter
-                event_idx_offset = event_idx_offset_initial + j * len(ptbins) * nevents
+                event_idx_offset = event_idx_offset_initial + j * (len(ptbins) - 1) * nevents # len(ptbins) gives # of bin edges, which is number of bins + 1
                 command_arguments = template.format(rng,pythia_config,event_idx_offset) + '\n'
                 f.write(command_arguments)
                 rng_counter += 1
