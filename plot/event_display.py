@@ -72,7 +72,7 @@ def main(args):
 
     input = args['input']
     outdir = args['outdir']
-    output = args['output']
+    output = '{}/{}'.format(outdir,args['output'])
     event_index = args['index']
     jet_radius = args['jet_radius']
     center = args['center'] > 0
@@ -98,9 +98,6 @@ def main(args):
     truth_Pdg = f['truth_Pdg'][event_index,:truth_Nobj]
     jet_Pmu = f['jet_Pmu{}'.format(key_suffix)][event_index]
 
-    # TODO: This is a temporary test.
-    # energy_ratio_truth = f['energy_ratio_truth'][event_index,:Nobj]
-    # daughters = Pmu[np.where(energy_ratio_truth == 1)[0][0]]
     f.close()
 
     jet_Pmu = calculator.EPxPyPzToPtEtaPhiM_single(*jet_Pmu)
@@ -262,8 +259,8 @@ def main(args):
         curves = JetCurveInTheta(theta_carrier,jet_phi,jet_eta,radius=jet_radius)
         curves = [c - offset_phi for c in curves]
 
-        for entry in zip(theta_carrier,curves[0]):
-            print(entry)
+        # for entry in zip(theta_carrier,curves[0]):
+        #     print(entry)
 
         for i,circ in enumerate((jet_circle_bottom,jet_circle_top)):
             circ.SetLineColor(jet_circle_color)
