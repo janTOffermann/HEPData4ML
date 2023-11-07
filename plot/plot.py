@@ -2,7 +2,10 @@ import sys,os,datetime,glob
 import numpy as np
 import ROOT as rt
 import h5py as h5
+import matplotlib as mpl
+mpl.use('Agg')
 import matplotlib.pyplot as plt
+
 import argparse as ap
 from plot_util.plot_util import RN, MetaDataHandler,Plotter
 
@@ -37,25 +40,50 @@ class DataLoader:
 
     def Initialize(self):
         self.h5_files = [h5.File(x,'r') for x in self.infiles]
+        self.n = [x['Nobj'].shape[0] for x in self.h5_files]
 
-    def Get(self,key):
-        return np.concatenate([x[key][:] for x in self.h5_files],axis=0)
+    # def Get(self,key):
+    #     return np.concatenate([x[key][:] for x in self.h5_files],axis=0)
 
-    def GetWithIdx1(self,key,idx=None):
-        if(idx is None):
-            return np.concatenate([x[key][:] for x in self.h5_files],axis=0)
+    # def GetWithIdx1(self,key,idx=None,n=None):
+    #     if(n is None):
+    #         return self._get_full(key,idx)
+    #     else:
+    #         self._get_full_idx1(key,idx)
+
+    # def _get_full(self,key,idx=None):
+    #     if(idx is None):
+    #         return np.concatenate([x[key][:] for x in self.h5_files],axis=0)
+    #     else:
+    #         return np.concatenate([x[key][:,idx] for x in self.h5_files],axis=0)
+
+    def Get(self,key,idx=None,n=None):
+        # determine which file(s) to read from
+        nfiles_to_read = -1
+        if(n is None):
+            nfiles_to_read = len(self.h5_files)
         else:
-            return np.concatenate([x[key][:,idx] for x in self.h5_files],axis=0)
+            n_cumulative = np.add.accumulate(self.n) # one of many ways to do this
+            nfiles_to_read = np.where(n < n_cumulative)[0]
+            if(len(nfiles_to_read) == 0): nfiles_to_read = len(self.h5_files)
+            else: nfiles_to_read = nfiles_to_read[0] + 1
+        # print('Getting {}'.format(key))
+        # print('\tReading {} files.'.format(nfiles_to_read))
+        # print('\t\tIndex = {}'.format(idx))
+        if(idx is None):
+            return np.concatenate([x[key][:] for x in self.h5_files[:nfiles_to_read]],axis=0)[:n]
+        return np.concatenate([x[key][:,idx] for x in self.h5_files[:nfiles_to_read]],axis=0)[:n]
+
 
 def main(args):
     parser = ap.ArgumentParser()
-    parser.add_argument('-i','--infiles',type=str,help='Input HDF5 file(s). Can be a single filename, or a glob-compatible string',required=True)
-    parser.add_argument('-o','--outdir',type=str,help='Output directory.',default=None)
-    parser.add_argument('-n','--ntruth',type=int,help='Number of truth-level particles to plot for.',default=None)
-    parser.add_argument('-d','--descriptor',type=str,help='String describing dataset. For multiple lines, use semicolon separation.')
-    parser.add_argument('-N','--Nevents',type=int,default=-1,help='Number of events to plot (plots for the first N events). If <= 0, plots from whole dataset.')
-    parser.add_argument('-s','--style',type=int,default=0)
-    parser.add_argument('-smoothing','--smoothing',type=float,default=0,help='Smoothing coefficient for 2D matplotlib plots. If <= 0, no smoothing is applied.')
+    parser.add_argument('-i',        '--infiles',   type=str,             help='Input HDF5 file(s). Can be a single filename, or a glob-compatible string',required=True)
+    parser.add_argument('-o',        '--outdir',    type=str,             help='Output directory.',default=None)
+    parser.add_argument('-n',        '--ntruth',    type=int,             help='Number of truth-level particles to plot for.',default=None)
+    parser.add_argument('-d',        '--descriptor',type=str,             help='String describing dataset. For multiple lines, use semicolon separation.')
+    parser.add_argument('-N',        '--Nevents',   type=int, default=-1, help='Number of events to plot (plots for the first N events). If <= 0, plots from whole dataset.')
+    parser.add_argument('-s',        '--style',     type=int, default=0)
+    parser.add_argument('-smoothing','--smoothing', type=float, default=0,help='Smoothing coefficient for 2D matplotlib plots. If <= 0, no smoothing is applied.')
     args = vars(parser.parse_args())
 
     rt.gROOT.SetBatch(True)
@@ -86,16 +114,25 @@ def main(args):
     if(nevents <= 0):
         nevents = Nobj.shape[0]
     Nobj = Nobj[:nevents]
-    jet_E = dataloader.Get('jet_Pmu')[:nevents,0]
-    jet_Pmu_cyl = dataloader.Get('jet_Pmu_cyl')[:nevents]
-    truth_Pdg = dataloader.GetWithIdx1('truth_Pdg',0)
+    jet_E = dataloader.Get('jet_Pmu',idx=0,n=nevents)
+    jet_Pmu_cyl = dataloader.Get('jet_Pmu_cyl',n=nevents)
+    truth_Pdg = dataloader.Get('truth_Pdg',n=1,idx=None)[0]
+
         # truth_Pdg = dataloader.Get('truth_Pdg')[0]
         # truth_Pmu = dataloader.Get('truth_Pmu')
 
+    # Make plots for the truth particle kinematics.
+    # TODO: Assuming truth_Pdg entries are identical across events.
+    #       This is generally a safe assumption, but may break down
+    #       in some future use case!
+    if(n_truth is None):
+        n_truth = len(truth_Pdg)
+    truth_names = [pdg_names[x] for x in truth_Pdg]
+
     # Define a bunch of binning settings.
     binning = {
-        'n':(100,0.,100.),
-        'pt':(100,0.,1000.),
+        'n':(200,0.,200.),
+        'pt':(40,500.,700.),
         'eta':(200,-2.5,2.5),
         'phi':(100,-np.pi,np.pi),
         'm':(250,0.,250.),
@@ -188,10 +225,10 @@ def main(args):
     # Some 1D jet kinematic plots.
     normalize = True
     for key in jet_titles.keys():
-        if(normalize):
-            title = ';{};Fractional Count'.format(jet_titles[key])
-        else:
-            title = ';{};Count'.format(jet_titles[key])
+        # if(normalize):
+        title = ';{};Fractional Count'.format(jet_titles[key])
+        # else:
+        #     title = ';{};Count'.format(jet_titles[key])
         h = plotter.SimpleHist(jet_data[key],binning[key],title,normalize=normalize)
         name = 'jet_{}'.format(key)
         plotter.Root2Plt_hist1d(h,name=name,ylog=True)
@@ -205,10 +242,10 @@ def main(args):
         drawn_keys.append(key_x)
         for key_y in jet_titles.keys():
             if(key_x == key_y or key_y in drawn_keys): continue
-            if(normalize):
-                title = ';{};{};Fractional Count'.format(jet_titles[key_x],jet_titles[key_y])
-            else:
-                title = ';{};{};Count'.format(jet_titles[key],jet_titles[key_y])
+            # if(normalize):
+            title = ';{};{};Fractional Count'.format(jet_titles[key_x],jet_titles[key_y])
+            # else:
+                # title = ';{};{};Count'.format(jet_titles[key],jet_titles[key_y])
             h2 = plotter.SimpleHist2D(jet_data[key_x],jet_data[key_y],binning[key_x],binning[key_y],title,normalize=normalize)
             name = 'jet_{}_vs_{}'.format(key_y,key_x)
             plotter.Plt_hist2d(jet_data[key_x],jet_data[key_y],binning[key_x],binning[key_y],title,normalize=normalize,name=name,smoothing=smoothing)
@@ -218,14 +255,6 @@ def main(args):
             plotter.SaveRootOutput(h2,name,ndim=2)
 
     plt.close()
-
-    # Make plots for the truth particle kinematics.
-    # TODO: Assuming truth_Pdg entries are identical across events.
-    #       This is generally a safe assumption, but may break down
-    #       in some future use case!
-    if(n_truth is None):
-        n_truth = len(truth_Pdg)
-    truth_names = [pdg_names[x] for x in truth_Pdg]
 
     quark_counter = 0
     for i,truth_name in enumerate(truth_names):
@@ -247,7 +276,7 @@ def main(args):
         particle_name_fancy = particle_name_fancy.replace('#','\\')
 
         print('Making plots for {}.'.format(particle_name))
-        vec = dataloader.GetWithIdx1('truth_Pmu',i)
+        vec = dataloader.Get('truth_Pmu',idx=i,n=nevents)
         # vec = truth_Pmu[:nevents,i,:]
 
         vec_cyl = np.array([calculator.EPxPyPzToPtEtaPhiM_single(*x) for x in vec])
@@ -271,12 +300,12 @@ def main(args):
         }
 
         # Some 1D truth particle kinematic plots.
-        normalize = True
+        # normalize = True
         for key in titles.keys():
-            if(normalize):
-                title = ';{};Fractional Count'.format(titles[key])
-            else:
-                title = ';{};Count'.format(titles[key])
+            # if(normalize):
+            title = ';{};Fractional Count'.format(titles[key])
+            # else:
+            #     title = ';{};Count'.format(titles[key])
             h = plotter.SimpleHist(data[key],binning[key],title,normalize=normalize)
             name = '{}_{}'.format(particle_name,key)
             plotter.Root2Plt_hist1d(h,name=name,ylog=True)
@@ -286,16 +315,16 @@ def main(args):
             plt.close()
 
         # Some 2D truth particle kinematic plots.
-        normalize = True
+        # normalize = True
         drawn_keys = []
         for key_x in titles.keys():
             drawn_keys.append(key_x)
             for key_y in titles.keys():
                 if(key_x == key_y or key_y in drawn_keys): continue
-                if(normalize):
-                    title = ';{};{};Fractional Count'.format(titles[key_x],titles[key_y])
-                else:
-                    title = ';{};{};Count'.format(titles[key],titles[key_y])
+                # if(normalize):
+                title = ';{};{};Fractional Count'.format(titles[key_x],titles[key_y])
+                # else:
+                #     title = ';{};{};Count'.format(titles[key],titles[key_y])
                 h2 = plotter.SimpleHist2D(data[key_x],data[key_y],binning[key_x],binning[key_y],title,normalize=normalize)
                 name = '{}_{}_vs_{}'.format(particle_name,key_y,key_x)
                 plotter.Plt_hist2d(data[key_x],data[key_y],binning[key_x],binning[key_y],title,normalize=normalize,name=name,smoothing=smoothing)
@@ -306,10 +335,10 @@ def main(args):
         # Some 2D plots -- truth particle kinematics vs. jet kinematics.
         for key_x in jet_titles.keys():
             for key_y in titles.keys():
-                if(normalize):
-                    title = ';{};{};Fractional Count'.format(jet_titles[key_x],titles[key_y])
-                else:
-                    title = ';{};{};Count'.format(titles[key],titles[key_y])
+                # if(normalize):
+                title = ';{};{};Fractional Count'.format(jet_titles[key_x],titles[key_y])
+                # else:
+                #     title = ';{};{};Count'.format(titles[key],titles[key_y])
                 h2 = plotter.SimpleHist2D(jet_data[key_x],data[key_y],binning[key_x],binning[key_y],title,normalize=normalize)
                 name = '{}_{}_vs_jet_{}'.format(particle_name,key_y,key_x)
                 plotter.Plt_hist2d(jet_data[key_x],data[key_y],binning[key_x],binning[key_y],title,normalize=normalize,name=name,smoothing=smoothing)
