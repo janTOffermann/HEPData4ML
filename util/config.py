@@ -82,6 +82,16 @@ class Configurator:
     def GetDelphesConfig(self):
         return self.config['delphes']
 
+    def SetDelphesConfig(self,value=True):
+        """
+        Allows us to (re)set the Delphes flag.
+        """
+        if(type(value) != bool):
+            print('Configurator.SetDelphesConfig(): Input {} not understood, setting delphes=False.'.format(value))
+            value = False
+        self.config['delphes'] = value
+        return
+
     def GetDelphesCard(self):
         return self.config['delphes_card']
 
@@ -134,3 +144,21 @@ class Configurator:
 
     def GetUseVectorCalcs(self):
         return self.config['use_vectorcalcs']
+
+    def GetDelphesObjects(self):
+        key = 'delphes_outputs'
+        if(key in self.config.keys()):
+            return self.config[key]
+        else: return ['Tower'] # some default result, maybe good for backwards compatibility!
+
+    def GetMakeFullHepMCFile(self):
+        key = 'full_hepmc_output'
+        if(key in self.config.keys()):
+            return self.config[key]
+        else: return False # some default result, maybe good for backwards compatibility!
+
+    def GetPileupHandling(self):
+        key = 'pileup_handling'
+        if(key in self.config.keys()):
+            return self.config[key]
+        else: return None # some default result, maybe good for backwards compatibility!

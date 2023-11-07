@@ -18,18 +18,27 @@ def main(args):
     input_extension = args['extension']
     is_directory = args['directory'] > 0
 
+    # TODO: Quick fix for nproc: zero pad it to help with alphanumeric sorting.
+    #       This is sometimes handy, e.g. when gluing together the outputs
+    #       (to keep event_idx monotonically increasing). This padding is currently
+    #       not adjustable, so we hope we do not have >10k jobs.
+    nproc_string = str(nproc).zfill(4)
+
     os.makedirs(outdir,exist_ok=True) # make the output directory if it does not already exist
     input_nopath = input.split('/')[-1]
     if(not is_directory):
         if(input_extension is None):
             input_extension = input_nopath.split('.')[-1]
-        output = input_nopath.replace('.' + input_extension,'') + '_{}.{}'.format(nproc,input_extension)
+        output = input_nopath.replace('.' + input_extension,'') + '_{}.{}'.format(nproc_string,input_extension)
 
     else:
-        output = input_nopath + '_{}'.format(nproc)
+        output = input_nopath + '_{}'.format(nproc_string)
     outfile = '{}/{}'.format(outdir,output)
 
     comm = ['cp','-r',input,outfile] # add the -r flag in case we are copying a directory
+    print('Copying:')
+    print('\t Input: {}'.format(input))
+    print('\tOutput: {}'.format(outfile))
     sub.check_call(comm)
     return
 

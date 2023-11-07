@@ -10,6 +10,7 @@ from util.qol_utils.qol_util import printProgressBarColor, RN
 from util.qol_utils.pdg import pdg_plotcodes, pdg_names, FillPdgHist
 from util.particle_selection.algos import IsNeutrino
 from util.fastjet import FastJetSetup
+from util.hepmc import ExtractHepMCEvents
 
 class Processor:
     """
@@ -238,12 +239,12 @@ class Processor:
             nentries = len(delphes_arr)
         else:
             ## Extract final-state truth particle info from the HepMC files.
-            final_state_events, nentries = self.ExtractHepMCEvents(final_state_files,get_nevents=True)
+            final_state_events, nentries = ExtractHepMCEvents(final_state_files,get_nevents=True)
 
         # Also extract truth particle info from the HepMC files.
         # Note that it's possible that there are no truth HepMC files, if we didn't specify any
         # truth_selection in our configuration (e.g. if we were making a background sample).
-        truth_events = self.ExtractHepMCEvents(truth_files,silent=True)
+        truth_events = ExtractHepMCEvents(truth_files,silent=True)
 
         nentries_per_chunk = int(nentries_per_chunk)
         self.data = self.PrepDataBuffer(nentries_per_chunk,self.separate_truth_particles,self.n_separate_truth_particles,self.record_final_state_indices,self.record_full_final_state)
@@ -663,22 +664,22 @@ class Processor:
             x.close()
         return
 
-    def ExtractHepMCEvents(self,files,get_nevents=False, silent=False):
-        events = []
-        nevents = 0
-        for file in files:
-            # Check that the file exists.
-            if(not pathlib.Path(file).exists()):
-                if(not silent):
-                    print('Warning: Tried to access file {} but it does not exist!'.format(file))
-                continue
+    # def ExtractHepMCEvents(self,files,get_nevents=False, silent=False):
+    #     events = []
+    #     nevents = 0
+    #     for file in files:
+    #         # Check that the file exists.
+    #         if(not pathlib.Path(file).exists()):
+    #             if(not silent):
+    #                 print('Warning: Tried to access file {} but it does not exist!'.format(file))
+    #             continue
 
-            with hep.io.ReaderAscii(file) as f:
-                for evt in f:
-                    events.append(evt)
-                    if(get_nevents): nevents += 1
-        if(get_nevents): return events, nevents
-        return events
+    #         with hep.io.ReaderAscii(file) as f:
+    #             for evt in f:
+    #                 events.append(evt)
+    #                 if(get_nevents): nevents += 1
+    #     if(get_nevents): return events, nevents
+    #     return events
 
     def ExtractHepMCParticles(self,events,n_par):
         particles = [
@@ -689,7 +690,8 @@ class Processor:
 
     def PrepDelphesArrays(self,delphes_files):
         # types = ['EFlowTrack','EFlowNeutralHadron','EFlowPhoton']
-        types = ['Tower'] # TODO: Is there a better way to prepare Delphes jet constituents? We want PFlow/EFlow?
+        # types = ['Tower'] # TODO: Is there a better way to prepare Delphes jet constituents? We want PFlow/EFlow?
+        types = self.configurator.GetDelphesObjects()
         components = ['PT','Eta','Phi','ET'] # not all types have all components, this is OK
         delphes_keys = ['{x}.{y}'.format(x=x,y=y) for x in types for y in components]
         delphes_tree = 'Delphes'
@@ -774,7 +776,7 @@ class Processor:
         return start_idxs,stop_idxs,ranges
 
 # Generic function for concatenating HDF5 files.
-def ConcatenateH5(input_files,output_file,cwd=None,delete_inputs=False, compression='gzip', copts=9,ignore_keys=None,verbose=False):
+def ConcatenateH5(input_files,output_file,cwd=None,delete_inputs=False, compression='gzip', copts=9,ignore_keys=None,verbose=False,silent_drop=False):
     if(cwd is not None):
         input_files = ['{}/{}'.format(cwd,x) for x in input_files]
     infiles = [h5.File(f,'r') for f in input_files]
@@ -792,7 +794,7 @@ def ConcatenateH5(input_files,output_file,cwd=None,delete_inputs=False, compress
 
     if(ignore_keys is not None):
         keys = [k for k in keys if k not in ignore_keys]
-        if(verbose):
+        if(verbose and not silent_drop):
             print('\tExcluding the following keys from concatenation, these will be dropped:')
             for k in ignore_keys:
                 print('\t\t{}'.format(k))
@@ -867,7 +869,7 @@ def RemoveFailedFromHDF5(h5_file, cwd=None, copts=9):
     return
 
 # Add a column with event indices.
-def AddEventIndices(h5_file,cwd=None,copts=9,key='event_idx'):
+def AddEventIndices(h5_file,cwd=None,copts=9,key='event_idx',offset=0):
     """
     Add a dataset with event indices to an HDF5 file. This is a sequential index,
     which may be useful if some entries will later be dropped and one wants to
@@ -876,8 +878,8 @@ def AddEventIndices(h5_file,cwd=None,copts=9,key='event_idx'):
     if(cwd is not None): h5_file = '{}/{}'.format(cwd,h5_file)
     f = h5.File(h5_file,'r+')
     nevents = f['is_signal'].shape[0]
-    event_indices = np.arange(nevents,dtype=int)
-    f.create_dataset('event_idx',data=event_indices, compression='gzip', compression_opts=copts)
+    event_indices = np.arange(offset,nevents+offset,dtype=int)
+    f.create_dataset(key,data=event_indices, compression='gzip', compression_opts=copts)
     f.close()
 
 def AddConstantValue(h5_file,cwd=None,copts=9,value=0,key='constant_value',dtype=None):

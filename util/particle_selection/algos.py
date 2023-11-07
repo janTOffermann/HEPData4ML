@@ -3,7 +3,6 @@
 # to limit code clutter elsewhere.
 
 import numpy as np
-
 #==========================================
 # Here are a bunch of convenience
 # functions, which may be useful
@@ -67,11 +66,11 @@ def IsBoson(pythia_wrapper=None, idx=None, p=None, hepmc_particle=None):
 
 def IsStable(pythia_wrapper=None, idx=None, p=None, hepmc_particle=None):
     if(hepmc_particle is not None):
-        status = np.abs(hepmc_particle.status)
-    else:
-        if(p is None): p = pythia_wrapper.GetParticle(idx)
-        status = p[-1]
-    return (status == 1)
+        return np.abs(hepmc_particle.status) == 1
+    if(p is None):
+        status = pythia_wrapper.GetStatus(idx,hepmc=True)
+        return status == 1
+    return p[-1] # TODO: Should double-check this, not sure where it is invoked?
 
 # # Given the index of a particle in the event listing
 # # of a Pythia wrapper, traverse down the event listing
@@ -79,10 +78,8 @@ def IsStable(pythia_wrapper=None, idx=None, p=None, hepmc_particle=None):
 class GatherQuarks:
     def __init__(self):
         self.particle_list = []
-        # self.searched_particle_list = [] # to avoid loops -- though this was probably due to a bug during early development!
 
     def __run(self,pythia_wrapper,idx):
-        # self.searched_particle_list.append(idx)
         daughters = pythia_wrapper.GetDaughtersSingle(idx)
 
         # Determine which daughters are quarks -- these get added to particle_list.
@@ -98,7 +95,6 @@ class GatherQuarks:
                 self.particle_list.append(q)
 
         for nq in not_quark_daughters:
-            # if(nq in self.searched_particle_list): continue
             self.__run(pythia_wrapper,nq)
 
     def __call__(self,pythia_wrapper,idx):
@@ -108,10 +104,8 @@ class GatherQuarks:
 class GatherStableDaughters:
     def __init__(self):
         self.particle_list = []
-        # self.searched_particle_list = []
 
     def __run(self,pythia_wrapper,idx):
-        # self.searched_particle_list.append(idx)
         daughters = pythia_wrapper.GetDaughtersSingle(idx)
 
         # Determine which daughters are stable.
@@ -127,12 +121,12 @@ class GatherStableDaughters:
                 self.particle_list.append(d)
 
         for nd in not_stable_daughters:
-            # if(nd in self.searched_particle_list): continue
             self.__run(pythia_wrapper,nd)
 
     def __call__(self,pythia_wrapper,idx):
+        self.particle_list.clear()
         self.__run(pythia_wrapper,idx)
-        return np.array(self.particle_list,dtype=int)
+        return np.unique(np.array(self.particle_list,dtype=int))
 
 class GatherAllDaughters:
     def __init__(self):
@@ -145,5 +139,6 @@ class GatherAllDaughters:
                 self.particle_list.append(d)
 
     def __call__(self,pythia_wrapper,idx):
+        self.particle_list.clear()
         self.__run(pythia_wrapper,idx)
         return np.array(self.particle_list,dtype=int)

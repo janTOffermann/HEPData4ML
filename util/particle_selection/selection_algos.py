@@ -1,6 +1,5 @@
 import numpy as np
 from util.particle_selection.algos import *
-
 # ============================================
 # Each algorithm returns a Boolean status,
 # and a list of selected particles' event listing indices.
@@ -45,11 +44,11 @@ class SelectFinalStateDaughters:
         starting_particles = self.truth_selection(pythia_wrapper)
         if(type(starting_particles) not in [list,np.ndarray]): starting_particles = [starting_particles]
         particles = []
-        for p in starting_particles:
+        for i,p in enumerate(starting_particles):
             gatherer = GatherStableDaughters()
             daughters = gatherer(pythia_wrapper,p)
             particles.append(daughters)
         if(len(particles) == 0): return False, particles
 
-        particles = np.concatenate(particles,dtype=int).flatten()
-        return True, np.unique(particles)
+        particles = np.unique(np.concatenate(particles,dtype=int).flatten())
+        return True, particles
