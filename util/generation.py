@@ -2,9 +2,7 @@ import os
 import numpy as np
 import ROOT as rt
 import h5py as h5
-# import pyhepmc as hep
 import subprocess as sub
-
 from util.pythia.utils import PythiaWrapper
 from util.qol_utils.pdg import pdg_names, pdg_plotcodes, FillPdgHist
 from util.calcs import Calculator
@@ -71,6 +69,12 @@ class Generator:
 
         self.header_status = False
         self.footer_status = False
+
+        self.full_hepmc = self.configurator.GetMakeFullHepMCFile() # whether or not to create full HepMC3 files, that contain all the event's particles and all indices
+
+        # Variables related to handling of pileup.
+        # TODO: Might want to eventually reorganize this, or move it into a separate class?
+        self.pileup_handler = self.configurator.GetPileupHandling()
 
         self.calculator = Calculator(use_vectorcalcs=self.configurator.GetUseVectorCalcs())
 
@@ -278,7 +282,8 @@ class Generator:
         if(footer): self.footer_status = True
         HepMCOutput(self.hepev_buffer_fs,self.buffername,self.filename_fullpath,header,footer)
         HepMCOutput(self.hepev_buffer_truth,self.buffername_truth,self.filename_truth_fullpath,header,footer)
-        HepMCOutput(self.hepev_buffer_full,self.buffername_full,self.filename_full_fullpath,header,footer)
+        if(self.full_hepmc):
+            HepMCOutput(self.hepev_buffer_full,self.buffername_full,self.filename_full_fullpath,header,footer)
         self.ClearEventBuffers()
 
     def GenerationLoop(self, nevents,i_real = 1, nevents_disp=None):
@@ -298,6 +303,7 @@ class Generator:
         self.buffername_full = self.buffername.replace('.hepmc','_full.hepmc')
 
         for i in range(nevents):
+
             self.pythia.Generate() # generate an event!
 
             # Get the truth-level particles, using our truth selector.
@@ -314,6 +320,10 @@ class Generator:
             if(not truth_selection_status):
                 n_fail += 1
                 continue
+
+            # Here, we optionally apply pileup (or more generally, merging in some other event(s)).
+            if(self.pileup_handler is not None):
+                self.pileup_handler(self.pythia)
 
             # Get the final-state particles that we're saving (however we've defined our final state!).
             final_state_indices = np.atleast_1d(np.array(self.final_state_selection(self.pythia),dtype=int))
@@ -413,14 +423,9 @@ class Generator:
             # split things across two files) we're also not saving vertex information to
             # these HepMC files.
             #
-            # TODO: We may want to totally rework this part of the code, so that the HepMC files
-            #       contain the *full* event (incl. vertex information), and the selections
-            #       (event selection, truth selection, final-state selection) are applied later
-            #       when in the HepMC -> Delphes/HDF5 pipeline. The current method has the advantage
-            #       of reducing the HepMC filesize but what we get aren't really "full" HepMC files,
-            #       plus redesigning things to use more standard HepMC files (with vertex info) would
-            #       make it easier to utilize HepMC files from outside sources (e.g. events generated
-            #       externally with a different generator like MadGraph).
+            # TODO: Might want to include vertex info! This is being done with CreateFullHepMCEvent,
+            #       but there might be some issues with it (events produced with it cannot be
+            #       be visualized by pyhepmc, suggests some vertices might be missing from output.)
             # ==========================================
 
             final_state_hepev = CreateHepMCEvent(self.pythia,final_state_indices,i_real)
@@ -429,7 +434,9 @@ class Generator:
             if(len(truth_indices) > 0): # TODO: If this condition isn't met for whatever reason, will final-state and truth files' events not line up?
                 truth_hepev = CreateHepMCEvent(self.pythia,truth_indices, i_real)
 
-            full_hepev = CreateFullHepMCEvent(self.pythia,i_real) # TODO: Adding full event recording, with vertices. Currently unused in pipeline.
+            full_hepev = None
+            if(self.full_hepmc):
+                full_hepev = CreateFullHepMCEvent(self.pythia,i_real) # TODO: Adding full event recording, with vertices. Currently unused in pipeline.
 
             # Fill the memory buffer with this event.
             self.FillEventBuffers(final_state_hepev, truth_hepev,full_hepev)
@@ -583,7 +590,7 @@ class Generator:
         for par in arr:
             par_array = np.array([par[0],par[1],par[2],par[3]] )
             full_sum += par_array
-            invisible = IsNeutrino(par,use_hepmc=False)
+            invisible = IsNeutrino(p=par) # TODO: Not sure if this will still work based on other updates to the code?
             if(invisible): inv_sum += par_array
             else: vis_sum += par_array
 

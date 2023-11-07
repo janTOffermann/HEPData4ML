@@ -1,6 +1,7 @@
 import numpy as np
 import pyhepmc as hep
 import subprocess as sub
+import pathlib
 
 def RestructureParticleArray(arr, fields=None):
     if(fields is None):
@@ -183,3 +184,20 @@ def CompressHepMC(files, delete=True, cwd=None):
         if(delete):
             sub.check_call(['rm',file.split('/')[-1]],shell=False,cwd=cwd)
     return
+
+def ExtractHepMCEvents(files,get_nevents=False, silent=False):
+    events = []
+    nevents = 0
+    for file in files:
+        # Check that the file exists.
+        if(not pathlib.Path(file).exists()):
+            if(not silent):
+                print('Warning: Tried to access file {} but it does not exist!'.format(file))
+            continue
+
+        with hep.io.ReaderAscii(file) as f:
+            for evt in f:
+                events.append(evt)
+                if(get_nevents): nevents += 1
+    if(get_nevents): return events, nevents
+    return events

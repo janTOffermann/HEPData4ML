@@ -23,6 +23,7 @@ config = {
     'delphes' : True, # Whether or not to use Delphes
     'delphes_card' : None, # path to the Delphes card to use. If None, will use the ATLAS Delphes card that ships with Delphes
     'delphes_dir' : '/cvmfs/sft.cern.ch/lcg/releases/delphes/3.5.1pre05-775ca/x86_64-centos7-gcc11-opt' ,# directory containing the Delphes installation. If None, will be build in a local directory "delphes".
+    'delphes_output' : ['Tower'],
     'fastjet_dir' : '/home/jaofferm/HEPData4ML/fastjet',
     'jet_radius': 0.8, # jet radius in (eta,phi). Jets currently all use anti-kt algorithm.
     'jet_min_pt': 15., # minimum pT cut, GeV
@@ -55,7 +56,7 @@ config = {
     'jet_selection':jetsel.GetNearestJet(truth_code=6,max_dr=0.8),
     'signal_flag' : 1, # What to provide as the "signal_flag" for these events. (relevant if combining datasets). Must be >= 0.
     'post_processing': [
-        # tracing.Tracer(verbose=True), # Delphes tracing, computes the "W daughteriness" of Delphes detector towers
+        tracing.Tracer(verbose=True), # Delphes tracing, computes the "W daughteriness" of Delphes detector towers
         jh_tagging.JHTagger(2,120,verbose=True), # Johns Hopkins top tagger -- W is in positiong 2 (used for computing prediction's resolution), gives up to 120 constituents of candidate W subjet
         truth_sum.TruthParticleSum(np.arange(5,125),0.8,verbose=True), # produce 4-vector sum of W daughters within the jet cone
         rotate.Rotation(2,1,['Pmu'],verbose=True), # create rotated copies of 4-vectors
@@ -66,7 +67,8 @@ config = {
     ],
     'record_final_state_indices' : True, # Whether or not to record jet constituents' indices w.r.t. the order they were passed to jet clustering (order of particles in HepMC file, or order of Delphes objects if using Delphes).
     'split_seed' : 1, # seed to be used for the RNG when splitting dataset into train/test/validation samples
-    'use_vectorcalcs' : False # whether or not to use the VectorCalcs C++/ROOT library (which is part of this repo). May speed up some computations, but can lead to issues if there's a problem with the ROOT build (e.g. CVMFS/LCG_103 seems to cause issues)
+    'use_vectorcalcs' : False, # whether or not to use the VectorCalcs C++/ROOT library (which is part of this repo). May speed up some computations, but can lead to issues if there's a problem with the ROOT build (e.g. CVMFS/LCG_103 seems to cause issues)
+    'full_hepmc_output' : False
 }
 
 # Don't adjust the lines below.

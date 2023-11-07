@@ -60,7 +60,11 @@ class JHTagger:
         self.Nobj = f['Nobj'][:]
         self.nevents = self.Nobj.shape[0]
         self.is_signal = f['is_signal'][:] # specifically to look for negative signal flags, which indicate events that are to be discarded (and will be lacking actual jets)
-        self.truth_Pmu = f['truth_Pmu'][:,self.w_index] # get the truth-level W -- used for calc'ing some of the things below
+        ntruth_max = f['truth_Pmu'].shape[1]
+        if(self.w_index >= ntruth_max):
+            self.truth_Pmu = np.zeros((self.nevents,4))
+        else:
+            self.truth_Pmu = f['truth_Pmu'][:,self.w_index] # get the truth-level W -- used for calc'ing some of the things below
 
         self.jh_tag     = np.full(self.nevents,False,dtype=bool)
         self.jh_W_pmu   = np.zeros((self.nevents,4),dtype=np.dtype('f8'))
