@@ -43,9 +43,7 @@ def main(args):
     parser.add_argument('-h5',           '--hdf5',              type=int,          default=1,                help='Whether or not to produce final HDF5 files. If false, stops after HepMC or Delphes/ROOT file production.')
     parser.add_argument('-f',            '--force',             type=int,          default=0,                help='Whether or not to force generation -- if true, will possibly overwrite existing HepMC files in output directory.')
     parser.add_argument('-c',            '--compress',          type=int,          default=0,                help='Whether or not to compress HepMC files.')
-    parser.add_argument('-del_delphes',  '--del_delphes',       type=int,          default=0,                help='Whether or not to delete DELPHES/ROOT files.')
     parser.add_argument('-del_hepmc',    '--del_hepmc',         type=int,          default=0,                help='Whether or not to delete HepMC3 files.')
-    parser.add_argument('-delphes',      '--delphes',           type=int,          default=-1,               help='Optional Delphes flag -- will override the \'delphes\' option in the config file. 0 == False, 1 == True, otherwise ignored.')
     parser.add_argument('-rng',          '--rng',               type=int,          default=None,             help='Pythia RNG seed. Will override the one provided in the config file.')
     parser.add_argument('-npc',          '--nentries_per_chunk',type=int,          default=int(1e4),         help='Number of entries to process per chunk, for jet clustering & conversion to HDF5.')
     parser.add_argument('-pb',           '--progress_bar',      type=int,          default=1,                help='Whether or not to print progress bar during event generation')
@@ -60,6 +58,12 @@ def main(args):
     parser.add_argument('-index_offset', '--index_offset',      type=int,          default=0,                help='Offset for event_idx.')
     parser.add_argument('-config',       '--config',            type=str,          default=None,             help='Path to configuration Python file. Default will use config/config.py .')
     parser.add_argument('-debug',        '--debug',             type=int,          default=0,                help='If > 0, will record the full final-state (i.e. before jet clustering/selection) in a separate key.')
+
+    # DELPHES-related arguments
+    parser.add_argument('-delphes',      '--delphes',           type=int,          default=-1,               help='Optional Delphes flag -- will override the \'delphes\' option in the config file. 0 == False, 1 == True, otherwise ignored.')
+    parser.add_argument('-del_delphes',  '--del_delphes',       type=int,          default=0,                help='Whether or not to delete DELPHES/ROOT files.')
+    parser.add_argument('-delphes_dir',      '--delphes_dir',   type=str,          default=None,             help='Override for Delphes location.')
+
     args = vars(parser.parse_args())
 
     start_time = time.time()
@@ -80,7 +84,6 @@ def main(args):
     verbose = args['verbose'] > 0
     do_h5 = args['hdf5']
     compress_hepmc = args['compress']
-    delete_delphes = args['del_delphes']
     delete_hepmc = args['del_hepmc']
     force = args['force']
     pythia_rng = args['rng']
@@ -92,8 +95,11 @@ def main(args):
     debug = args['debug'] > 0
     index_offset = args['index_offset']
     delete_full_stats = args['delete_stats'] > 0
-    delphes_override = args['delphes']
     config_file = args['config']
+
+    delphes_override = args['delphes']
+    delete_delphes = args['del_delphes']
+    delphes_dir = args['delphes_dir']
 
     if(pt_bin_edges is not None and pt_bin_edges_string is not None):
         print('Warning: Both "ptbins" and "ptbins_string" arguments were given. Using the "ptbins" argument.')
@@ -268,6 +274,8 @@ def main(args):
             delphes_card = configurator.GetDelphesCard() # will default to the ATLAS card that is shipped with Delphes
             delphes_file = hep_file.replace('.hepmc','.root')
             delphes_wrapper = DelphesWrapper(configurator.GetDelphesDirectory())
+            if(delphes_dir is not None):
+                configurator.SetDelphesDirectory(delphes_dir)
             delphes_wrapper.PrepDelphes() # will download/build Delphes if necessary
             print('Running DelphesHepMC3: {} -> {}.'.format(hep_file,delphes_file))
             if(i == 0):
