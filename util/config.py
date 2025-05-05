@@ -127,6 +127,9 @@ class Configurator:
     def GetDelphesDirectory(self):
         return self.config['delphes_dir']
 
+    def SetDelphesDirectory(self,val):
+        self.config['delphes_dir'] = val
+
     def GetFastjetDirectory(self):
         return self.config['fastjet_dir']
 
