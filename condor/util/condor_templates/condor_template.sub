@@ -5,11 +5,11 @@
 ####################
 $BATCH_NAME
 executable              = condor_job.sh
-arguments               = "$(job_arguments) $OUTDIR $(Process) $N_THREAD $GIT_OPTION $GIT_BRANCH"
+arguments               = "$(job_arguments) $CONFIG_FILE $OUTDIR $(Process) $DO_DELPHES $N_THREAD $GIT_OPTION $GIT_BRANCH"
 initialdir              = job$(Process)
 should_transfer_files   = IF_NEEDED
 when_to_transfer_output = ON_EXIT
-transfer_input_files    = ../../util/copy_output.py, ../config.py $PAYLOAD_STRING
+transfer_input_files    = $COPY_OUTPUT_SCRIPT, ../$CONFIG_FILE $PAYLOAD_STRING
 transfer_output_files   = ""
 log                     = job.log
 error                   = job.err
