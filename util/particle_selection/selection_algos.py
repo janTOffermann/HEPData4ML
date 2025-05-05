@@ -16,24 +16,56 @@ class SelectFinalState:
         stable = np.where(status==1)[0]
         return (len(stable) > 0), stable
 
-# Select the "simplest" all-quark final state produced by the particles in truth_selection.
-# This recursively searches the Feynman diagram starting with the particles
-# given by "truth_sel", and selects the earliest quark found along each branch.
-class SelectSimplestQuarks:
+
+# Select the immediate daughters of some particle.
+class SelectDaughters:
+    """
+    Select the immediate daughter(s) of some particle, in event listing.
+    Does not include radiation like X -> X gamma (here, {X,gamma} are *not*
+    daughters, we look further at how X decays to find them).
+    """
     def __init__(self,truth_selection):
         self.truth_selection = truth_selection
+        self.gatherer = GatherDaughters()
 
     def __call__(self,pythia_wrapper):
         starting_particles = self.truth_selection(pythia_wrapper)
         if(type(starting_particles) != list): starting_particles = [starting_particles]
         particles = []
         for p in starting_particles:
-            gatherer = GatherQuarks()
-            particles.append(gatherer(pythia_wrapper,p))
+            particles.append(self.gatherer(pythia_wrapper,p))
         if(len(particles) == 0): return False, particles
 
         particles = np.array(particles,dtype=int).flatten()
         return True, np.unique(particles)
+
+class SelectSimplestQuarks(SelectDaughters):
+    """
+    Select the "simplest" all-quark final state produced by the particles in truth_selection.
+    This recursively searches the Feynman diagram starting with the particles
+    given by "truth_sel", and selects the earliest quark found along each branch.
+    """
+    def __init__(self,truth_selection):
+        self.truth_selection = truth_selection
+        self.gatherer = GatherQuarks()
+
+# # Select the "simplest" all-quark final state produced by the particles in truth_selection.
+# # This recursively searches the Feynman diagram starting with the particles
+# # given by "truth_sel", and selects the earliest quark found along each branch.
+# class SelectSimplestQuarks:
+#     def __init__(self,truth_selection):
+#         self.truth_selection = truth_selection
+
+#     def __call__(self,pythia_wrapper):
+#         starting_particles = self.truth_selection(pythia_wrapper)
+#         if(type(starting_particles) != list): starting_particles = [starting_particles]
+#         particles = []
+#         for p in starting_particles:
+#             gatherer = GatherQuarks()
+#             particles.append(gatherer(pythia_wrapper,p))
+#         if(len(particles) == 0): return False, particles
+#         particles = np.array(particles,dtype=int).flatten()
+#         return True, np.unique(particles)
 
 # Select the stable daughters of the particles chosen by truth_selection.
 class SelectFinalStateDaughters:

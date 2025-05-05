@@ -1,4 +1,4 @@
-import sys,os,glob,uuid,pathlib
+import sys,os,pathlib
 import argparse as ap
 import subprocess as sub
 import util.utils as utils
@@ -6,9 +6,11 @@ import util.utils as utils
 def main(args):
     parser = ap.ArgumentParser()
     parser.add_argument('-n',                '--nevents',         type=int, help='Number of events per pt bin.', required=True)
-    parser.add_argument('-p',                '--ptbins',          type=int, help='Transverse momentum bin edges.', required=True, nargs='+', )
+    parser.add_argument('-p',                '--ptbins',          type=int, help='Transverse momentum bin edges.', nargs='+', default=None)
+    parser.add_argument('-p_s',              '--ptbins_string',   type=str, help='Comma-separated list of pT bin edges as string. Alternative to -p argument.', default=None)
     parser.add_argument('-O',                '--outdir',          type=str, help='Output directory for the jobs', default=None)
     parser.add_argument('-R',                '--rundir',          type=str, help='Run directory -- where the condor jobs will go.', default='run0')
+    parser.add_argument('-d',                '--delphes',         type=int, help='Whether or not to run DELPHES fast detector sim. Always produces truth-level output too.',default=1)
     parser.add_argument('-s',                '--sep_truth',       type=int, help='Whether or not to store truth-level particles in separate arrays.', default=1)
     parser.add_argument('-ns',               '--n_sep_truth',     type=int, help='How many truth particles to save in separate arrays -- will save the first n as given by the truth selection.', default=-1)
     parser.add_argument('-h5',               '--hdf5',            type=int, help='Whether or not to produce final HDF5 files. If false, stops after HepMC or Delphes/ROOT file production.',default=1)
@@ -23,14 +25,17 @@ def main(args):
     parser.add_argument('-batch_name',       '--batch_name',      type=str, help='Name for the condor batch. If left empty, unused.',default=None)
     parser.add_argument('-git',              '--git_option',      type=int, help='If < 0, ships code directly from this repo. If == 0, runs \'git clone\' within each job. If > 0, runs \'git clone\' locally and ships result to jobs.',default=0)
     parser.add_argument('-branch',           '--branch',          type=str, help='If using git for jobs, which branch to clone. Defaults to current.', default=None)
+    parser.add_argument('-config',           '--config',          type=str, help='Path to Python config file, for run.py .', default=None)
     args = vars(parser.parse_args())
 
     nevents = args['nevents']
     ptbins = args['ptbins']
-    rundir = args['rundir']
+    ptbins_str = args['ptbins_string']
     outdir = args['outdir']
     if(outdir is None):
         outdir = rundir + '/output'
+    rundir = args['rundir']
+    do_delphes = args['delphes'] > 0
     sep_truth = args['sep_truth']
     n_sep_truth = args['n_sep_truth']
     do_h5 = args['hdf5']
@@ -45,9 +50,13 @@ def main(args):
     batch_name = args['batch_name']
     git_option = args['git_option']
     git_branch = args['branch']
+    config_file = args['config']
 
     rundir = str(pathlib.Path(rundir).absolute())
     outdir = str(pathlib.Path(outdir).absolute())
+    if(ptbins is None and ptbins_str is None):
+        print('Error: Pt bins were not specified with either -p or -p_s options.')
+        return
 
     # Prepare the job and output directories.
     os.makedirs(rundir,exist_ok=True)
@@ -55,7 +64,11 @@ def main(args):
 
     # Prepare a plaintext file with all the different sets of arguments, for the various jobs.
     jobs_filename = '{}/arguments.txt'.format(rundir)
-    ptbins_str = ','.join([str(x) for x in ptbins])
+    if(ptbins is not None):
+        ptbins_str = ','.join([str(x) for x in ptbins])
+    else:
+        ptbins = [int(x) for x in ptbins_str.split(',')]
+
     template = '{} {} {} {} {} {} {} {} {}'.format(
         nevents, # $1 Number of events per pT bin.
         ptbins_str, #$2 pT bins (list of bin edges)
@@ -77,11 +90,15 @@ def main(args):
                 f.write(command_arguments)
                 rng_counter += 1
 
+    # Move configuration file to the run directory.
+    #TODO: Currently assumes file has name "config.py" when running later, but this assumption
+    #      can no longer be made. Could just rename it to "config.py"?
     this_dir = os.path.dirname(os.path.abspath(__file__))
-
-    config_file = '{}/../config/config.py'.format(this_dir)
-    comm = ['cp',config_file,rundir]
+    if(config_file is None):
+        config_file = '{}/../config/config.py'.format(this_dir)
+    comm = ['cp',config_file,rundir + '/'] # config file will keep its name
     sub.check_call(comm)
+    config_filename = config_file.split('/')[-1]
 
     # Determine how the package will be handled -- do we clone it as part of the job, clone it here and ship it,
     # or just ship this existing repo?
@@ -93,14 +110,14 @@ def main(args):
 
     if(git_option == -1):
         # We have to ship the local repo.
-        payload = 'payload.tar.bz2'
+        payload = 'payload.tar.gz'
         gitdir = 'HEPData4ML'
         utils.PreparePayload(rundir,payload,gitdir)
         payload_string = ', ../{}'.format(payload)
 
     elif(git_option == 1):
         # We have to do a local git clone
-        payload = 'payload.tar.bz2'
+        payload = 'payload.tar.gz'
         gitdir = 'HEPData4ML'
         utils.PreparePayloadFromClone(rundir,payload,gitdir,branch=git_branch)
         payload_string = ', ../{}'.format(payload)
@@ -122,6 +139,9 @@ def main(args):
     if(batch_name is not None): batch_line = batch_line.format(batch_name)
     else: batch_line = '#' + batch_line
 
+    # Need the location of "copy_output.py" utility
+    copy_output_file = str(pathlib.Path(this_dir + '/util/copy_output.py').absolute())
+
     for i,line in enumerate(condor_submit_lines):
         condor_submit_lines[i] = condor_submit_lines[i].replace("$BATCH_NAME",batch_line + '\n')
         condor_submit_lines[i] = condor_submit_lines[i].replace("$OUTDIR",outdir)
@@ -131,6 +151,9 @@ def main(args):
         condor_submit_lines[i] = condor_submit_lines[i].replace("$GIT_OPTION",str(git_option))
         condor_submit_lines[i] = condor_submit_lines[i].replace("$PAYLOAD_STRING",payload_string)
         condor_submit_lines[i] = condor_submit_lines[i].replace("$GIT_BRANCH",git_branch)
+        condor_submit_lines[i] = condor_submit_lines[i].replace('$CONFIG_FILE',config_filename)
+        condor_submit_lines[i] = condor_submit_lines[i].replace('$COPY_OUTPUT_SCRIPT',copy_output_file)
+        condor_submit_lines[i] = condor_submit_lines[i].replace('$DO_DELPHES',str(do_delphes))
 
     condor_submit_file = '{}/condor.sub'.format(rundir)
     with open(condor_submit_file,'w') as f:

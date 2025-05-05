@@ -1,8 +1,8 @@
 import sys,os,glob
 import ROOT as rt
 import numpy as np
-import h5py as h5
 import pyhepmc as hep
+import pythia8 as pyth8
 
 class SimplePileup:
 
@@ -10,10 +10,15 @@ class SimplePileup:
         self.files = sorted(glob.glob(pileup_hepmc3))
 
         # determine the total number of events in these files
+        self.n_dict = {}
+        self.first_idx = {}
         self.n_total = 0
         for file in self.files:
             with open(file,'r') as f:
-                self.n_total += len([x for x in f.readlines() if 'E ' in x])
+                n =  len([x for x in f.readlines() if 'E ' in x])
+                self.first_idx[file] = self.n_total
+                self.n_dict[file] = n
+                self.n_total += n
 
         self.event_indices = np.arange(self.n_total)
         self.event_mask = np.full(self.n_total,True,dtype=bool)
@@ -58,12 +63,14 @@ class SimplePileup:
         mu_min = self.mu_distribution.GetXaxis().GetBinLowEdge(1)
         mu_max = self.mu_distribution.GetXaxis().GetBinLowEdge(n+1)
         mu_values = np.arange(mu_min,mu_max)
-        mu_probs = [self.mu_distribution.GetBinContent(i+1) for i in range(n)]
-        self.mu = self.rng.choice(mu_values,p=mu_probs)
+        mu_probs = np.array([self.mu_distribution.GetBinContent(i+1) for i in range(n)],dtype=float)
+        mu_probs /= np.sum(mu_probs)
+        self.mu = int(self.rng.choice(mu_values,p=mu_probs))
 
     def PickEventIndices(self, update_mask=False):
         self.SampleMuDistribution()
-        self.selected_indices = np.random.choice(self.event_indices[self.event_mask])
+        print('mu = {}'.format(self.mu))
+        self.selected_indices = self.rng.choice(self.event_indices[self.event_mask],size=self.mu)
         if(update_mask): self.UpdateMask()
 
     def UpdateMask(self,indices=None):
@@ -76,7 +83,32 @@ class SimplePileup:
         if(indices is None): indices = self.selected_indices # use currently selected indices
         self.event_mask[self.selected_indices] = False
 
-    # def __call__(self,)
+    def FetchEvent(self,idx):
+        file_idx = np.where(idx < np.array(list(self.first_idx.values()),dtype=int))[0][0]
+        filename = self.files[file_idx]
+        idx_in_file = idx - self.first_idx[filename]
+
+        # TODO: Would be nice to find alternative, but for now we have to iterate through
+        #       the given HepMC3 file since pyhepmc treats files as iterable but does
+        #       not have any way to just fetch the i'th event. This will scale poorly
+        #       with large HepMC3 files.
+        event = 0
+        with hep.io.ReaderAscii(filename) as f:
+            for i,evt in enumerate(f):
+                while(i != idx_in_file): continue
+                event = evt
+
+        print(event)
+
+    def __call__(self,pythia_wrapper):
+        print("Called SimplePileup.")
+        # determine indices of events to add
+        self.PickEventIndices()
+
+        for i,idx in enumerate(self.selected_indices):
+            if(i > 0): break
+            self.FetchEvent(idx)
+
 
     def _gaussian(self,x,mu,sig,A=None):
         if(A is None): A = 1. / (np.sqrt(2.0 * np.pi))
