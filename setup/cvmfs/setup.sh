@@ -85,3 +85,10 @@ source /cvmfs/sft.cern.ch/lcg/views/${lcg}/${build}/setup.sh
 #echo "Here is a potentially useful option for the configuration file in config/config.py:"
 #echo "'delphes_dir' : '/cvmfs/sft.cern.ch/lcg/releases/delphes/3.5.1pre05-775ca/x86_64-centos7-gcc11-opt'"
 #echo "For fastjet, you will need Python bindings and thus a local build -- preferably done interactively, so that you can later point condor jobs to that and they don't all have to build fastjet again."
+
+# We need pyhepmc, which isn't part of the software package from CVMFS
+if ! python -c "import pyhepmc" &>/dev/null; then
+    echo "Installing pyhepmc locally..."
+    pip install pyhepmc --user
+fi
+
