@@ -54,7 +54,9 @@ The `truth_selection` algorithm will determine what particles we save as our "tr
 
 ### Final-state selection
 
-The `final_state_selection` algorithm will determine what particles we save as our final state. If using DELPHES, this is what will be passed to DELPHES as input. If not, this is what will be directly passed to jet clustering. For example, we may just want to save all stable particles output by Pythia.
+The `final_state_selection` algorithm will determine what particles we save as our final state. If using DELPHES, this is what will be passed to DELPHES as input[^1]. If not, this is what will be directly passed to jet clustering. For example, we may just want to save all stable particles output by Pythia.
+
+[^1]: Of course, DELPHES will by default only actually interact with certain particles by default (e.g. the detector does not interact with neutrinos). Nonetheless, this may prove a useful handle for deciding what particles propagate forward in the simulation process.
 
 ### Event selection
 
