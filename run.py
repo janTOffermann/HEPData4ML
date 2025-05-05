@@ -1,4 +1,5 @@
 import sys,os,pathlib,time,datetime,re,shlex,uuid
+import importlib.util
 import argparse as ap
 import subprocess as sub
 from util.generation import Generator
@@ -6,7 +7,7 @@ from util.delphes import DelphesWrapper
 from util.conversion import Processor, RemoveFailedFromHDF5, SplitH5, AddEventIndices, ConcatenateH5, MergeH5, AddConstantValue, AddMetaDataWithReference
 from util.hepmc import CompressHepMC
 from util.config import Configurator,GetConfigFileContent
-import config.config as config
+# import config.config as config
 
 def none_or_str(value): # see https://stackoverflow.com/a/48295546
     if value == 'None':
@@ -57,6 +58,7 @@ def main(args):
     parser.add_argument('-separate_h5',  '--separate_h5',       type=int,          default=1,                help='Whether or not to make separate HDF5 files for each pT bin.')
     parser.add_argument('-pc',           '--pythia_config',     type=none_or_str,  default=None,             help='Path to Pythia configuration template (for setting the process).')
     parser.add_argument('-index_offset', '--index_offset',      type=int,          default=0,                help='Offset for event_idx.')
+    parser.add_argument('-config',       '--config',            type=str,          default=None,             help='Path to configuration Python file. Default will use config/config.py .')
     parser.add_argument('-debug',        '--debug',             type=int,          default=0,                help='If > 0, will record the full final-state (i.e. before jet clustering/selection) in a separate key.')
     args = vars(parser.parse_args())
 
@@ -91,6 +93,7 @@ def main(args):
     index_offset = args['index_offset']
     delete_full_stats = args['delete_stats'] > 0
     delphes_override = args['delphes']
+    config_file = args['config']
 
     if(pt_bin_edges is not None and pt_bin_edges_string is not None):
         print('Warning: Both "ptbins" and "ptbins_string" arguments were given. Using the "ptbins" argument.')
@@ -117,6 +120,16 @@ def main(args):
         assert(False)
 
     # Configurator class, used for fetching information from our config file.
+    # We import this from a user-supplied file, by default it is config/config.py.
+    this_dir = os.path.dirname(os.path.abspath(__file__))
+    if(config_file is None):
+        config_file = '{}/config/config.py'.format(this_dir)
+    config_name = config_file.split('/')[-1].split('.')[0]
+    spec = importlib.util.spec_from_file_location("config.{}".format(config_name),config_file)
+    config = importlib.util.module_from_spec(spec)
+    sys.modules['config.{}'.format(config_name)] = config
+    spec.loader.exec_module(config)
+
     config_dictionary = config.config
     configurator = Configurator(config_dictionary=config_dictionary)
 

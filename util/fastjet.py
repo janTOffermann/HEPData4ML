@@ -4,7 +4,7 @@ import util.qol_utils.qol_util as qu
 
 class FastJetSetup:
     def __init__(self,fastjet_dir=None, full_setup=False,verbose=True):
-        self.fastjet_version = '3.4.0'
+        self.fastjet_version = '3.4.2'
         self.SetDirectory(fastjet_dir)
         if(full_setup): self.PrepFastjet(verbose=verbose)
 

@@ -128,12 +128,26 @@ class GatherStableDaughters:
         self.__run(pythia_wrapper,idx)
         return np.unique(np.array(self.particle_list,dtype=int))
 
-class GatherAllDaughters:
-    def __init__(self):
+class GatherDaughters:
+    """
+    Given some particle, look for its daughters (from decay).
+    """
+    def __init__(self,recursive=False):
         self.particle_list = []
+        self.recursive=recursive
 
     def __run(self,pythia_wrapper,idx):
-        daughters = pythia_wrapper.GetDaughtersSingle(idx,recursive=True)
+        daughters = pythia_wrapper.GetDaughtersSingle(idx,recursive=self.recursive)
+
+        # Check for "self" in daughter list (a particle with same PDG code).
+        # (we don't want to be thrown off by Pythia's re-listings, or brem, etc.)
+        daughter_pid = pythia_wrapper.GetPdgId(daughters)
+        this_pid = pythia_wrapper.GetPdgId(idx)
+        if(this_pid in daughter_pid):
+            new_idx = daughters[np.where(daughter_pid==this_pid)[0]]
+            self.__run(pythia_wrapper,new_idx)
+            return
+
         for d in daughters:
             if(d not in self.particle_list):
                 self.particle_list.append(d)
