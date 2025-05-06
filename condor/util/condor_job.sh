@@ -17,6 +17,8 @@
 # $14 OpenBLAS max thread count (for multithreading).
 # $15 Git option. Determines if we do a git clone here, or if the code has been shipped in as a tarball.
 # $16 Git branch.
+#
+# NOTE: Argument $15 can alternatively be used to specify the path to an existing HepData4ML installation.
 
 nevents_per_bin=$1
 pt_bins=$2
@@ -37,9 +39,11 @@ git_branch=${16}
 
 # Set up the code. This may involve shipping in a payload, or running `git clone` here.
 gitdir=HEPData4ML # TODO: payload curently set to use this name, is this OK or too much hardcoding?
-if [ "${git_option}" == "0" ]; then
+if [[ "${git_option}" == "1" ]]; then
   # run git clone here
   git clone -b ${git_branch} git@github.com:janTOffermann/HEPData4ML.git ${gitdir}
+elif [[ -d "${git_option}" ]]; then
+  gitdir=$git_option # the $git_option variable is actually being used to give a path to existing HepData4ML installation
 else
   # assume the payload has been shipped in, as payload.tar.gz
   payload=payload.tar.gz

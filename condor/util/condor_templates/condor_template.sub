@@ -5,7 +5,7 @@
 ####################
 $BATCH_NAME
 executable              = condor_job.sh
-arguments               = "$(job_arguments) $CONFIG_FILE $OUTDIR $(Process) $DO_DELPHES $N_THREAD $GIT_OPTION $GIT_BRANCH"
+arguments               = "$(job_arguments) $CONFIG_FILE $OUTDIR $(Process) $DO_DELPHES $N_THREAD $PAYLOAD_MODE $GIT_BRANCH"
 initialdir              = job$(Process)
 should_transfer_files   = IF_NEEDED
 when_to_transfer_output = ON_EXIT
@@ -14,7 +14,7 @@ transfer_output_files   = ""
 log                     = job.log
 error                   = job.err
 output                  = job.out
-requirements            = HAS_CVMFS =?= TRUE
+#requirements            = HAS_CVMFS =?= TRUE
 RequestCpus             = $N_CPU
 $SHORT_QUEUE
 queue job_arguments from arguments.txt

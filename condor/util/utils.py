@@ -3,6 +3,11 @@ import subprocess as sub
 # Use this file to place functions that will otherwise clutter up prep_condor
 
 def PreparePayload(rundir,payload,gitdir='HEPData4ML'):
+    """
+    This function packages up the HEPData4ML repository into
+    a tar.gz archive. This is to be used when one needs to
+    ship the repository to an HTCondor job.
+    """
 
     this_dir = os.path.dirname(os.path.abspath(__file__))
 
@@ -44,6 +49,12 @@ def PreparePayload(rundir,payload,gitdir='HEPData4ML'):
     return
 
 def PreparePayloadFromClone(rundir,payload,gitdir='HEPData4ML',branch='main'):
+    """
+    This function packages up the HEPData4ML repository into
+    a tar.gz archive. This is to be used when one needs to
+    ship the repository to an HTCondor job.
+    It first fetches the repository via git.
+    """
     repo = 'git@github.com:janTOffermann/HEPData4ML.git'
     tmp_dir = 'dir_{}'.format(uuid.uuid4())
     os.makedirs(tmp_dir)
