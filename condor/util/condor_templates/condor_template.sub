@@ -14,7 +14,15 @@ transfer_output_files   = ""
 log                     = job.log
 error                   = job.err
 output                  = job.out
-$REQUIREMENTS                     # HAS_CVMFS =?= TRUE
+$REQUIREMENTS
 RequestCpus             = $N_CPU
 $ADDITIONS
 queue job_arguments from arguments.txt
+
+#
+# Note: In general, one might need to add the following to the job requirements:
+#    HAS_CVMFS =?= TRUE
+# This may depend a little on the particular condor system in use.
+# E.g. This may be helpful on the UChicago Analysis Facility, but
+#      not on the Brown University BRUX (where it will prevent jobs from running).
+#

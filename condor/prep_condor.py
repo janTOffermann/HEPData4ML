@@ -62,6 +62,8 @@ def main(args):
         print('Error: Pt bins were not specified with either -p or -p_s options.')
         return
 
+    this_dir = os.path.dirname(os.path.abspath(__file__))
+
     # check that the template submission file exists
     if(condor_template is None):
         condor_template = '{}/util/condor_templates/condor_template.sub'.format(this_dir)
@@ -104,11 +106,11 @@ def main(args):
     # Move configuration file to the run directory.
     #TODO: Currently assumes file has name "config.py" when running later, but this assumption
     #      can no longer be made. Could just rename it to "config.py"?
-    this_dir = os.path.dirname(os.path.abspath(__file__))
     if(config_file is None):
         config_file = '{}/../config/config.py'.format(this_dir)
     comm = ['cp',config_file,rundir + '/'] # config file will keep its name
     sub.check_call(comm)
+
     config_filename = config_file.split('/')[-1]
 
     # Determine how the package will be handled. Do we:
@@ -138,11 +140,16 @@ def main(args):
         payload_string = ', ../{}'.format(payload)
 
     elif(payload_mode == 3):
+        # The "local" run mode -- a bit special, originally designed for Brown University BRUX system.
         # We will point the workers at this repo.
         this_dir = os.path.dirname(os.path.abspath(__file__))
         gitdir = str(pathlib.Path('{}/../'.format(this_dir)).absolute())
         payload_mode = gitdir
         git_branch = ''
+
+        # For local running mode, config file isn't shipped to job via condor file transfer,
+        # so we will have to reference it via its full filepath to locate it in the rundir.
+        config_filename = str(pathlib.Path(rundir + '/' + config_file.split('/')[-1]).absolute())
 
     else:
         # We have to ship the local repo.
@@ -164,8 +171,9 @@ def main(args):
     else: batch_line = '#' + batch_line
 
     if(requirements is None):
-        requirements = ''
-    requirements_string = 'requirements            = {}'.format(requirements)
+        requirements_string = ''
+    else:
+        requirements_string = 'requirements            = {}'.format(requirements)
 
     for i,line in enumerate(condor_submit_lines):
         condor_submit_lines[i] = condor_submit_lines[i].replace("$BATCH_NAME",batch_line + '\n')
@@ -177,7 +185,7 @@ def main(args):
         condor_submit_lines[i] = condor_submit_lines[i].replace("$PAYLOAD_STRING",payload_string)
         condor_submit_lines[i] = condor_submit_lines[i].replace("$GIT_BRANCH",git_branch)
         condor_submit_lines[i] = condor_submit_lines[i].replace('$CONFIG_FILE',config_filename)
-        condor_submit_lines[i] = condor_submit_lines[i].replace('$DO_DELPHES',str(do_delphes))
+        condor_submit_lines[i] = condor_submit_lines[i].replace('$DO_DELPHES',str(int(do_delphes)))
         condor_submit_lines[i] = condor_submit_lines[i].replace('$REQUIREMENTS',requirements_string)
 
     condor_submit_file = '{}/condor.sub'.format(rundir)
