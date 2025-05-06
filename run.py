@@ -6,7 +6,7 @@ from util.generation import Generator
 from util.delphes import DelphesWrapper
 from util.conversion import Processor, RemoveFailedFromHDF5, SplitH5, AddEventIndices, ConcatenateH5, MergeH5, AddConstantValue, AddMetaDataWithReference
 from util.hepmc import CompressHepMC
-from util.config import Configurator,GetConfigFileContent
+from util.config import Configurator,GetConfigFileContent, GetConfigDictionary
 # import config.config as config
 
 def none_or_str(value): # see https://stackoverflow.com/a/48295546
@@ -62,7 +62,7 @@ def main(args):
     # DELPHES-related arguments
     parser.add_argument('-delphes',      '--delphes',           type=int,          default=-1,               help='Optional Delphes flag -- will override the \'delphes\' option in the config file. 0 == False, 1 == True, otherwise ignored.')
     parser.add_argument('-del_delphes',  '--del_delphes',       type=int,          default=0,                help='Whether or not to delete DELPHES/ROOT files.')
-    parser.add_argument('-delphes_dir',      '--delphes_dir',   type=str,          default=None,             help='Override for Delphes location.')
+    parser.add_argument('-delphes_dir',  '--delphes_dir',       type=str,          default=None,             help='Override for Delphes location.')
 
     args = vars(parser.parse_args())
 
@@ -130,13 +130,14 @@ def main(args):
     this_dir = os.path.dirname(os.path.abspath(__file__))
     if(config_file is None):
         config_file = '{}/config/config.py'.format(this_dir)
-    config_name = config_file.split('/')[-1].split('.')[0]
-    spec = importlib.util.spec_from_file_location("config.{}".format(config_name),config_file)
-    config = importlib.util.module_from_spec(spec)
-    sys.modules['config.{}'.format(config_name)] = config
-    spec.loader.exec_module(config)
+    # config_name = config_file.split('/')[-1].split('.')[0]
+    # spec = importlib.util.spec_from_file_location("config.{}".format(config_name),config_file)
+    # config = importlib.util.module_from_spec(spec)
+    # sys.modules['config.{}'.format(config_name)] = config
+    # spec.loader.exec_module(config)
 
-    config_dictionary = config.config
+    # config_dictionary = config.config
+    config_dictionary = GetConfigDictionary(config_file)
     configurator = Configurator(config_dictionary=config_dictionary)
 
     # Set up FastJet -- we will need this later on (except for the special use case of no jet clustering!).
@@ -405,7 +406,7 @@ def main(args):
     # This is handled correctly by metadata.
     AddMetaDataWithReference(h5_file,cwd=outdir,value=pythia_rng,                                                 key='pythia_random_seed'    ) # Add the Pythia8 RNG seed. Storing this way doesn't really save space -- it's just an int -- but we'll do this for consistency with how metadata is handled.
     AddMetaDataWithReference(h5_file,cwd=outdir,value=" ".join(map(shlex.quote, sys.argv[1:])),                   key='command_line_arguments') # Add the command line arguments.
-    AddMetaDataWithReference(h5_file,cwd=outdir,value='\n'.join(GetConfigFileContent()),                          key='config_file'           ) # Add the full config file a string.
+    AddMetaDataWithReference(h5_file,cwd=outdir,value='\n'.join(GetConfigFileContent(config_file)),               key='config_file'           ) # Add the full config file a string.
     AddMetaDataWithReference(h5_file,cwd=outdir,value=start_time,                                                 key='timestamp'             ) # Add the epoch time for the start of generation.
     AddMetaDataWithReference(h5_file,cwd=outdir,value=time.strftime('%Y-%m-%d %H:%M:%S',time.gmtime(start_time)), key='timestamp_string_utc'  ) # Add the epoch time for the start of generation, as a string.
     AddMetaDataWithReference(h5_file,cwd=outdir,value=unique_id,                                                  key='unique_id'             ) # A unique random string to identify this dataset.

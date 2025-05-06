@@ -1,14 +1,21 @@
-import sys,os
+import sys,os,importlib
 import pathlib
 # from config.config import config
+
+def GetConfigDictionary(config_file):
+    config_name = config_file.split('/')[-1].split('.')[0]
+    spec = importlib.util.spec_from_file_location("config.{}".format(config_name),config_file)
+    config = importlib.util.module_from_spec(spec)
+    sys.modules['config.{}'.format(config_name)] = config
+    spec.loader.exec_module(config)
+    return config.config
 
 def Bool2String(bool):
     if(bool): return 'on'
     return 'off'
 
 # Function for fetching the config.py file as a string.
-def GetConfigFileContent():
-    config_file = os.path.realpath(os.path.dirname(os.path.realpath(__file__)) + '/../config/config.py') # assuming relative location is fixed
+def GetConfigFileContent(config_file):
     with open(config_file,'r') as f:
         lines = f.readlines()
     lines = [x.strip().strip('\n') for x in lines]

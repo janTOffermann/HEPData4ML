@@ -9,12 +9,12 @@ arguments               = "$(job_arguments) $CONFIG_FILE $OUTDIR $(Process) $DO_
 initialdir              = job$(Process)
 should_transfer_files   = IF_NEEDED
 when_to_transfer_output = ON_EXIT
-transfer_input_files    = $COPY_OUTPUT_SCRIPT, ../$CONFIG_FILE $PAYLOAD_STRING
+transfer_input_files    = ../$CONFIG_FILE $PAYLOAD_STRING
 transfer_output_files   = ""
 log                     = job.log
 error                   = job.err
 output                  = job.out
-#requirements            = HAS_CVMFS =?= TRUE
+$REQUIREMENTS                     # HAS_CVMFS =?= TRUE
 RequestCpus             = $N_CPU
-$SHORT_QUEUE
+$ADDITIONS
 queue job_arguments from arguments.txt

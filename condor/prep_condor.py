@@ -23,9 +23,11 @@ def main(args):
     parser.add_argument('-nblas',            '--n_openblas',      type=int, help='Sets the $OPENBLAS_NUM_THREADS variable (used for numpy multithreading). Advanced usage.',default=16)
     parser.add_argument('-event_idx_offset', '--event_idx_offset',type=int, help='Initial offset for event_idx. Advanced usage.',default=0)
     parser.add_argument('-batch_name',       '--batch_name',      type=str, help='Name for the condor batch. If left empty, unused.',default=None)
-    parser.add_argument('-mode',              '--mode',      type=int, help='If <=0, ships code directly from this repo. If 1, runs \'git clone\' within each job. If 2, runs \'git clone\' locally and ships result to jobs. If 3, points jobs to this repo (doesn\'t ship it).',default=-1)
+    parser.add_argument('-mode',              '--mode',           type=int, help='If <=0, ships code directly from this repo. If 1, runs \'git clone\' within each job. If 2, runs \'git clone\' locally and ships result to jobs. If 3, points jobs to this repo (doesn\'t ship it).',default=-1)
     parser.add_argument('-branch',           '--branch',          type=str, help='If using git for jobs, which branch to clone. Defaults to current.', default=None)
     parser.add_argument('-config',           '--config',          type=str, help='Path to Python config file, for run.py .', default=None)
+    parser.add_argument('-template',         '--template',        type=str, help="Template condor submission file. Templates are in util/condor_templates.", default=None)
+    parser.add_argument('-requirements',     '--requirements',    type=str, help='Requirements string for condor workers.',default=None)
     args = vars(parser.parse_args())
 
     nevents = args['nevents']
@@ -51,11 +53,20 @@ def main(args):
     payload_mode = args['mode']
     git_branch = args['branch']
     config_file = args['config']
+    condor_template = args['template']
+    requirements = args['requirements']
 
     rundir = str(pathlib.Path(rundir).absolute())
     outdir = str(pathlib.Path(outdir).absolute())
     if(ptbins is None and ptbins_str is None):
         print('Error: Pt bins were not specified with either -p or -p_s options.')
+        return
+
+    # check that the template submission file exists
+    if(condor_template is None):
+        condor_template = '{}/util/condor_templates/condor_template.sub'.format(this_dir)
+    if(not pathlib.Path(condor_template).exists()):
+        print('Error: Condor submission file template not found: {}'.format(condor_template))
         return
 
     # Prepare the job and output directories.
@@ -140,13 +151,11 @@ def main(args):
         utils.PreparePayload(rundir,payload,gitdir)
         payload_string = ', ../{}'.format(payload)
 
-
-
     # Now we need to make a condor submission file for this set of jobs. It will be based off a template file.
-    condor_template = '{}/util/condor_templates/condor_template.sub'.format(this_dir)
     with open(condor_template,'r') as f:
         condor_submit_lines = f.readlines()
 
+    # The short queue is something specific to the UChicago Analysis Facility condor queue.
     short_queue_line = ' +queue="short"'
     if(not short_queue): short_queue_line = '#' + short_queue_line
 
@@ -154,21 +163,22 @@ def main(args):
     if(batch_name is not None): batch_line = batch_line.format(batch_name)
     else: batch_line = '#' + batch_line
 
-    # Need the location of "copy_output.py" utility
-    copy_output_file = str(pathlib.Path(this_dir + '/util/copy_output.py').absolute())
+    if(requirements is None):
+        requirements = ''
+    requirements_string = 'requirements            = {}'.format(requirements)
 
     for i,line in enumerate(condor_submit_lines):
         condor_submit_lines[i] = condor_submit_lines[i].replace("$BATCH_NAME",batch_line + '\n')
         condor_submit_lines[i] = condor_submit_lines[i].replace("$OUTDIR",outdir)
         condor_submit_lines[i] = condor_submit_lines[i].replace("$N_THREAD",str(nblas))
         condor_submit_lines[i] = condor_submit_lines[i].replace("$N_CPU",str(ncpu))
-        condor_submit_lines[i] = condor_submit_lines[i].replace('$SHORT_QUEUE',short_queue_line + '\n')
+        condor_submit_lines[i] = condor_submit_lines[i].replace('$ADDITIONS',short_queue_line + '\n')
         condor_submit_lines[i] = condor_submit_lines[i].replace("$PAYLOAD_MODE",str(payload_mode))
         condor_submit_lines[i] = condor_submit_lines[i].replace("$PAYLOAD_STRING",payload_string)
         condor_submit_lines[i] = condor_submit_lines[i].replace("$GIT_BRANCH",git_branch)
         condor_submit_lines[i] = condor_submit_lines[i].replace('$CONFIG_FILE',config_filename)
-        condor_submit_lines[i] = condor_submit_lines[i].replace('$COPY_OUTPUT_SCRIPT',copy_output_file)
         condor_submit_lines[i] = condor_submit_lines[i].replace('$DO_DELPHES',str(do_delphes))
+        condor_submit_lines[i] = condor_submit_lines[i].replace('$REQUIREMENTS',requirements_string)
 
     condor_submit_file = '{}/condor.sub'.format(rundir)
     with open(condor_submit_file,'w') as f:
