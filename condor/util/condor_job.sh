@@ -177,19 +177,19 @@ if [ "$do_delphes" -gt "0" ]; then
   # We will also ship the other files that are produced, but will bundle them up.
   # (we keep these separate since in practice they are the most useful to directly access)
   if [ "${do_split}" == "1" ]; then
-    python copy_output.py -i ${outdir_local}/train.h5 -e "h5" -o ${outdir} -n ${proc_number}
-    python copy_output.py -i ${outdir_local}/test.h5  -e "h5" -o ${outdir} -n ${proc_number}
-    python copy_output.py -i ${outdir_local}/valid.h5 -e "h5" -o ${outdir} -n ${proc_number}
+    python ${gitdir}/condor/util/copy_output.py -i ${outdir_local}/train.h5 -e "h5" -o ${outdir} -n ${proc_number}
+    python ${gitdir}/condor/util/copy_output.py -i ${outdir_local}/test.h5  -e "h5" -o ${outdir} -n ${proc_number}
+    python ${gitdir}/condor/util/copy_output.py -i ${outdir_local}/valid.h5 -e "h5" -o ${outdir} -n ${proc_number}
     rm ${outdir_local}/train.h5 ${outdir_local}/test.h5 ${outdir_local}/valid.h5
 
-    python copy_output.py -i ${outdir_local}/delphes_train.h5 -e "h5" -o ${outdir} -n ${proc_number}
-    python copy_output.py -i ${outdir_local}/delphes_test.h5  -e "h5" -o ${outdir} -n ${proc_number}
-    python copy_output.py -i ${outdir_local}/delphes_valid.h5 -e "h5" -o ${outdir} -n ${proc_number}
+    python ${gitdir}/condor/util/copy_output.py -i ${outdir_local}/delphes_train.h5 -e "h5" -o ${outdir} -n ${proc_number}
+    python ${gitdir}/condor/util/copy_output.py -i ${outdir_local}/delphes_test.h5  -e "h5" -o ${outdir} -n ${proc_number}
+    python ${gitdir}/condor/util/copy_output.py -i ${outdir_local}/delphes_valid.h5 -e "h5" -o ${outdir} -n ${proc_number}
     rm ${outdir_local}/delphes_train.h5 ${outdir_local}/delphes_test.h5 ${outdir_local}/delphes_valid.h5
 
   else
-    python copy_output.py -i $truth_file -e "h5" -o ${outdir} -n ${proc_number}
-    python copy_output.py -i $delphes_file -e "h5" -o ${outdir} -n ${proc_number}
+    python ${gitdir}/condor/util/copy_output.py -i $truth_file -e "h5" -o ${outdir} -n ${proc_number}
+    python ${gitdir}/condor/util/copy_output.py -i $delphes_file -e "h5" -o ${outdir} -n ${proc_number}
 
     rm $truth_file
     rm $delphes_file
