@@ -129,7 +129,7 @@ def main(args):
     elif(payload_mode == 3):
         # We will point the workers at this repo.
         this_dir = os.path.dirname(os.path.abspath(__file__))
-        gitdir = str(pathlib.Path('{}/../../'.format(this_dir)).absolute())
+        gitdir = str(pathlib.Path('{}/../'.format(this_dir)).absolute())
         payload_mode = gitdir
         git_branch = ''
 
