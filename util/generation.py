@@ -78,6 +78,9 @@ class Generator:
 
         self.calculator = Calculator(use_vectorcalcs=self.configurator.GetUseVectorCalcs())
 
+    def SetVerbose(self,val):
+        self.pythia.SetVerbose(val)
+
     def SetEventSelection(self,selection):
         self.event_selection = selection
         try: self.event_selection.Initialize(self.configurator)
@@ -287,6 +290,12 @@ class Generator:
         self.ClearEventBuffers()
 
     def GenerationLoop(self, nevents,i_real = 1, nevents_disp=None):
+        """
+        This is the function where Pythia8 matrix element generation + showering/hadronization happens.
+        The results are filtered for the selected "truth" and "final state" particles, which are placed
+        into HepMC3 events. These events are periodically written to a buffer file (which is then merged
+        into the "master" HepMC3 file).
+        """
         n_fail = 0
         if(nevents_disp is None): nevents_disp = nevents # number of events to display in progress bar
 
