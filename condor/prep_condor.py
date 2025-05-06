@@ -23,7 +23,7 @@ def main(args):
     parser.add_argument('-nblas',            '--n_openblas',      type=int, help='Sets the $OPENBLAS_NUM_THREADS variable (used for numpy multithreading). Advanced usage.',default=16)
     parser.add_argument('-event_idx_offset', '--event_idx_offset',type=int, help='Initial offset for event_idx. Advanced usage.',default=0)
     parser.add_argument('-batch_name',       '--batch_name',      type=str, help='Name for the condor batch. If left empty, unused.',default=None)
-    parser.add_argument('-git',              '--git_option',      type=int, help='If < 0, ships code directly from this repo. If == 0, runs \'git clone\' within each job. If > 0, runs \'git clone\' locally and ships result to jobs.',default=0)
+    parser.add_argument('-mode',              '--mode',      type=int, help='If <=0, ships code directly from this repo. If 1, runs \'git clone\' within each job. If 2, runs \'git clone\' locally and ships result to jobs. If 3, points jobs to this repo (doesn\'t ship it).',default=-1)
     parser.add_argument('-branch',           '--branch',          type=str, help='If using git for jobs, which branch to clone. Defaults to current.', default=None)
     parser.add_argument('-config',           '--config',          type=str, help='Path to Python config file, for run.py .', default=None)
     args = vars(parser.parse_args())
@@ -48,7 +48,7 @@ def main(args):
     nblas = args['n_openblas']
     event_idx_offset_initial = args['event_idx_offset']
     batch_name = args['batch_name']
-    git_option = args['git_option']
+    payload_mode = args['mode']
     git_branch = args['branch']
     config_file = args['config']
 
@@ -100,32 +100,47 @@ def main(args):
     sub.check_call(comm)
     config_filename = config_file.split('/')[-1]
 
-    # Determine how the package will be handled -- do we clone it as part of the job, clone it here and ship it,
-    # or just ship this existing repo?
+    # Determine how the package will be handled. Do we:
+    # 1) Clone it from git as part of the job itself?
+    # 2) Clone it here in the interactive session, and ship it as an archive to the job?
+    # 3) Ship this existing repository as an archive to the job?
+    # 4) Point the jobs to this existing repository?
+    #
+    # Note that option 4 requires that the condor workers have access to this filesystem.
+    # For systems such as the condor queue on BRUX (Brown University), where jobs aren't
+    # shipped to some temporary directory but rather run directly out of "initialdir",
+    # this might be preferrable or necessary.
+
     payload_string = ''
     if(git_branch is None): git_branch = utils.GetGitBranch()
 
-    if(git_option < 0): git_option = -1
-    elif(git_option > 0): git_option = 1
+    if(payload_mode == 1):
+        print(63 * '-')
+        print('HEPData4ML repository will be cloned internally by condor jobs.')
+        print(63 * '-')
 
-    if(git_option == -1):
-        # We have to ship the local repo.
-        payload = 'payload.tar.gz'
-        gitdir = 'HEPData4ML'
-        utils.PreparePayload(rundir,payload,gitdir)
-        payload_string = ', ../{}'.format(payload)
-
-    elif(git_option == 1):
+    elif(payload_mode == 2):
         # We have to do a local git clone
         payload = 'payload.tar.gz'
         gitdir = 'HEPData4ML'
         utils.PreparePayloadFromClone(rundir,payload,gitdir,branch=git_branch)
         payload_string = ', ../{}'.format(payload)
 
+    elif(payload_mode == 3):
+        # We will point the workers at this repo.
+        this_dir = os.path.dirname(os.path.abspath(__file__))
+        gitdir = str(pathlib.Path('{}/../../'.format(this_dir)).absolute())
+        payload_mode = gitdir
+        git_branch = ''
+
     else:
-        print(63 * '-')
-        print('HEPData4ML repository will be cloned internally by condor jobs.')
-        print(63 * '-')
+        # We have to ship the local repo.
+        payload = 'payload.tar.gz'
+        gitdir = 'HEPData4ML'
+        utils.PreparePayload(rundir,payload,gitdir)
+        payload_string = ', ../{}'.format(payload)
+
+
 
     # Now we need to make a condor submission file for this set of jobs. It will be based off a template file.
     condor_template = '{}/util/condor_templates/condor_template.sub'.format(this_dir)
@@ -148,7 +163,7 @@ def main(args):
         condor_submit_lines[i] = condor_submit_lines[i].replace("$N_THREAD",str(nblas))
         condor_submit_lines[i] = condor_submit_lines[i].replace("$N_CPU",str(ncpu))
         condor_submit_lines[i] = condor_submit_lines[i].replace('$SHORT_QUEUE',short_queue_line + '\n')
-        condor_submit_lines[i] = condor_submit_lines[i].replace("$GIT_OPTION",str(git_option))
+        condor_submit_lines[i] = condor_submit_lines[i].replace("$PAYLOAD_MODE",str(payload_mode))
         condor_submit_lines[i] = condor_submit_lines[i].replace("$PAYLOAD_STRING",payload_string)
         condor_submit_lines[i] = condor_submit_lines[i].replace("$GIT_BRANCH",git_branch)
         condor_submit_lines[i] = condor_submit_lines[i].replace('$CONFIG_FILE',config_filename)
