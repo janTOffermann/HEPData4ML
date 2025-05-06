@@ -137,6 +137,7 @@ def main(args):
     # spec.loader.exec_module(config)
 
     # config_dictionary = config.config
+    print('Using configuration file: {} .'.format(config_file))
     config_dictionary = GetConfigDictionary(config_file)
     configurator = Configurator(config_dictionary=config_dictionary)
 
