@@ -465,6 +465,14 @@ class Generator:
 
         return i_real-1, n_fail # note that i_real is using 1-indexing, which is what HepMC events use
 
+    def GenerateSingle(self):
+        """
+        Just calls generation a single time.
+        To be used for testing.
+        """
+        self.pythia.Generate()
+        return
+
     # Generate a bunch of events in the given pT range,
     # and save them to a HepMC file.
     # We do perform event selection: Only certain particles are saved to the file to begin with.
