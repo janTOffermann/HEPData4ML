@@ -37,18 +37,24 @@ openblas_max_thread=${14}
 git_option=${15}
 git_branch=${16}
 
+local_mode=0
+
 # Set up the code. This may involve shipping in a payload, or running `git clone` here.
 gitdir=HEPData4ML # TODO: payload curently set to use this name, is this OK or too much hardcoding?
 if [[ "${git_option}" == "1" ]]; then
   # run git clone here
+  echo "Cloning code from GitHub."
   git clone -b ${git_branch} git@github.com:janTOffermann/HEPData4ML.git ${gitdir}
 elif [[ -d "${git_option}" ]]; then
   gitdir=$git_option # the $git_option variable is actually being used to give a path to existing HepData4ML installation
+  echo "Running from ${gitdir} ."
+  local_mode=1 # need to be a bit careful that we don't delete useful files!
 else
   # assume the payload has been shipped in, as payload.tar.gz
   payload=payload.tar.gz
-  tar -xzf ${payload}
-  rm ${payload}
+  tar -xzf $payload
+  rm $payload
+  echo "Unpacked code from payload ${payload} ."
 fi
 
 # Run the setup script.
@@ -60,7 +66,8 @@ export GOTO_NUM_THREADS=${openblas_max_thread}
 export OMP_NUM_THREADS=${openblas_max_thread}
 
 # Move the config.py file into the config directory. It has been shipped as an input file separate of the payload.
-mv $config_file ${gitdir}/config/config.py
+# TODO: Could be an issue for local_mode=1 -- why wasn't I previously passing $config_file as an arg below? Maybe will rediscover some old bug.
+# mv $config_file ${gitdir}/config/config.py
 
 outdir_local="output_${proc_number}"
 truth_file_short=events.h5
@@ -97,8 +104,8 @@ if [ "$do_delphes" -gt "0" ]; then
     -pc ${pythia_config} \
     -df 1 \
     --index_offset ${event_idx_offset} \
-    --delphes 1
-    # --config ${config_file} \
+    --delphes 1 \
+    --config ${config_file}
 
   # Run a 2nd time, now without Delphes output. Produces truth-level "events.h5"
   echo "Now clustering truth-level jets from previously-generated events."
@@ -117,8 +124,8 @@ if [ "$do_delphes" -gt "0" ]; then
     -pc ${pythia_config} \
     -df 1 \
     --index_offset ${event_idx_offset} \
-    --delphes 0
-    # --config ${config_file} \
+    --delphes 0 \
+    --config ${config_file}
 
   # Slim down to only events shared between the truth-level and
   # Delphes files (events that have passed jet cuts for both the truth-level
@@ -210,8 +217,8 @@ else
     -pc ${pythia_config} \
     -df 1 \
     --index_offset ${event_idx_offset} \
-    --delphes 0
-    # --config ${config_file} \
+    --delphes 0 \
+    --config ${config_file}
 
   if [ "${do_split}" == "1" ]; then
     echo "Splitting output."
@@ -224,13 +231,13 @@ else
       -s 1 \
       -c 9
     rm $truth_file
-    python copy_output.py -i ${outdir_local}/train.h5 -e "h5" -o ${outdir} -n ${proc_number}
-    python copy_output.py -i ${outdir_local}/test.h5  -e "h5" -o ${outdir} -n ${proc_number}
-    python copy_output.py -i ${outdir_local}/valid.h5 -e "h5" -o ${outdir} -n ${proc_number}
+    python ${gitdir}/condor/util/copy_output.py -i ${outdir_local}/train.h5 -e "h5" -o ${outdir} -n ${proc_number}
+    python ${gitdir}/condor/util/copy_output.py -i ${outdir_local}/test.h5  -e "h5" -o ${outdir} -n ${proc_number}
+    python ${gitdir}/condor/util/copy_output.py -i ${outdir_local}/valid.h5 -e "h5" -o ${outdir} -n ${proc_number}
     rm ${outdir_local}/train.h5 ${outdir_local}/test.h5 ${outdir_local}/valid.h5
 
   else
-    python copy_output.py -i $truth_file -e "h5" -o ${outdir} -n ${proc_number}
+    python ${gitdir}/condor/util/copy_output.py -i $truth_file -e "h5" -o ${outdir} -n ${proc_number}
     rm $truth_file
   fi
 fi
@@ -240,12 +247,15 @@ outname="output.tar.gz"
 tar -czf ${outname} ${outdir_local}
 
 # Ship the output tarball.
-python copy_output.py -i ${outname} -e "tar.gz" -o ${outdir} -n ${proc_number}
+python ${gitdir}/condor/util/copy_output.py -i ${outname} -e "tar.gz" -o ${outdir} -n ${proc_number}
 
 # Cleanup. Not strictly necessary.
 rm -r ${outdir_local}
 rm ${outname}
-rm *.py
-rm -rf $gitdir
-if [ -d fastjet ]; then rm -r fastjet; fi
-if [ -d delphes ]; then rm -r delphes; fi
+
+if [[ "${local_mode}" == "0" ]]; then
+  rm -rf $gitdir
+  if [ -d fastjet ]; then rm -r fastjet; fi
+  if [ -d delphes ]; then rm -r delphes; fi
+  rm *.py
+fi
