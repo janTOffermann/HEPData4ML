@@ -1,13 +1,10 @@
-import sys,os,pathlib,time,datetime,re,shlex,uuid
-import importlib.util
+import sys,os,time,datetime,re,pathlib
+sys.path.append(str(pathlib.Path(os.path.dirname(os.path.abspath(__file__)) + '/../../').resolve()))
 import argparse as ap
 import subprocess as sub
 from util.generation import Generator
-from util.delphes import DelphesWrapper
-from util.conversion import Processor, RemoveFailedFromHDF5, SplitH5, AddEventIndices, ConcatenateH5, MergeH5, AddConstantValue, AddMetaDataWithReference
-from util.hepmc import CompressHepMC
-from util.config import Configurator,GetConfigFileContent, GetConfigDictionary
-# import config.config as config
+from util.conversion import Processor
+from util.config import Configurator, GetConfigDictionary
 
 def none_or_str(value): # see https://stackoverflow.com/a/48295546
     if value == 'None':
