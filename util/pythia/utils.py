@@ -14,7 +14,7 @@ class PythiaWrapper:
         self.config_dict = {}
 
         self.event = None
-        self.verbose = verbose
+        self.SetVerbose(verbose)
         self.initialized = False
 
     def SetVerbose(self,flag):
@@ -43,7 +43,9 @@ class PythiaWrapper:
     def AddToConfigDict(self,cdict):
         for key,val in cdict.items():
             if(key in self.config_dict.keys() and self.verbose):
-                print('Warning: Overwriting configuration: {} = {}.'.format(key,val))
+                if(self.config_dict[key] != val):
+                    print('Warning: Overwriting configuration: {} .'.format(key))
+                    print('\t[{}] -> [{}]'.format(self.config_dict[key],val))
             self.config_dict[key] = val
 
     def ReadConfigDict(self):

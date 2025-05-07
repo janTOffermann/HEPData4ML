@@ -190,12 +190,12 @@ class Generator:
     def GetEventFilterFlagFilename(self):
         return self.event_filter_flag_filename
 
-    def ConfigPythia(self, config_file=None):
+    def ConfigPythia(self, config_file=None, quiet=True):
         """
         Prepare and apply Pythia configuration. This turns our settings (from our config file)
         into a list of strings ready to be input to Pythia8.
         """
-        self.pythia_config = self.configurator.GetPythiaConfig(self.pt_min,self.pt_max)
+        self.pythia_config = self.configurator.GetPythiaConfig(self.pt_min,self.pt_max, quiet)
         self.SetPythiaConfigFile(file=config_file)
 
         # Optionally set the Pythia RNG seed to something other than what's in the config.
