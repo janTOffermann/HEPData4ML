@@ -34,7 +34,7 @@ def main(args):
 
     start_time = time.time()
 
-    nevents_per_bin = 1
+    # nevents_per_bin = 1
     pt_bin_edges = [550, 560]
     verbose = True
     pythia_rng = 1
@@ -49,7 +49,7 @@ def main(args):
     # We import this from a user-supplied file, by default it is config/config.py.
     this_dir = os.path.dirname(os.path.abspath(__file__))
     if(config_file is None):
-        config_file = '{}/config/config.py'.format(this_dir)
+        config_file = str(pathlib.Path('{}/../../config/config.py'.format(this_dir)).resolve())
 
     # config_dictionary = config.config
     print('Using configuration file: {} .'.format(config_file))
@@ -63,11 +63,9 @@ def main(args):
     for i in range(13):
         print(line_up, end=line_clear)
 
-
-    if(verbose):
-        print('\n=================================')
-        print('Running Pythia8 event generation.')
-        print('=================================\n')
+    print('\n=================================')
+    print('Running Pythia8 event generation.')
+    print('=================================\n')
 
     if(pythia_rng is not None):
         print('\tSetting Pythia RNG seed to {}. (overriding config)'.format(pythia_rng))
@@ -75,12 +73,6 @@ def main(args):
         pythia_rng = configurator.GetPythiaRNGSeed()
     if(pythia_config is not None):
         print('\tSetting Pythia process configuration from {}. (overriding config)'.format(pythia_config))
-
-    if(verbose):
-        print('\tGenerating {} events per {} bin, with the following bin edges (in GeV):'.format(nevents_per_bin,'\\hat{p_T}'))
-        for bin_edge in pt_bin_edges:
-            print('\t\t{}'.format(bin_edge))
-        print()
 
     print()
     for i in range(nbins):
@@ -102,7 +94,14 @@ def main(args):
         generator.SetJetConfig(configurator.GetJetConfig())
         generator.SetNTruth(configurator.GetNPars()['n_truth'])
 
-        # generator.SetFilename(hep_file, rename_extra_files=False)
+        # get some actual printouts
+        generator.pythia_config['Print:quiet'] = 'off'
+        generator.pythia_config['Stat:showProcessLevel'] = 'on'
+        generator.pythia_config['Next:numberShowProcess'] = '1'
+        generator.pythia_config['Next:numberShowEvent'] = '1'
+        # for generator to read pythia_config again, must reinitialize
+        generator.pythia.AddToConfigDict(generator.pythia_config)
+        generator.pythia.InitializePythia()
 
         generator.GenerateSingle()
 

@@ -50,7 +50,7 @@ class Configurator:
     # This dictionary will only control a few settings (MPI, ISR/FSR etc.),
     # while the process settings from the 'proc' entry of config will be
     # passed separately.
-    def GetPythiaConfig(self,pt_min, pt_max):
+    def GetPythiaConfig(self,pt_min, pt_max,quiet=True):
         pythia_config = {}
         # Tack on a few more things to the pythia configuration
         pythia_config['HadronLevel:all'] = Bool2String(self.config['hadronization'])
@@ -64,10 +64,10 @@ class Configurator:
         pythia_config['PhaseSpace:pTHatMin'] = pt_min
         pythia_config['PhaseSpace:pTHatMax'] = pt_max
 
-        # Add some default (non-configurable) stuff.
-        pythia_config['Print:quiet'] = 'on' # avoid printing reams of info
-        pythia_config['Stat:showProcessLevel'] = 'off'
-        pythia_config['Stat:showErrors'] = 'off'
+        if(quiet):
+            pythia_config['Print:quiet'] = 'on' # avoid printing reams of info
+            pythia_config['Stat:showProcessLevel'] = 'off'
+            pythia_config['Stat:showErrors'] = 'off'
     #     pythia_config['Next:numberShowProcess'] = '2'
     #     pythia_config['Next:numberShowEvent'] = '2'
         return pythia_config
