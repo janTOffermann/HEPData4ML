@@ -151,6 +151,12 @@ def main(args):
         # so we will have to reference it via its full filepath to locate it in the rundir.
         config_filename = str(pathlib.Path(rundir + '/' + config_file.split('/')[-1]).absolute())
 
+        # TODO: In this mode, we can't rely on relative filepaths in the config
+        #       (for example, Delphes card) because the gitdir isn't inside the rundir.
+        #       We could consider modifying the config file automatically, warning the user,
+        #       or adjusting run.py to take $HOME as an argument and trying to fix paths.
+        #       These all seem a bit hacky or annoying, so will leave for now...
+
     else:
         # We have to ship the local repo.
         payload = 'payload.tar.gz'

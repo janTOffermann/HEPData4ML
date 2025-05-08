@@ -1,4 +1,4 @@
-import sys,os,importlib
+import sys,os,importlib,pathlib
 import pathlib
 # from config.config import config
 
@@ -28,6 +28,29 @@ class Configurator:
         # Will also use this for some print statement bookkeeping, since it is conveniently passed around.
         self.print_fastjet = True
         self.print_delphes = True
+
+        self.status = True
+        self._check_paths()
+
+    def _check_paths(self):
+        """
+        Checks particular entries, which are filepaths.
+        These could be problematic if they are given as relative paths,
+        especially if using a running option where the code isn't copied
+        inside the running directory.
+        """
+        path_keys = ['delphes_dir','delphes_card','fastjet_dir']
+        for key,val in self.config.items():
+            status = True
+            if(key in path_keys):
+                status = pathlib.Path(val).exists()
+            if(not status):
+                self.status = False
+                print('Warning: Configuration entry [{}] = "{}", which doesn\'t appear to be a valid filepath.'.format(key,val))
+                return
+
+    def GetStatus(self):
+        return self.status
 
     def GetPythiaConfigFile(self,filename=None):
         if(filename is None):

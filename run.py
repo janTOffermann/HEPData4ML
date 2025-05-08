@@ -140,6 +140,9 @@ def main(args):
     print('Using configuration file: {} .'.format(config_file))
     config_dictionary = GetConfigDictionary(config_file)
     configurator = Configurator(config_dictionary=config_dictionary)
+    if(not configurator.GetStatus()):
+        print('Error: Configuration has bad status.')
+        assert(False)
 
     # Set up FastJet -- we will need this later on (except for the special use case of no jet clustering!).
     # To keep our printouts clean, we are initializing FastJet here instead of later on in a loop, so that
