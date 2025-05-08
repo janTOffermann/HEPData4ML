@@ -254,7 +254,7 @@ tar -czf ${outname} ${outdir_local}
 python ${gitdir}/condor/util/copy_output.py -i ${outname} -e "tar.gz" -o ${outdir} -n ${proc_number}
 
 # Cleanup. Not strictly necessary.
-# rm -r ${outdir_local}
+rm -r ${outdir_local}
 rm ${outname}
 
 if [[ "${local_mode}" == "0" ]]; then
