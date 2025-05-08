@@ -75,6 +75,10 @@ delphes_file_short=events_delphes.h5
 truth_file="${outdir_local}/${truth_file_short}"
 delphes_file="${outdir_local}/${delphes_file_short}"
 
+delete_delphes=0
+training_faction=0.6
+validation_fraction=0.2
+
 # ===========================================================
 # If Delphes was requested, we run the "standard" workflow:
 #  1) Run with Delphes.
@@ -100,7 +104,7 @@ if [ "$do_delphes" -gt "0" ]; then
     -pb 1 \
     --delete_stats 0 \
     --split 0 \
-    -del_delphes 1 \
+    -del_delphes $delete_delphes \
     -pc ${pythia_config} \
     -df 1 \
     --index_offset ${event_idx_offset} \
@@ -150,8 +154,8 @@ if [ "$do_delphes" -gt "0" ]; then
     python ${gitdir}/util/tools/split.py \
       -i $delphes_file \
       -o ${outdir_local} \
-      -f1 0.6 \
-      -f2 0.2 \
+      -f1 $training_faction \
+      -f2 $validation_fraction \
       -s 1 \
       -c 9
 
@@ -165,8 +169,8 @@ if [ "$do_delphes" -gt "0" ]; then
     python ${gitdir}/util/tools/split.py \
       -i $truth_file \
       -o ${outdir_local} \
-      -f1 0.6 \
-      -f2 0.2 \
+      -f1 $training_faction \
+      -f2 $validation_fraction \
       -s 1 \
       -c 9
 
@@ -213,7 +217,7 @@ else
     -pb 1 \
     --delete_stats 0 \
     --split 0 \
-    -del_delphes 1 \
+    -del_delphes $delete_delphes \
     -pc ${pythia_config} \
     -df 1 \
     --index_offset ${event_idx_offset} \
@@ -226,8 +230,8 @@ else
     python ${gitdir}/util/tools/split.py \
       -i $truth_file \
       -o ${outdir_local} \
-      -f1 0.6 \
-      -f2 0.2 \
+      -f1 $training_faction \
+      -f2 $validation_fraction \
       -s 1 \
       -c 9
     rm $truth_file
@@ -250,7 +254,7 @@ tar -czf ${outname} ${outdir_local}
 python ${gitdir}/condor/util/copy_output.py -i ${outname} -e "tar.gz" -o ${outdir} -n ${proc_number}
 
 # Cleanup. Not strictly necessary.
-rm -r ${outdir_local}
+# rm -r ${outdir_local}
 rm ${outname}
 
 if [[ "${local_mode}" == "0" ]]; then

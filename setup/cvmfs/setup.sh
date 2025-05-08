@@ -88,7 +88,24 @@ source /cvmfs/sft.cern.ch/lcg/views/${lcg}/${build}/setup.sh
 
 # We need pyhepmc, which isn't part of the software package from CVMFS
 if ! python -c "import pyhepmc" &>/dev/null; then
-    echo "Installing pyhepmc locally..."
-    pip install pyhepmc --user
+
+  # To install pyhepmc, we will use pip.
+  # By default, this will go to
+  # $HOME/.local/lib/python*/site-packages/ .
+  # For some condor workers, $HOME might not be
+  # defined, which can lead to some odd behaviour.
+
+  test_file="${HOME}/.home_test_$$"
+      if touch "$test_file" 2>/dev/null; then
+          # HOME is properly set and writable.
+          rm -f "$test_file"
+          echo "HOME directory ($HOME) is valid, using pip with --user installation."
+          pip install pyhepmc --user
+      else
+          target="${pwd}/python_packages"
+          echo "HOME directory ($HOME) is not valid, installing pyhepmc at $target ."
+          pip install pyhepmc --target=$target
+          export PYTHONPATH=$target:$PYTHONPATH
+      fi
 fi
 
