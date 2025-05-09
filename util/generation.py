@@ -78,6 +78,9 @@ class Generator:
 
         self.calculator = Calculator(use_vectorcalcs=self.configurator.GetUseVectorCalcs())
 
+    def SetVerbose(self,val):
+        self.pythia.SetVerbose(val)
+
     def SetEventSelection(self,selection):
         self.event_selection = selection
         try: self.event_selection.Initialize(self.configurator)
@@ -187,12 +190,12 @@ class Generator:
     def GetEventFilterFlagFilename(self):
         return self.event_filter_flag_filename
 
-    def ConfigPythia(self, config_file=None):
+    def ConfigPythia(self, config_file=None, quiet=True):
         """
         Prepare and apply Pythia configuration. This turns our settings (from our config file)
         into a list of strings ready to be input to Pythia8.
         """
-        self.pythia_config = self.configurator.GetPythiaConfig(self.pt_min,self.pt_max)
+        self.pythia_config = self.configurator.GetPythiaConfig(self.pt_min,self.pt_max, quiet)
         self.SetPythiaConfigFile(file=config_file)
 
         # Optionally set the Pythia RNG seed to something other than what's in the config.
@@ -287,6 +290,12 @@ class Generator:
         self.ClearEventBuffers()
 
     def GenerationLoop(self, nevents,i_real = 1, nevents_disp=None):
+        """
+        This is the function where Pythia8 matrix element generation + showering/hadronization happens.
+        The results are filtered for the selected "truth" and "final state" particles, which are placed
+        into HepMC3 events. These events are periodically written to a buffer file (which is then merged
+        into the "master" HepMC3 file).
+        """
         n_fail = 0
         if(nevents_disp is None): nevents_disp = nevents # number of events to display in progress bar
 
@@ -384,29 +393,7 @@ class Generator:
             # hits and any (stable) particles within among our truth particle array. To do this, we will ultimately
             # need to determine these truth particles' indices w.r.t. the final_state_hepev that we create further below.
             # ==========================================
-            final_state_truth_overlap = np.intersect1d(final_state_indices,truth_indices) # still gives indices w.r.t. the full Pythia event, not what we want to save.
-
-            # When final_state_indices is written to final_state_hepev, the particles will be re-indexed in the order they're given.
-            # Note that HepMC3 uses 1-indexing, we will save these with 1-indexing too.
-            fs_truth_overlap_wrt_fs    = np.array([np.where(final_state_indices==x)[0] + 1 for x in final_state_truth_overlap]).flatten()
-            fs_truth_overlap_wrt_truth = np.array([np.where(truth_indices==x)[0] + 1 for x in final_state_truth_overlap]).flatten()
-
-            indices_max = 200 # TODO: Make this configurable!
-            indices = np.zeros((indices_max,2),dtype=int) # order will be (index w.r.t. final-state HepMC file, index w.r.t. truth-selection HepMC file)
-            l = np.minimum(indices_max,len(fs_truth_overlap_wrt_fs))
-            indices[:l,0] = fs_truth_overlap_wrt_fs[:l]
-            indices[:l,1] = fs_truth_overlap_wrt_truth[:l]
-
-            fs_truth_overlap_filename_full = '{}/{}'.format(self.outdir,self.fs_truth_overlap_filename)
-            f = h5.File(fs_truth_overlap_filename_full,'a')
-            key = 'indices'
-            if(i_real == 1):
-                indices = np.expand_dims(indices,axis=0)
-                f.create_dataset(key,data=indices,compression='gzip',chunks=True,maxshape=(None,indices_max,2))
-            else:
-                f[key].resize(f[key].shape[0] + 1,axis=0)
-                f[key][-1] = indices
-            f.close()
+            self.RecordFinalStateTruthOverlap(final_state_indices,truth_indices,i_real,'indices',self.configurator.GetNPars()['jet_n_par'])
 
             # ==========================================
             # Now lets create HepMC events -- one holding just the truth-level particles
@@ -478,6 +465,14 @@ class Generator:
 
         return i_real-1, n_fail # note that i_real is using 1-indexing, which is what HepMC events use
 
+    def GenerateSingle(self):
+        """
+        Just calls generation a single time.
+        To be used for testing.
+        """
+        self.pythia.Generate()
+        return
+
     # Generate a bunch of events in the given pT range,
     # and save them to a HepMC file.
     # We do perform event selection: Only certain particles are saved to the file to begin with.
@@ -535,6 +530,42 @@ class Generator:
 
         # if(self.diagnostic_plots): self.OutputHistograms()
         return
+
+    def RecordFinalStateTruthOverlap(self,final_state_indices,truth_indices,i_real,key='indices',indices_max=200):
+
+        # Get indices (w.r.t. full Pythia event) of particles that are listed in both the final_state and truth.
+        final_state_truth_overlap = np.intersect1d(final_state_indices,truth_indices)
+
+        # We want to make an (n,2) array, where for n listings, we give
+        # - the final_state_index in position 0,
+        # - and the truth_index in position 1.
+        # This is complicated by the possibility of a particle appearing multiple times in either list of indices.
+        # (e.g. the truth selection selects decay products of W, but also all stable W daughters -- and the W decays to lepton + neutrino).
+        # TODO: We currently deal with this complication via the "[0][0]" indexing in fs_truth_overlap_wrt_fs and fs_truth_overlap_wrt_truth.
+        #       This means that we just count the first instance of the particle's listing. Maybe causes potential confusion in the case where
+        #       it actually appears multiple times.
+
+        # When final_state_indices is written to final_state_hepev, the particles will be re-indexed in the order they're given.
+        # Note that HepMC3 uses 1-indexing, we will save these with 1-indexing too.
+        # TODO: Seems to cause crash if a final-state particle shows up multiple times in the truth listing.
+        fs_truth_overlap_wrt_fs    = np.array([np.where(final_state_indices==x)[0][0] + 1 for x in final_state_truth_overlap]).flatten()
+        fs_truth_overlap_wrt_truth = np.array([np.where(truth_indices==x)[0][0] + 1 for x in final_state_truth_overlap]).flatten()
+
+        indices = np.zeros((indices_max,2),dtype=int) # order will be (index w.r.t. final-state HepMC file, index w.r.t. truth-selection HepMC file)
+        l = np.minimum(indices_max,len(fs_truth_overlap_wrt_fs))
+        indices[:l,0] = fs_truth_overlap_wrt_fs[:l]
+        indices[:l,1] = fs_truth_overlap_wrt_truth[:l]
+
+        fs_truth_overlap_filename_full = '{}/{}'.format(self.outdir,self.fs_truth_overlap_filename)
+        f = h5.File(fs_truth_overlap_filename_full,'a')
+        if(i_real == 1):
+            indices = np.expand_dims(indices,axis=0)
+            f.create_dataset(key,data=indices,compression='gzip',chunks=True,maxshape=(None,indices_max,2))
+        else:
+            f[key].resize(f[key].shape[0] + 1,axis=0)
+            f[key][-1] = indices
+        f.close()
+
 
     # Get the MC event weights (will typically just be 1 for each event).
     # This reads from a file, which is only written to when an event is written to disk.
