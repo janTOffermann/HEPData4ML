@@ -103,8 +103,10 @@ def concatenate_slow(input_patterns,output,copts,verbose=False):
         print('\t{}: {}'.format(j,file))
 
     infile_0 = h5.File(input_files[0],'r')
-    keys = list(infile_0[0].keys())
-    metakeys = list(infile_0[0].attrs.keys())
+    keys = list(infile_0.keys())
+    metakeys = list(infile_0.attrs.keys())
+    keys = [x for x in keys if x not in metakeys]
+
     original_shapes = {key:list(infile_0[key].shape) for key in keys}
     dtypes = {key:infile_0[key].dtype for key in keys}
     infile_0.close()
@@ -130,7 +132,7 @@ def concatenate_slow(input_patterns,output,copts,verbose=False):
     for i,key in enumerate(keys):
         if(verbose):
             print('\tKey: {}\t({}/{})'.format(key,i+1,len(keys)))
-        data = np.zeros(shapes[key],dtype=dtypes[key].dtype)
+        data = np.zeros(shapes[key],dtype=dtypes[key])
         counter = 0
         for j,input_file in enumerate(input_files):
             start = counter
@@ -172,8 +174,6 @@ def concatenate_slow(input_patterns,output,copts,verbose=False):
     f.close()
     return
 
-
-
 def main(args):
     parser = ap.ArgumentParser()
     parser.add_argument('-i', '--input',   nargs='+', help='Input file pattern (or a list of patterns). Each pattern can also be provided as a comma-separated string of filenames.', required=True)
@@ -188,9 +188,14 @@ def main(args):
     output = args['output']
     copts = args['compression']
     verbose = args['verbose'] > 0
+    slow = args['slow'] > 0
 
     t1 = time.time()
-    concatenate(input_patterns,output,copts,verbose)
+    if(not slow):
+        concatenate(input_patterns,output,copts,verbose)
+    else:
+        concatenate_slow(input_patterns,output,copts,verbose)
+
     t2 = time.time()
     dt = t2 - t1
     print('\tElapsed time: {:.2f} seconds.'.format(dt))

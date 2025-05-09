@@ -1,12 +1,13 @@
 import sys,os,pathlib,time,datetime,re,shlex,uuid
+import importlib.util
 import argparse as ap
 import subprocess as sub
 from util.generation import Generator
 from util.delphes import DelphesWrapper
 from util.conversion import Processor, RemoveFailedFromHDF5, SplitH5, AddEventIndices, ConcatenateH5, MergeH5, AddConstantValue, AddMetaDataWithReference
 from util.hepmc import CompressHepMC
-from util.config import Configurator,GetConfigFileContent
-import config.config as config
+from util.config import Configurator,GetConfigFileContent, GetConfigDictionary
+# import config.config as config
 
 def none_or_str(value): # see https://stackoverflow.com/a/48295546
     if value == 'None':
@@ -42,9 +43,7 @@ def main(args):
     parser.add_argument('-h5',           '--hdf5',              type=int,          default=1,                help='Whether or not to produce final HDF5 files. If false, stops after HepMC or Delphes/ROOT file production.')
     parser.add_argument('-f',            '--force',             type=int,          default=0,                help='Whether or not to force generation -- if true, will possibly overwrite existing HepMC files in output directory.')
     parser.add_argument('-c',            '--compress',          type=int,          default=0,                help='Whether or not to compress HepMC files.')
-    parser.add_argument('-del_delphes',  '--del_delphes',       type=int,          default=0,                help='Whether or not to delete DELPHES/ROOT files.')
     parser.add_argument('-del_hepmc',    '--del_hepmc',         type=int,          default=0,                help='Whether or not to delete HepMC3 files.')
-    parser.add_argument('-delphes',      '--delphes',           type=int,          default=-1,               help='Optional Delphes flag -- will override the \'delphes\' option in the config file. 0 == False, 1 == True, otherwise ignored.')
     parser.add_argument('-rng',          '--rng',               type=int,          default=None,             help='Pythia RNG seed. Will override the one provided in the config file.')
     parser.add_argument('-npc',          '--nentries_per_chunk',type=int,          default=int(1e4),         help='Number of entries to process per chunk, for jet clustering & conversion to HDF5.')
     parser.add_argument('-pb',           '--progress_bar',      type=int,          default=1,                help='Whether or not to print progress bar during event generation')
@@ -57,7 +56,14 @@ def main(args):
     parser.add_argument('-separate_h5',  '--separate_h5',       type=int,          default=1,                help='Whether or not to make separate HDF5 files for each pT bin.')
     parser.add_argument('-pc',           '--pythia_config',     type=none_or_str,  default=None,             help='Path to Pythia configuration template (for setting the process).')
     parser.add_argument('-index_offset', '--index_offset',      type=int,          default=0,                help='Offset for event_idx.')
+    parser.add_argument('-config',       '--config',            type=str,          default=None,             help='Path to configuration Python file. Default will use config/config.py .')
     parser.add_argument('-debug',        '--debug',             type=int,          default=0,                help='If > 0, will record the full final-state (i.e. before jet clustering/selection) in a separate key.')
+
+    # DELPHES-related arguments
+    parser.add_argument('-delphes',      '--delphes',           type=int,          default=-1,               help='Optional Delphes flag -- will override the \'delphes\' option in the config file. 0 == False, 1 == True, otherwise ignored.')
+    parser.add_argument('-del_delphes',  '--del_delphes',       type=int,          default=0,                help='Whether or not to delete DELPHES/ROOT files.')
+    parser.add_argument('-delphes_dir',  '--delphes_dir',       type=str,          default=None,             help='Override for Delphes location.')
+
     args = vars(parser.parse_args())
 
     start_time = time.time()
@@ -78,7 +84,6 @@ def main(args):
     verbose = args['verbose'] > 0
     do_h5 = args['hdf5']
     compress_hepmc = args['compress']
-    delete_delphes = args['del_delphes']
     delete_hepmc = args['del_hepmc']
     force = args['force']
     pythia_rng = args['rng']
@@ -90,7 +95,11 @@ def main(args):
     debug = args['debug'] > 0
     index_offset = args['index_offset']
     delete_full_stats = args['delete_stats'] > 0
+    config_file = args['config']
+
     delphes_override = args['delphes']
+    delete_delphes = args['del_delphes']
+    delphes_dir = args['delphes_dir']
 
     if(pt_bin_edges is not None and pt_bin_edges_string is not None):
         print('Warning: Both "ptbins" and "ptbins_string" arguments were given. Using the "ptbins" argument.')
@@ -117,15 +126,36 @@ def main(args):
         assert(False)
 
     # Configurator class, used for fetching information from our config file.
-    config_dictionary = config.config
+    # We import this from a user-supplied file, by default it is config/config.py.
+    this_dir = os.path.dirname(os.path.abspath(__file__))
+    if(config_file is None):
+        config_file = '{}/config/config.py'.format(this_dir)
+    # config_name = config_file.split('/')[-1].split('.')[0]
+    # spec = importlib.util.spec_from_file_location("config.{}".format(config_name),config_file)
+    # config = importlib.util.module_from_spec(spec)
+    # sys.modules['config.{}'.format(config_name)] = config
+    # spec.loader.exec_module(config)
+
+    # config_dictionary = config.config
+    print('Using configuration file: {} .'.format(config_file))
+    config_dictionary = GetConfigDictionary(config_file)
     configurator = Configurator(config_dictionary=config_dictionary)
+
+    # Try to correct the configuration.
+    if(not configurator.GetStatus()):
+        print('Attempting to correct filepaths. This may not work.')
+        configurator.CorrectFilepaths(this_dir)
+
+    if(not configurator.GetStatus()):
+        print('Error: Configuration has bad status. Exiting.')
+        assert(False)
 
     # Set up FastJet -- we will need this later on (except for the special use case of no jet clustering!).
     # To keep our printouts clean, we are initializing FastJet here instead of later on in a loop, so that
     # we can get the FastJet banner printout out of the way. We remove the banner with some ANSI printing
     # hackery, since it's really not useful and clutters up our printout (we acknowledge the use in the
     # documentation, having this unavoidable printout for a single package's use is quite gratuitous).
-    print()
+    print(13 * '\n')
     dummy_processor = Processor(configurator)
     line_up = '\033[1A'
     line_clear = '\x1b[2K'
@@ -255,6 +285,8 @@ def main(args):
             delphes_card = configurator.GetDelphesCard() # will default to the ATLAS card that is shipped with Delphes
             delphes_file = hep_file.replace('.hepmc','.root')
             delphes_wrapper = DelphesWrapper(configurator.GetDelphesDirectory())
+            if(delphes_dir is not None):
+                configurator.SetDelphesDirectory(delphes_dir)
             delphes_wrapper.PrepDelphes() # will download/build Delphes if necessary
             print('Running DelphesHepMC3: {} -> {}.'.format(hep_file,delphes_file))
             if(i == 0):
@@ -384,7 +416,7 @@ def main(args):
     # This is handled correctly by metadata.
     AddMetaDataWithReference(h5_file,cwd=outdir,value=pythia_rng,                                                 key='pythia_random_seed'    ) # Add the Pythia8 RNG seed. Storing this way doesn't really save space -- it's just an int -- but we'll do this for consistency with how metadata is handled.
     AddMetaDataWithReference(h5_file,cwd=outdir,value=" ".join(map(shlex.quote, sys.argv[1:])),                   key='command_line_arguments') # Add the command line arguments.
-    AddMetaDataWithReference(h5_file,cwd=outdir,value='\n'.join(GetConfigFileContent()),                          key='config_file'           ) # Add the full config file a string.
+    AddMetaDataWithReference(h5_file,cwd=outdir,value='\n'.join(GetConfigFileContent(config_file)),               key='config_file'           ) # Add the full config file a string.
     AddMetaDataWithReference(h5_file,cwd=outdir,value=start_time,                                                 key='timestamp'             ) # Add the epoch time for the start of generation.
     AddMetaDataWithReference(h5_file,cwd=outdir,value=time.strftime('%Y-%m-%d %H:%M:%S',time.gmtime(start_time)), key='timestamp_string_utc'  ) # Add the epoch time for the start of generation, as a string.
     AddMetaDataWithReference(h5_file,cwd=outdir,value=unique_id,                                                  key='unique_id'             ) # A unique random string to identify this dataset.

@@ -68,7 +68,7 @@ class Tracer:
         # Check if Delphes generation is on. If not, we will presumably run into some issues because Delphes files are not produced,
         # so we should disable this post-processing.
         if(not self.configurator.GetDelphesConfig()):
-            print('Error: Delphes option is turned off in config. Skipping Tracer.')
+            print('{}.Initialize: Error: Delphes option is turned off in config. Skipping Tracer.'.format(self.print_prefix))
             self.status = False
             return
 
@@ -117,7 +117,7 @@ class Tracer:
     def Process(self):
         self.Initialize()
         if(not self.status):
-            print('Error: Tracer not properly configured.')
+            print('{}.Process: Error: Tracer not properly configured.'.format(self.print_prefix))
             return
 
         if(self.verbose):
@@ -170,9 +170,9 @@ class Tracer:
             if(output_file is None): output_file = h5_file
             else: sub.check_call(['cp',h5_file,output_file])
             f = h5.File(output_file,'a')
-            if(self.verbose): print('\tWriting {} to {}.'.format(key_truth,output_file))
+            if(self.verbose): print('{}.__call__: Writing {} to {}.'.format(self.print_prefix,key_truth,output_file))
             d = f.create_dataset(key_truth,data=self.GetEnergyRatioTruth(),compression='gzip',compression_opts=copts)
-            if(self.verbose): print('\tWriting {} to {}.'.format(key_smeared,output_file))
+            if(self.verbose): print('{}.__call__: Writing {} to {}.'.format(self.print_prefix,key_smeared,output_file))
             d = f.create_dataset(key_smeared,data=self.GetEnergyRatioSmeared(),compression='gzip',compression_opts=copts)
             f.close()
             return output_file

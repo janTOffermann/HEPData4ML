@@ -157,6 +157,7 @@ class MultiSelection:
             particle_lists.append(particle_list)
             individual_status = selector.GetSelectionStatus()
             if(not individual_status):
+                # print('Broke selector {}'.format(i),selector)
                 self.selection_status = False
                 break
             # statuses.append(selector.GetSelectionStatus())

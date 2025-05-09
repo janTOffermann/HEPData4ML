@@ -1,14 +1,21 @@
-import sys,os
+import sys,os,importlib,pathlib
 import pathlib
 # from config.config import config
+
+def GetConfigDictionary(config_file):
+    config_name = config_file.split('/')[-1].split('.')[0]
+    spec = importlib.util.spec_from_file_location("config.{}".format(config_name),config_file)
+    config = importlib.util.module_from_spec(spec)
+    sys.modules['config.{}'.format(config_name)] = config
+    spec.loader.exec_module(config)
+    return config.config
 
 def Bool2String(bool):
     if(bool): return 'on'
     return 'off'
 
 # Function for fetching the config.py file as a string.
-def GetConfigFileContent():
-    config_file = os.path.realpath(os.path.dirname(os.path.realpath(__file__)) + '/../config/config.py') # assuming relative location is fixed
+def GetConfigFileContent(config_file):
     with open(config_file,'r') as f:
         lines = f.readlines()
     lines = [x.strip().strip('\n') for x in lines]
@@ -21,6 +28,44 @@ class Configurator:
         # Will also use this for some print statement bookkeeping, since it is conveniently passed around.
         self.print_fastjet = True
         self.print_delphes = True
+
+        self.bad_filepath_keys = []
+        self._check_paths()
+
+    def _check_paths(self):
+        """
+        Checks particular entries, which are filepaths.
+        These could be problematic if they are given as relative paths,
+        especially if using a running option where the code isn't copied
+        inside the running directory.
+        """
+        self.status = True
+        path_keys = ['delphes_dir','delphes_card','fastjet_dir']
+        for key,val in self.config.items():
+            status = True
+            if(key in path_keys):
+                status = pathlib.Path(val).exists()
+            if(not status):
+                self.status = False
+                print('Warning: Configuration entry [{}] = "{}", which doesn\'t appear to be a valid filepath.'.format(key,val))
+                self.bad_filepath_keys.append(key)
+                return
+
+    def CorrectFilepaths(self,dir):
+        """
+        Attempt to correct filepaths.
+        """
+        for key in self.bad_filepath_keys:
+            old_filepath = self.config[key]
+            new_filepath = '{}/{}'.format(dir,old_filepath)
+            print('\tAttempting to correct: {} -> {}'.format(old_filepath,new_filepath))
+            self.config[key] = new_filepath
+        self.bad_filepath_keys = []
+        self._check_paths()
+        return
+
+    def GetStatus(self):
+        return self.status
 
     def GetPythiaConfigFile(self,filename=None):
         if(filename is None):
@@ -43,7 +88,7 @@ class Configurator:
     # This dictionary will only control a few settings (MPI, ISR/FSR etc.),
     # while the process settings from the 'proc' entry of config will be
     # passed separately.
-    def GetPythiaConfig(self,pt_min, pt_max):
+    def GetPythiaConfig(self,pt_min, pt_max,quiet=True):
         pythia_config = {}
         # Tack on a few more things to the pythia configuration
         pythia_config['HadronLevel:all'] = Bool2String(self.config['hadronization'])
@@ -57,10 +102,10 @@ class Configurator:
         pythia_config['PhaseSpace:pTHatMin'] = pt_min
         pythia_config['PhaseSpace:pTHatMax'] = pt_max
 
-        # Add some default (non-configurable) stuff.
-        pythia_config['Print:quiet'] = 'on' # avoid printing reams of info
-        pythia_config['Stat:showProcessLevel'] = 'off'
-        pythia_config['Stat:showErrors'] = 'off'
+        if(quiet):
+            pythia_config['Print:quiet'] = 'on' # avoid printing reams of info
+            pythia_config['Stat:showProcessLevel'] = 'off'
+            pythia_config['Stat:showErrors'] = 'off'
     #     pythia_config['Next:numberShowProcess'] = '2'
     #     pythia_config['Next:numberShowEvent'] = '2'
         return pythia_config
@@ -126,6 +171,9 @@ class Configurator:
 
     def GetDelphesDirectory(self):
         return self.config['delphes_dir']
+
+    def SetDelphesDirectory(self,val):
+        self.config['delphes_dir'] = val
 
     def GetFastjetDirectory(self):
         return self.config['fastjet_dir']
