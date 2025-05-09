@@ -29,7 +29,7 @@ class Configurator:
         self.print_fastjet = True
         self.print_delphes = True
 
-        self.status = True
+        self.bad_filepath_keys = []
         self._check_paths()
 
     def _check_paths(self):
@@ -39,6 +39,7 @@ class Configurator:
         especially if using a running option where the code isn't copied
         inside the running directory.
         """
+        self.status = True
         path_keys = ['delphes_dir','delphes_card','fastjet_dir']
         for key,val in self.config.items():
             status = True
@@ -47,7 +48,21 @@ class Configurator:
             if(not status):
                 self.status = False
                 print('Warning: Configuration entry [{}] = "{}", which doesn\'t appear to be a valid filepath.'.format(key,val))
+                self.bad_filepath_keys.append(key)
                 return
+
+    def CorrectFilepaths(self,dir):
+        """
+        Attempt to correct filepaths.
+        """
+        for key in self.bad_filepath_keys:
+            old_filepath = self.config[key]
+            new_filepath = '{}/{}'.format(dir,old_filepath)
+            print('\tAttempting to correct: {} -> {}'.format(old_filepath,new_filepath))
+            self.config[key] = new_filepath
+        self.bad_filepath_keys = []
+        self._check_paths()
+        return
 
     def GetStatus(self):
         return self.status
