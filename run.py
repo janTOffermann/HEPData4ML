@@ -140,8 +140,14 @@ def main(args):
     print('Using configuration file: {} .'.format(config_file))
     config_dictionary = GetConfigDictionary(config_file)
     configurator = Configurator(config_dictionary=config_dictionary)
+
+    # Try to correct the configuration.
     if(not configurator.GetStatus()):
-        print('Error: Configuration has bad status.')
+        print('Attempting to correct filepaths. This may not work.')
+        configurator.CorrectFilepaths(this_dir)
+
+    if(not configurator.GetStatus()):
+        print('Error: Configuration has bad status. Exiting.')
         assert(False)
 
     # Set up FastJet -- we will need this later on (except for the special use case of no jet clustering!).
@@ -149,7 +155,7 @@ def main(args):
     # we can get the FastJet banner printout out of the way. We remove the banner with some ANSI printing
     # hackery, since it's really not useful and clutters up our printout (we acknowledge the use in the
     # documentation, having this unavoidable printout for a single package's use is quite gratuitous).
-    print()
+    print(13 * '\n')
     dummy_processor = Processor(configurator)
     line_up = '\033[1A'
     line_clear = '\x1b[2K'
