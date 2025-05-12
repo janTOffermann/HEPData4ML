@@ -17,9 +17,9 @@ class Processor:
     Convert HepMC or Delphes/ROOT file, representing an event, into an HDF5 file where each entry/event corresponds
     with a single jet. (Can also skip jet clustering entirely).
     """
-    def __init__(self, configurator, use_delphes=False):
+    def __init__(self, configurator):
         self.configurator = configurator
-        self.delphes = use_delphes
+        self.delphes = False # will be set to True if SetDelphesFiles() is called
 
         self.SetProgressBarPrefix('\tClustering jets & preparing data:')
         self.suffix = 'Complete'
@@ -57,8 +57,43 @@ class Processor:
 
         self.calculator = Calculator(use_vectorcalcs=self.configurator.GetUseVectorCalcs())
 
+        self.data = {}
+        self.nentries_per_chunk = 1e3
+        self.nparticles_max = 2e3 # TODO: This is some hardcoded max number of particles to be read in from HepMC. Should be plenty.
+
+    def SetDelphesFiles(self,val):
+        if(len(val) > 0):
+            self.delphes = True
+            self.delphes_files = val
+
     def ResetDataContainers(self):
-        self.final_state_vector_components = {
+
+        self.event_record_vector_components = {
+            'px':None,
+            'py':None,
+            'pz':None,
+            'e':None,
+            'pt':None,
+            'eta':None,
+            'phi':None,
+            'm':None,
+            'pdg':None,
+            'status':None
+        }
+
+        self.stable_particle_components = {
+            'px':None,
+            'py':None,
+            'pz':None,
+            'e':None,
+            'pt':None,
+            'eta':None,
+            'phi':None,
+            'm':None,
+            'pdg':None
+        }
+
+        self.truth_particle_components = {
             'px':None,
             'py':None,
             'pz':None,
@@ -211,7 +246,7 @@ class Processor:
         f.Close()
         return
 
-    def Process(self, final_state_files, truth_files=None, h5_file=None, nentries_per_chunk=1e4, verbosity=0):
+    def Process(self, final_state_files, delphes_files=None, h5_file=None, nentries_per_chunk=1e4, verbosity=0):
         if(type(final_state_files) == list): final_state_files = ['{}/{}'.format(self.outdir,x) for x in final_state_files]
         else: final_state_files = '{}/{}'.format(self.outdir,final_state_files)
 
@@ -219,35 +254,28 @@ class Processor:
             if(type(final_state_files) == list): h5_file = final_state_files[0]
             else: h5_file = final_state_files
             if(self.delphes): h5_file =  h5_file.replace('*','').replace('.root','.h5')
-            else: h5_file =  h5_file.replace('*','').replace('.root','.h5')
+            else: h5_file =  h5_file.replace('*','').replace('.root','.h5') # TODO: Probably a bug
         else:
             h5_file = '{}/{}'.format(self.outdir,h5_file)
         npars = self.configurator.GetNPars()
         n_truth = npars['n_truth']
 
-        # Note: It's important that the Delphes files and truth HepMC files line up!
-        #       The way we usually do this, it will be guaranteed.
         if(type(final_state_files) == str): final_state_files = glob.glob(final_state_files,recursive=True)
-        if(truth_files is None):
-            if(self.delphes): truth_files = [x.replace('.root','_truth.hepmc') for x in final_state_files]
-            else: truth_files = [x.replace('.hepmc','_truth.hepmc') for x in final_state_files]
-        else:
-            truth_files = ['{}/{}'.format(self.outdir,x) for x in truth_files]
 
         if(self.delphes):
-            delphes_arr,var_map = self.PrepDelphesArrays(final_state_files)
+            # NOTE: It's important that the Delphes files and truth HepMC files line up!
+            #       The way we usually do this, it will be guaranteed.
+            #       However, if you borrow functions from here you will have to keep this in mind,
+            #       as things will go wrong if final_state_fiels and delphes_files aren't sorted
+            #       the same way (or are of different lengths).
+            delphes_arr,var_map = self.PrepDelphesArrays(delphes_files)
             nentries = len(delphes_arr)
         else:
             ## Extract final-state truth particle info from the HepMC files.
             final_state_events, nentries = ExtractHepMCEvents(final_state_files,get_nevents=True)
 
-        # Also extract truth particle info from the HepMC files.
-        # Note that it's possible that there are no truth HepMC files, if we didn't specify any
-        # truth_selection in our configuration (e.g. if we were making a background sample).
-        truth_events = ExtractHepMCEvents(truth_files,silent=True)
-
         nentries_per_chunk = int(nentries_per_chunk)
-        self.data = self.PrepDataBuffer(nentries_per_chunk,self.separate_truth_particles,self.n_separate_truth_particles,self.record_final_state_indices,self.record_full_final_state)
+        self.PrepDataBuffer(nentries_per_chunk,self.separate_truth_particles,self.n_separate_truth_particles,self.record_final_state_indices,self.record_full_final_state)
 
         # Prepare the HDF5 file.
         dsets = self.PrepH5File(h5_file,nentries,self.data)
@@ -262,6 +290,88 @@ class Processor:
             # Clear the buffer (for safety).
             for key in self.data.keys(): self.data[key][:] = 0
 
+            # TODO: Start here. Things like "final_state_events" will become "events" etc.
+
+            # Extract all the particles from the HepMC events, into memory.
+            particles = self.ExtractHepMCParticles(final_state_events[start_idxs[i]:stop_idxs[i]],self.nparticles_max)
+
+            # 0) Write some keys that are the same across all events in this chunk.
+            self.WriteToDataBuffer(None,'is_signal',self.configurator.GetSignalFlag())
+
+            for j,event_particles in enumerate(particles): # Loop over events in this chunk
+
+                # 1) Save the stable truth-level particles from the event.
+                status = [x.status for x in event_particles]
+                stable_particles = event_particles[status==1]
+                stable_particle_vecs = [rt.Math.PxPyPzEVector(x.momentum.px, x.momentum.py, x.momentum.pz, x.momentum.e) for x in stable_particles]
+
+                self.WriteToDataBuffer(j, 'Pmu', np.vstack([
+                    [getattr(vec, method)() for vec in stable_particle_vecs]
+                    for method in ['E','Px','Py','Pz']
+                ]).T)
+
+                self.WriteToDataBuffer(j, 'Pmu_cyl', np.vstack([
+                    [getattr(vec, method)() for vec in stable_particle_vecs]
+                    for method in ['Pt','Eta','Phi','M']
+                ]).T)
+
+                self.WriteToDataBuffer(j,'Pmu_Pdg',[x.pid for x in stable_particles])
+
+                # 2) Extract the filtered truth record from the events.
+                truth_selected_status = np.full(len(event_particles),True) # TODO: New truth selection goes here.
+                truth_selected_particles = event_particles[truth_selected_status==1]
+                truth_selected_particle_vecs = [rt.Math.PxPyPzEVector(x.momentum.px, x.momentum.py, x.momentum.pz, x.momentum.e) for x in truth_selected_particles]
+
+                self.WriteToDataBuffer(j, 'truth_Pmu', np.vstack([
+                    [getattr(vec, method)() for vec in truth_selected_particle_vecs]
+                    for method in ['E','Px','Py','Pz']
+                ]).T)
+
+                self.WriteToDataBuffer(j, 'truth_Pmu_cyl', np.vstack([
+                    [getattr(vec, method)() for vec in truth_selected_particle_vecs]
+                    for method in ['Pt','Eta','Phi','M']
+                ]).T)
+
+                self.WriteToDataBuffer(j,'truth_Pmu_Pdg',[x.pid for x in truth_selected_particles])
+
+            # 3) Optional: Extract the full event record, store it separately. This is both particles and vertices.
+
+            # 4) If Delphes was run, we will also extract the relevant information.
+            #    Note that PrepDelphesArrays() has been called earlier, if delphes=True.
+            #    That's where the Delphes ROOT files are already read and prepared for access
+            #    via uproot.
+            #
+            #    Note that we choose to store these objects as four-momenta, rather than explicitly
+            #    storing their components. This is possibly a relevant detail as some objects have
+            #    attributes such as pt, while others have Et. These are the same *if* we assume
+            #    the objects themselves to be massless.
+            if(self.delphes):
+                momenta = {}
+                for delphes_type in var_map.keys():
+
+                    delphes_pt = delphes_arr[var_map[delphes_type]['pt']][start_idxs[i]:stop_idxs[i]].to_numpy()
+                    delphes_eta = delphes_arr[var_map[delphes_type]['eta']][start_idxs[i]:stop_idxs[i]].to_numpy()
+                    delphes_phi = delphes_arr[var_map[delphes_type]['phi']][start_idxs[i]:stop_idxs[i]].to_numpy()
+
+                    momenta[delphes_type] = {
+                        x:delphes_arr[var_map[delphes_type][x]][start_idxs[i]:stop_idxs[i]]
+                        for x in ['pt','eta','phi']
+                    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
             if(self.delphes):
                 # Get the momenta of the final-state particles, first in cylindrical coordinates.
                 # We will be setting m=0 for all these particles. # TODO: We may want this to be more configurable.
@@ -274,8 +384,8 @@ class Processor:
                     }
             else:
                 ## Get final-state particles.
-                npar_fs = 1e4 # TODO: This is some hardcoded max number of final-state particles. Should be plenty.
-                final_state_particles = self.ExtractHepMCParticles(final_state_events[start_idxs[i]:stop_idxs[i]],npar_fs)
+                nparticles_max = 1e4 # TODO: This is some hardcoded max number of final-state particles. Should be plenty.
+                final_state_particles = self.ExtractHepMCParticles(final_state_events[start_idxs[i]:stop_idxs[i]],nparticles_max)
 
             # Get the truth particles.
             truth_particles = self.ExtractHepMCParticles(truth_events[start_idxs[i]:stop_idxs[i]],n_truth)
@@ -292,10 +402,10 @@ class Processor:
                 self.data['is_signal'][j] = self.configurator.GetSignalFlag()
 
                 if(self.delphes): # Delphes gives us cylindrical vector output. Also useful since we want to set m=0.
-                    self.final_state_vector_components['pt']   = np.concatenate([momenta[x]['pt'][j].to_numpy() for x in types])
-                    self.final_state_vector_components['eta']  = np.concatenate([momenta[x]['eta'][j].to_numpy() for x in types])
-                    self.final_state_vector_components['phi']  = np.concatenate([momenta[x]['phi'][j].to_numpy() for x in types])
-                    self.final_state_vector_components['m']    = np.zeros(self.final_state_vector_components['pt'].shape)
+                    self.stable_particle_components['pt']   = np.concatenate([momenta[x]['pt'][j].to_numpy() for x in types])
+                    self.stable_particle_components['eta']  = np.concatenate([momenta[x]['eta'][j].to_numpy() for x in types])
+                    self.stable_particle_components['phi']  = np.concatenate([momenta[x]['phi'][j].to_numpy() for x in types])
+                    self.stable_particle_components['m']    = np.zeros(self.stable_particle_components['pt'].shape)
 
                 else:
                     final_state_length = len(final_state_particles[j])
@@ -308,11 +418,11 @@ class Processor:
                         visibles = np.where(invisibles == 0)[0]
                         del invisibles
 
-                    self.final_state_vector_components['px']   = np.array([final_state_particles[j][k].momentum.px for k in visibles])
-                    self.final_state_vector_components['py']   = np.array([final_state_particles[j][k].momentum.py for k in visibles])
-                    self.final_state_vector_components['pz']   = np.array([final_state_particles[j][k].momentum.pz for k in visibles])
-                    self.final_state_vector_components['e']    = np.array([final_state_particles[j][k].momentum.e  for k in visibles])
-                    self.final_state_vector_components['pdg']  = np.array([final_state_particles[j][k].pid         for k in visibles])
+                    self.stable_particle_components['px']   = np.array([final_state_particles[j][k].momentum.px for k in visibles])
+                    self.stable_particle_components['py']   = np.array([final_state_particles[j][k].momentum.py for k in visibles])
+                    self.stable_particle_components['pz']   = np.array([final_state_particles[j][k].momentum.pz for k in visibles])
+                    self.stable_particle_components['e']    = np.array([final_state_particles[j][k].momentum.e  for k in visibles])
+                    self.stable_particle_components['pdg']  = np.array([final_state_particles[j][k].pid         for k in visibles])
 
                 debug_print = self.verbose and i == 0 and j < 10
                 if(debug_print):
@@ -411,17 +521,17 @@ class Processor:
 
         if(self.delphes):
             vecs = np.vstack((
-                self.final_state_vector_components['pt'],
-                self.final_state_vector_components['eta'],
-                self.final_state_vector_components['phi'],
-                self.final_state_vector_components['m'],
+                self.stable_particle_components['pt'],
+                self.stable_particle_components['eta'],
+                self.stable_particle_components['phi'],
+                self.stable_particle_components['m'],
             )).T
         else:
             vecs = np.vstack((
-                self.final_state_vector_components['e'],
-                self.final_state_vector_components['px'],
-                self.final_state_vector_components['py'],
-                self.final_state_vector_components['pz'],
+                self.stable_particle_components['e'],
+                self.stable_particle_components['px'],
+                self.stable_particle_components['py'],
+                self.stable_particle_components['pz'],
             )).T
 
         vecs_copy = np.copy(vecs) # TODO: Is this necessary?
@@ -459,7 +569,7 @@ class Processor:
         # If PDG code information was provided, let's determine the codes of the selected particles.
         # TODO: This will involve looping -> will be intensive. Is there a better way?
         # See PseudoJet::set_user_index : http://www.fastjet.fr/repo/fastjet-doc-3.4.0.pdf
-        pdg = self.final_state_vector_components['pdg']
+        pdg = self.stable_particle_components['pdg']
         if(pdg is not None and self.diagnostic_plots):
             pdg_matching_tolerance = 1.0e-4
             selected_pdgs = np.zeros(pdg.shape,dtype=bool)
@@ -473,6 +583,34 @@ class Processor:
                         break
             selected_pdgs = pdg[selected_pdgs]
             FillPdgHist(self.pdg_hist,selected_pdgs)
+        return
+
+    def AddKeyToDataBuffer(self,key,value,dtype=None):
+        if(key in self.data):
+            return
+        value_array = np.asarray(value)
+
+        if(dtype is None):
+            dtype = value_array.dtype
+
+        if value_array.shape == ():  # Scalar value
+            # Create shape (N,)
+            self.data[key] = np.zeros(self.nentries_per_chunk, dtype=dtype)
+        else:
+            # Create shape (N, *value_shape)
+            buffer_shape = (self.nentries_per_chunk,) + value_array.shape
+            self.data[key] = np.zeros(buffer_shape, dtype=dtype)
+        return
+
+    def WriteToDataBuffer(self,event_index,key,value,dtype=None):
+        if(key not in self.data.keys()):
+            self.AddKeyToDataBuffer(key,value,dtype)
+
+        value_array = np.asarray(value) # TODO: not sure if needed?
+        if(event_index is not None):
+            self.data[key][event_index] = value_array
+        else:
+            self.data[key][:] = value_array
         return
 
     def FillDataBuffer(self,j,vecs,jet,truth_particles,final_state_indices=None):
@@ -544,19 +682,19 @@ class Processor:
 
             if(self.delphes):
                 vecs = np.vstack((
-                    self.final_state_vector_components['pt'],
-                    self.final_state_vector_components['eta'],
-                    self.final_state_vector_components['phi'],
-                    self.final_state_vector_components['m'],
+                    self.stable_particle_components['pt'],
+                    self.stable_particle_components['eta'],
+                    self.stable_particle_components['phi'],
+                    self.stable_particle_components['m'],
                 )).T
                 vecs = self.calculator.PtEtaPhiMToEPxPyPz(vecs[:,0], vecs[:,1],vecs[:,2],vecs[:,3])
 
             else:
                 vecs = np.vstack((
-                    self.final_state_vector_components['e'],
-                    self.final_state_vector_components['px'],
-                    self.final_state_vector_components['py'],
-                    self.final_state_vector_components['pz'],
+                    self.stable_particle_components['e'],
+                    self.stable_particle_components['px'],
+                    self.stable_particle_components['py'],
+                    self.stable_particle_components['pz'],
                 )).T
             key = 'Pmu_full_final_state'
             n = int(np.minimum(vecs.shape[0],self.data[key].shape[1]))
@@ -689,8 +827,10 @@ class Processor:
         return particles
 
     def PrepDelphesArrays(self,delphes_files):
-        # types = ['EFlowTrack','EFlowNeutralHadron','EFlowPhoton']
-        # types = ['Tower'] # TODO: Is there a better way to prepare Delphes jet constituents? We want PFlow/EFlow?
+        # TODO: This uses uproot.lazy, which is part of uproot 4 but has been
+        #       deprecated and removed in uproot 5, in favor of uproot.dask.
+        #       We'll probably need to support both versions soon.
+
         types = self.configurator.GetDelphesObjects()
         components = ['PT','Eta','Phi','ET'] # not all types have all components, this is OK
         delphes_keys = ['{x}.{y}'.format(x=x,y=y) for x in types for y in components]
@@ -717,7 +857,7 @@ class Processor:
         # Create our Numpy buffers to hold data. This dictates the structure of the HDF5 file we're making,
         # each key here corresponds to an HDF5 dataset. The shapes of the datasets will be what is shown here,
         # except with nentries_per_chunk -> nentries.
-        data = {
+        self.data = {
             'Nobj'        : np.zeros(nentries_per_chunk,dtype=np.dtype('i2')), # number of jet constituents
             'Pmu'         : np.zeros((nentries_per_chunk,n_constituents,4),dtype=np.dtype('f8')), # 4-momenta of jet constituents (E,px,py,pz)
             'truth_Nobj'  : np.zeros(nentries_per_chunk,dtype=np.dtype('i2')), # number of truth-level particles (this is somewhat redundant -- it will typically be constant)
@@ -737,7 +877,7 @@ class Processor:
             if(n_separate <= 0): n_separate = n_truth
             for i in range(n_separate):
                 key = 'truth_Pmu_{}'.format(i)
-                data[key] = np.zeros((nentries_per_chunk,4),dtype=np.dtype('f8'))
+                self.data[key] = np.zeros((nentries_per_chunk,4),dtype=np.dtype('f8'))
 
         # We can optionally record the index of each Pmu with respect to all the four-momenta that were passed to jet clustering.
         # This may be useful if we are trying to somehow trace certain information through our data generation pipeline,
@@ -747,14 +887,13 @@ class Processor:
         #TODO: The filling with the -1's is done when filling the buffer with data. Otherwise the -1's get changed to 0's, I can't remember how/why.
         if(final_state_indices):
             key = 'final_state_idx'
-            data[key] = np.zeros((nentries_per_chunk,n_constituents),dtype=np.dtype('i4'))
+            self.data[key] = np.zeros((nentries_per_chunk,n_constituents),dtype=np.dtype('i4'))
 
         if(full_final_state): # This is really only for debugging purposes! We truncate to a fixed length.
             key = 'Pmu_full_final_state'
             n_max = 400
-            data[key] = np.zeros((nentries_per_chunk,n_max,4),dtype=np.dtype('f8'))
-
-        return data
+            self.data[key] = np.zeros((nentries_per_chunk,n_max,4),dtype=np.dtype('f8'))
+        return
 
     def PrepH5File(self,filename,nentries,data_buffer):
         dsets = {}

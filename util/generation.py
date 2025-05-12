@@ -458,7 +458,7 @@ class Generator:
         self.WriteEventBuffersToFile(header,footer)
 
         # Delete the buffer files.
-        for fname in [self.buffername,self.buffername_truth]:
+        for fname in [self.buffername,self.buffername_truth,self.buffername_full]:
             comm = ['rm', fname]
             try: sub.check_call(comm,stderr=sub.DEVNULL)
             except: pass
