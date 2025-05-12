@@ -142,7 +142,7 @@ class Configurator:
 
     def GetNPars(self):
         return_dict = {}
-        for key in ['jet_n_par','n_truth']: return_dict[key] = self.config[key]
+        for key in ['jet_n_par','n_truth','n_stable','n_delphes']: return_dict[key] = self.config[key]
         return return_dict
 
     def GetInvisiblesFlag(self):
@@ -194,7 +194,7 @@ class Configurator:
         return self.config['use_vectorcalcs']
 
     def GetDelphesObjects(self):
-        key = 'delphes_outputs'
+        key = 'delphes_output'
         if(key in self.config.keys()):
             return self.config[key]
         else: return ['Tower'] # some default result, maybe good for backwards compatibility!
