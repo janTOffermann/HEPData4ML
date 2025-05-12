@@ -176,6 +176,8 @@ def main(args):
     use_delphes = configurator.GetDelphesConfig()
 
     # Keep track of some files we create.
+    hepmc_files = []
+    delphes_files = []
     jet_files = []
     truth_files = []
     hist_files = []
@@ -279,6 +281,7 @@ def main(args):
         final_state_truth_overlap_indices_files.append(generator.GetIndexOverlapFilename())
         filter_flag_files.append(generator.GetEventFilterFlagFilename())
         hist_files.append(generator.GetHistFilename())
+        hepmc_files.append(hep_file)
 
         if(use_delphes): # Case 1: Using Delphes
             # Pass the HepMC file to Delphes. Will output a ROOT file.
@@ -293,7 +296,8 @@ def main(args):
                 print('\tDelphes executable: {}'.format(delphes_wrapper.GetExecutable()))
 
             delphes_file = delphes_wrapper.HepMC3ToDelphes(hepmc_file=hep_file, output_file=delphes_file, cwd=outdir, delphes_card=delphes_card)
-            jet_files.append(delphes_file)
+            # jet_files.append(delphes_file)
+            delphes_files.append(delphes_file)
 
             # We can now delete or compress the HepMC file. If it's compressed, we delete the original file to recover space.
             if(delete_hepmc): sub.check_call(['rm','{}/{}'.format(outdir,hep_file)])
@@ -319,7 +323,8 @@ def main(args):
     # We can optionally package things into separate HDF5 files, one per pT-hat bin, and then concatenate those later.
     # This could be useful for certain use cases.
     if(verbose): print('\nRunning jet clustering and producing final HDF5 output.\n')
-    processor = Processor(configurator,use_delphes)
+    processor = Processor(configurator)
+    processor.SetDelphesFiles(delphes_files)
     processor.SetOutputDirectory(outdir)
     processor.SetHistFilename(hist_filename)
     processor.SetDiagnosticPlots(diagnostic_plots)
@@ -333,7 +338,7 @@ def main(args):
         print('\tProducing a single HDF5 file, from all the HepMC or Delphes/ROOT files.')
         print('\tWarning: This will skip any requested post-processing steps. If you want these, re-run with "-separate_h5 1".')
 
-        processor.Process(jet_files,truth_files,h5_file,verbosity=h5_conversion_verbosity,nentries_per_chunk=nentries_per_chunk)
+        processor.Process(hepmc_files,h5_file,verbosity=h5_conversion_verbosity)
         processor.MergeEventFilterFlag(h5_file,filter_flag_files,copts=compression_opts)
     else:
         # Slightly more complex way of running things -- we first create pT-binned HDF5 files, corresponding with the binning of the
@@ -347,12 +352,12 @@ def main(args):
         for i in range(nbins):
             pt_min = pt_bin_edges[i]
             pt_max = pt_bin_edges[i+1]
-            jet_file = [jet_files[i]]
-            truth_file = [truth_files[i]]
+            hepmc_files = [hepmc_files[i]]
+            # truth_file = [truth_files[i]]
             h5_file_individual = h5_file.replace('.h5','_{}-{}.h5'.format(float_to_str(pt_min),float_to_str(pt_max)))
             processor.SetProgressBarPrefix('\n\tClustering jets & preparing data for pT bin [{},{}]:'.format(pt_min,pt_max))
 
-            processor.Process(jet_file,truth_file,h5_file_individual,verbosity=h5_conversion_verbosity,nentries_per_chunk=nentries_per_chunk)
+            processor.Process(hepmc_files,h5_file_individual,verbosity=h5_conversion_verbosity)
 
             # To each HDF5 event file, we will add event indices. These may be useful/necessary for the post-processing step.
             # We will remove these indices when concatenating files, since as one of our last steps we'll add indices again
@@ -360,7 +365,7 @@ def main(args):
             AddEventIndices(h5_file_individual,cwd=outdir,copts=compression_opts)
 
             # Optional post-processing. Any post-processing steps have been configured in the config file, config/config.py.
-            processor.PostProcess(jet_file,[h5_file_individual],[final_state_truth_overlap_indices_files[i]])
+            processor.PostProcess(hepmc_files,[h5_file_individual],[final_state_truth_overlap_indices_files[i]])
 
             # # Optionally add any "event_filter_flags" that were set in the configuration. If none were set, this doesn't do anything.
             # processor.MergeEventFilterFlag(h5_file_individual,filter_flag_files[i],copts=compression_opts)
@@ -425,8 +430,6 @@ def main(args):
     AddMetaDataWithReference(h5_file,cwd=outdir,value=configurator.GetPythiaConfigFileContents(pythia_config),    key='pythia_config'         ) # Pythia configuration (except for "\hat{p_T}", which is handled externally)
 
     # TODO: Might want to think about offering the ability to split the HepMC3 and Delphes files too?
-    #       Could be useful for certain post-processing where we need to access those files, and we
-    #       want to work on the split files (insead of the full events.h5).
     #       Before splitting those, we'd want to effectively join them together first, they are currently
     #       split by pT bin.
     if(split_files):
