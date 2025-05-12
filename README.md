@@ -15,6 +15,8 @@ The code is primarily written in Python3, along with some C++/ROOT code for fast
 HEPData4ML makes use of a number of different software packages, including:
 
 - [ROOT](https://root.cern.ch)
+- [uproot v4](https://uproot.readthedocs.io/en/latest/index.html)
+  - [awkward v1](https://awkward-array.org/doc/main/)
 - [numpy](https://numpy.org)
 - [h5py](https://www.h5py.org)
 - [pyhepmc](https://github.com/scikit-hep/pyhepmc)
