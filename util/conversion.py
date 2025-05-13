@@ -42,10 +42,10 @@ class Processor:
         self.bl = 50
         self.verbose = False
 
-        self.SetupFastJet()
-        sys.path.append(self.fastjet_dir)
-        import fastjet as fj # This is where fastjet is really imported & cached by Python, but there are other import statements peppered throughout since this has limited scope.
-        #TODO: Is there a nicer way to handle this import, which requires a filepath passed to this class's constructor?
+        # self.SetupFastJet()
+        # sys.path.append(self.fastjet_dir)
+        # import fastjet as fj # This is where fastjet is really imported & cached by Python, but there are other import statements peppered throughout since this has limited scope.
+        # #TODO: Is there a nicer way to handle this import, which requires a filepath passed to this class's constructor?
 
         self.jet_config, self.jetdef = self.InitFastJet()
         self.jet_selection = self.jet_config['jet_selection']
@@ -431,80 +431,6 @@ class Processor:
 
         # if(self.diagnostic_plots): self.OutputHistograms()
         return h5_file
-
-    # --- Utility functions for the class ---
-    def SetupFastJet(self):
-        verbose = self.configurator.GetPrintFastjet()
-        self.fastjet_setup = FastJetSetup(self.configurator.GetFastjetDirectory(),full_setup=True,verbose=verbose)
-        self.configurator.SetPrintFastjet(False)
-        self.fastjet_dir = self.fastjet_setup.GetPythonDirectory()
-        return
-
-    def InitFastJet(self):
-        import fastjet as fj # hacky, but will work because SetupFastJet() was run in __init__()
-        # Print the FastJet banner -- it's unavoidable (other packages don't do this!).
-        fj.ClusterSequence.print_banner()
-        jet_config = self.configurator.GetJetConfig()
-        jetdef = fj.JetDefinition(fj.antikt_algorithm, jet_config['jet_radius'])
-        return jet_config,jetdef
-
-    def ClusterJets(self,vecs, jet_config=None):
-        if(jet_config is None): jet_config = self.jet_config
-        import fastjet as fj # hacky, but will work because SetupFastJet() was run in __init__()
-
-        cartesian = not self.delphes
-        if(cartesian): # vecs has format (E,px,py,pz) -- FastJet uses (px,py,pz,E) so we must modify it. Using np.roll.
-            pj = [fj.PseudoJet(*x) for x in np.roll(vecs,-1,axis=-1)]
-
-        else: # vecs has format(pt,eta,phi,m)
-            pj = [fj.PseudoJet(0.,0.,0.,0.) for i in range(len(vecs))]
-            for i,x in enumerate(vecs):
-                pj[i].reset_momentum_PtYPhiM(*x) # TODO: massless -> okay to use eta for Y
-
-        # Attach indices to the pseudojet objects, so that we can trace them through jet clustering.
-        # Indices will correspond to the order they were input (with zero-indexing).
-        for i,pseudojet in enumerate(pj):
-            pseudojet.set_user_index(i)
-
-        # selector = fj.SelectorPtMin(jet_config['jet_min_pt']) & fj.SelectorAbsEtaMax(jet_config['jet_max_eta'])
-        # Note: Switched from the old method, this is more verbose but seems to do the same thing anyway.
-        self.cluster_sequence = fj.ClusterSequence(pj, self.jetdef) # member of class, otherwise goes out-of-scope when ref'd later
-        self.jets = self.cluster_sequence.inclusive_jets()
-
-        # Now we will apply our (optional) pt and eta cuts to the jets.
-        # TODO: Should be achievable with Fastjet selector classes too.
-        jet_eta = np.array([jet.eta() for jet in self.jets])
-        jet_pt  = np.array([jet.pt()  for jet in self.jets])
-
-        selected_eta = np.where(np.abs(jet_eta) <= jet_config['jet_max_eta'])[0]
-        selected_pt  = np.where(jet_pt          >= jet_config['jet_min_pt'] )[0]
-        selected = np.sort(np.intersect1d(selected_eta, selected_pt)) # TODO: Is the sort needed?
-        self.jets_filtered = [self.jets[x] for x in selected]
-
-    def FetchJetConstituents(self,jet,n_constituents):
-        pt,px,py,pz,e = np.hsplit(np.array([[x.pt(), x.px(),x.py(),x.pz(),x.e()] for x in jet.constituents()]),5)
-        pt = pt.flatten() # use this for sorting
-        px = px.flatten()
-        py = py.flatten()
-        pz = pz.flatten()
-        e  =  e.flatten()
-
-        # The indices of the jet constituents, corresponding with the order in which they
-        # were passed to jet clustering.
-        indices = np.array([x.user_index() for x in jet.constituents()],dtype=int).flatten()
-
-        # Sort by decreasing pt, and only keep leading constituents.
-        sorting = np.argsort(-pt)
-        l = int(np.minimum(n_constituents,len(pt)))
-
-        px = px[sorting][:l]
-        py = py[sorting][:l]
-        pz = pz[sorting][:l]
-        e  =  e[sorting][:l]
-        indices = indices[sorting][:l]
-
-        vecs = np.array([e,px,py,pz],dtype=np.dtype('f8')).T
-        return vecs, indices
 
     def SelectFinalStateParticles(self, truth_particles, j, debug_print=False):
         # Note: "vecs" will be Cartesian if not using Delphes. If using Delphes, it will be in (pt,eta,phi,m).
