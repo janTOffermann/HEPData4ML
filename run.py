@@ -294,6 +294,7 @@ def main(args):
             print('Running DelphesHepMC3: {} -> {}.'.format(hep_file,delphes_file))
             if(i == 0):
                 print('\tDelphes executable: {}'.format(delphes_wrapper.GetExecutable()))
+                print('\tDelphes card: {}'.format(delphes_card))
 
             delphes_file = delphes_wrapper.HepMC3ToDelphes(hepmc_file=hep_file, output_file=delphes_file, cwd=outdir, delphes_card=delphes_card)
             # jet_files.append(delphes_file)
@@ -324,6 +325,7 @@ def main(args):
     # This could be useful for certain use cases.
     if(verbose): print('\nRunning jet clustering and producing final HDF5 output.\n')
     processor = Processor(configurator)
+    processor.SetNentriesPerChunk(100) # the larger this is, the larger the chunks in memory (and higher the memory usage)
     processor.SetDelphesFiles(delphes_files)
     processor.SetOutputDirectory(outdir)
     processor.SetHistFilename(hist_filename)
@@ -355,7 +357,7 @@ def main(args):
             hepmc_files = [hepmc_files[i]]
             # truth_file = [truth_files[i]]
             h5_file_individual = h5_file.replace('.h5','_{}-{}.h5'.format(float_to_str(pt_min),float_to_str(pt_max)))
-            processor.SetProgressBarPrefix('\n\tClustering jets & preparing data for pT bin [{},{}]:'.format(pt_min,pt_max))
+            processor.SetProgressBarPrefix('\tConverting HepMC3 -> HDF5 for pT bin [{},{}]:'.format(pt_min,pt_max))
 
             processor.Process(hepmc_files,h5_file_individual,verbosity=h5_conversion_verbosity)
 

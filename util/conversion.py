@@ -37,7 +37,7 @@ class Processor:
         self.configurator = configurator
         self.delphes = False # will be set to True if SetDelphesFiles() is called
 
-        self.SetProgressBarPrefix('\tClustering jets & preparing data:')
+        self.SetProgressBarPrefix('Converting HepMC3 -> HDF5:')
         self.suffix = 'Complete'
         self.bl = 50
         self.verbose = False
@@ -76,7 +76,7 @@ class Processor:
         self.data = {}
 
         # Various integers for buffer size, number of particles read into memory from HepMC, number saved to file, etc.
-        self.nevents_per_chunk = int(1e3) # Can be configured. Affects memory footprint.
+        self.nevents_per_chunk = int(1e1) # Can be configured. Affects memory footprint.
         self.nparticles_max = int(2e3) # TODO: This is some hardcoded max number of particles to be read in from HepMC. Should be plenty.
         self.nparticles_stable = self.configurator.GetNPars()['n_stable']
         self.nparticles_truth_selected = self.configurator.GetNPars()['n_truth']
@@ -308,7 +308,7 @@ class Processor:
 
         dsets = None
 
-        # if(verbosity == 1): printProgressBarColor(0,nchunks, prefix=self.prefix_level1, suffix=self.suffix, length=self.bl)
+        if(verbosity == 1): printProgressBarColor(0,nchunks, prefix=self.prefix_level1, suffix=self.suffix, length=self.bl)
 
         for i in range(nchunks):
             # Clear the buffer (for safety).
@@ -331,23 +331,23 @@ class Processor:
 
                 # print('[{}], {} stable particles.'.format(j,len(stable_particle_vecs)))
 
-                self.WriteToDataBuffer(j,'Pmu_Nobj',len(stable_particle_vecs))
+                self.WriteToDataBuffer(j,'stableTruthParticles.Nobj',len(stable_particle_vecs))
 
-                self.WriteToDataBuffer(j, 'Pmu', np.vstack([
+                self.WriteToDataBuffer(j, 'stableTruthParticles.Pmu', np.vstack([
                     [getattr(vec, method)() for vec in stable_particle_vecs]
                     for method in ['E','Px','Py','Pz']
                 ]).T,
                                        dimensions={1:self.nparticles_stable}
                 )
 
-                self.WriteToDataBuffer(j, 'Pmu_cyl', np.vstack([
+                self.WriteToDataBuffer(j, 'stableTruthParticles.Pmu_cyl', np.vstack([
                     [getattr(vec, method)() for vec in stable_particle_vecs]
                     for method in ['Pt','Eta','Phi','M']
                 ]).T,
                                        dimensions={1:self.nparticles_stable}
                 )
 
-                self.WriteToDataBuffer(j,'Pmu_Pdg',[x.pid for x in stable_particles],
+                self.WriteToDataBuffer(j,'stableTruthParticles.PdgId',[x.pid for x in stable_particles],
                                        dimensions={1:self.nparticles_stable}
                 )
 
@@ -356,23 +356,23 @@ class Processor:
                 truth_selected_particles = list(itertools.compress(event_particles, truth_selected_status == 1))
                 truth_selected_particle_vecs = [rt.Math.PxPyPzEVector(x.momentum.px, x.momentum.py, x.momentum.pz, x.momentum.e) for x in truth_selected_particles]
 
-                self.WriteToDataBuffer(j,'truth_Pmu_Nobj',len(truth_selected_particle_vecs))
+                self.WriteToDataBuffer(j,'truthParticles.Nobj',len(truth_selected_particle_vecs))
 
-                self.WriteToDataBuffer(j, 'truth_Pmu', np.vstack([
+                self.WriteToDataBuffer(j, 'truthParticles.Pmu', np.vstack([
                     [getattr(vec, method)() for vec in truth_selected_particle_vecs]
                     for method in ['E','Px','Py','Pz']
                 ]).T,
                                        dimensions={1:self.nparticles_truth_selected}
                 )
 
-                self.WriteToDataBuffer(j, 'truth_Pmu_cyl', np.vstack([
+                self.WriteToDataBuffer(j, 'truthParticles.Pmu_cyl', np.vstack([
                     [getattr(vec, method)() for vec in truth_selected_particle_vecs]
                     for method in ['Pt','Eta','Phi','M']
                 ]).T,
                                         dimensions={1:self.nparticles_truth_selected}
                 )
 
-                self.WriteToDataBuffer(j,'truth_Pmu_Pdg',[x.pid for x in truth_selected_particles],
+                self.WriteToDataBuffer(j,'truthParticles.PdgId',[x.pid for x in truth_selected_particles],
                                         dimensions={1:self.nparticles_truth_selected}
                 )
 
@@ -396,11 +396,20 @@ class Processor:
                         delphes_phi = delphes_arr[var_map[delphes_type]['phi']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
                         delphes_m   = np.zeros(delphes_pt.shape)
 
+                        delphes_vecs = [rt.Math.PxPyPzEVector(*x) for x in zip(delphes_pt,delphes_eta,delphes_phi,delphes_m)]
+
+                        self.WriteToDataBuffer(j,'{}.Nobj'.format(delphes_type),len(delphes_pt))
+
                         self.WriteToDataBuffer(j, '{}.Pmu'.format(delphes_type), np.vstack([
-                            delphes_pt,
-                            delphes_eta,
-                            delphes_phi,
-                            delphes_m
+                            [getattr(vec, method)() for vec in delphes_vecs]
+                            for method in ['E','Px','Py','Pz']
+                        ]).T,
+                                            dimensions={1:self.n_delphes[k]}
+                        )
+
+                        self.WriteToDataBuffer(j, '{}.Pmu_cyl'.format(delphes_type), np.vstack([
+                            [getattr(vec, method)() for vec in delphes_vecs]
+                            for method in ['Pt','Eta','Phi','M']
                         ]).T,
                                             dimensions={1:self.n_delphes[k]}
                         )
@@ -418,6 +427,7 @@ class Processor:
                     dset = f[key]
                     dset[start_idxs[i]:stop_idxs[i]] = self.data[key][:ranges[i]]
             # if(verbosity == 1): printProgressBarColor(i+1,nchunks, prefix=self.prefix_level1, suffix=self.suffix, length=self.bl)
+            if(verbosity == 1): printProgressBarColor(i+1,nchunks, prefix=self.prefix_level1, suffix=self.suffix, length=self.bl)
 
         # if(self.diagnostic_plots): self.OutputHistograms()
         return h5_file
@@ -588,7 +598,6 @@ class Processor:
                     except:
                         pass # TODO: Add warning
             self.data[key] = np.zeros(buffer_shape, dtype=dtype)
-        print('Added key {} to buffer.'.format(key))
         return
 
     def WriteToDataBuffer(self,event_index,key,value,dtype=None,dimensions=None):
