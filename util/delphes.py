@@ -100,15 +100,14 @@ class DelphesWrapper:
         # Delphes will crash if output file already exists, so we need to remove it.
         try: os.remove(output_file)
         except: pass
-
+        command = [self.executable, delphes_card, output_file, hepmc_file]
+        print(command)
         if(logfile is not None):
             with open(logfile,'w') as f:
-                sub.check_call([self.executable, delphes_card, output_file, hepmc_file],
-                            shell=False, stdout=f, stderr=f)
+                sub.check_call(command, stdout=f, stderr=f)
 
         else:
-            sub.check_call([self.executable, delphes_card, output_file, hepmc_file],
-                        shell=False, stdout=sub.DEVNULL, stderr=sub.DEVNULL)
+            sub.check_call(command, stdout=sub.DEVNULL, stderr=sub.DEVNULL)
 
         if(cwd is not None): return output_file_nodir
         return output_file # return the name (esp. useful if none was provided)

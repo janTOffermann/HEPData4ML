@@ -1,5 +1,6 @@
 import sys,os,importlib,pathlib
 import pathlib
+import numpy as np
 # from config.config import config
 
 def GetConfigDictionary(config_file):
@@ -143,6 +144,11 @@ class Configurator:
     def GetNPars(self):
         return_dict = {}
         for key in ['jet_n_par','n_truth','n_stable','n_delphes']: return_dict[key] = self.config[key]
+
+        # some fanciness for the number of delphes objects, since it can be a list
+        if(len(np.asarray(self.config['n_delphes'])) == 1):
+            self.config['n_delphes'] = np.full(len(self.config['delphes_output']), np.asarray(self.config['n_delphes'])[0],dtype=int)
+
         return return_dict
 
     def GetInvisiblesFlag(self):
