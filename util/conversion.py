@@ -44,9 +44,9 @@ class Processor:
 
         self.outdir = ''
 
-        self.hist_filename = 'hists.root'
-        self.diagnostic_plots = True
-        self.InitializeHists()
+        # self.hist_filename = 'hists.root'
+        # self.diagnostic_plots = True
+        # self.InitializeHists()
 
         self.separate_truth_particles = False
         self.n_separate_truth_particles = -1
@@ -62,6 +62,7 @@ class Processor:
 
         self.calculator = Calculator(use_vectorcalcs=self.configurator.GetUseVectorCalcs())
 
+        # Data buffer
         self.data = {}
 
         # Various integers for buffer size, number of particles read into memory from HepMC, number saved to file, etc.
@@ -71,7 +72,20 @@ class Processor:
         self.nparticles_truth_selected = self.configurator.GetNPars()['n_truth']
         self.n_delphes = self.configurator.GetNPars()['n_delphes']
 
-        # self.n_constituents = self.configurator.GetNPars()['jet_n_par']
+        # truth selector
+        self.SetTruthSelection()
+
+    def _identity_selector(self,event):
+        """
+        A placeholder truth particle selector.
+        """
+        return event.particles
+
+    def SetTruthSelection(self):
+        if(self.configurator is None):
+            self.truth_selection = self._identity_selector # placeholder
+        else:
+            self.truth_selection = self.configurator.GetTruthSelection()
 
     def SetNentriesPerChunk(self,val):
         self.nevents_per_chunk = int(val)
@@ -161,108 +175,6 @@ class Processor:
     def SetOutputDirectory(self,outdir):
         self.outdir = outdir
 
-    def SetHistFilename(self,name):
-        self.hist_filename = name
-
-    def SetDiagnosticPlots(self,flag):
-        self.diagnostic_plots = flag
-
-    def InitializeHists(self):
-        self.hists = []
-        self.pdg_hist = rt.TH1D(RN(),'Selected final-state particles;Particle;Count',47,0.,47.)
-        self.hists.append(self.pdg_hist)
-        self.jet_truth_dr_hists = {} # Entries get initialized and filled in FillDataBuffer
-
-        self.jet_hists = { # Jet kinematic histograms. Initialized/filled in FillDataBuffer.
-            'pt'  : rt.TH1D(RN(), 'Jet p_{T};p_{T} [GeV];Count', 500,0.,1000.),
-            'eta' : rt.TH1D(RN(), 'Jet #eta;#eta;Count',         200,-4.,4.),
-            'phi' : rt.TH1D(RN(), 'Jet #phi;#phi;Count',         200,-np.pi,np.pi),
-            'm'   : rt.TH1D(RN(), 'Jet m;m [GeV];Count',         250,0.,500.),
-            'e'   : rt.TH1D(RN(), 'Jet E;E [GeV];Count',         500,0.,1000.),
-            'et'  : rt.TH1D(RN(), 'Jet E_{T};E [GeV];Count',     500,0.,1000.)
-        }
-
-        self.pmu_sum_hists = {} # Ditto, for the sum of jet constituents.
-        for key,hist in self.jet_hists.items():
-            h = rt.TH1D(hist)
-            h.SetName(RN())
-            h.SetTitle(h.GetTitle().replace('Jet','#sum constituents'))
-            self.pmu_sum_hists[key] = h
-
-        self.jet_diff_hists = {
-            'dm': rt.TH1D(RN(),  ';(m_{consts} - m_{j}) / m_{j};Count'      , 400,-1.,1.),
-            'de': rt.TH1D(RN(),  ';(E_{consts} - E_{j}) / E_{j};Count'      , 400,-1.,1.),
-            'dpt': rt.TH1D(RN(), ';(p_{consts} - p_{T,j}) / p_{T,j};Count', 400,-1.,1.),
-            'det': rt.TH1D(RN(), ';(E_{consts} - E_{T,j}) / E_{T,j};Count', 400,-1.,1.),
-        } # Kinematic differences between the jets, and the sum of their constituents. (Sanity check!)
-
-        self.jet_diff_hists_2d = {
-            'dm': rt.TH2D(RN(),  ';m_{j};(m_{consts} - m_{j}) / m_{j};Count',         250,0.,500. ,400,-1.,1.),
-            'de': rt.TH2D(RN(),  ';E_{j};(E_{consts} - E_{j}) / E_{j};Count',         500,0.,1000.,400,-1.,1.),
-            'dpt': rt.TH2D(RN(), ';p_{T,j};(p_{consts} - p_{T,j}) / p_{T,j};Count', 500,0.,1000.,400,-1.,1.),
-            'det': rt.TH2D(RN(), ';E_{T,j};(E_{T,consts} - E_{T,j}) / E_{T,j};Count', 500,0.,1000.,400,-1.,1.),
-        } # Kinematic differences between the jets, and the sum of their constituents. (Sanity check!)
-
-    def OutputHistograms(self):
-        for key,h in self.jet_truth_dr_hists.items():
-            self.hists.append(h)
-
-        for key,h in self.pmu_sum_hists.items():
-            self.hists.append(h)
-
-        for key,h in self.jet_hists.items():
-            self.hists.append(h)
-
-        for key,h in self.jet_diff_hists.items():
-            self.hists.append(h)
-
-        for key,h in self.jet_diff_hists_2d.items():
-            self.hists.append(h)
-
-        rt.gStyle.SetOptStat(0)
-        offset = 10 # TODO: This is a bit hacky
-        hist_filename = '{}/{}'.format(self.outdir,self.hist_filename)
-        f = rt.TFile(hist_filename,'UPDATE')
-
-        # We separately handle the pdg_hist (first in list), since it requires
-        # modifying the axis labels after drawing.
-        for i,h in enumerate(self.hists):
-            canvas_name = 'c_{}'.format(offset + i)
-            hist_name = 'h_{}'.format(offset + i)
-            c = rt.TCanvas(canvas_name,'',800,600)
-
-            if(i == 0): # pdg_hist
-
-                pdg_names_inv = {}
-                for key,val in pdg_plotcodes.items():
-                    code = val
-                    name = pdg_names[key]
-                    pdg_names_inv[code] = name
-
-                n = h.GetNbinsX()
-                xaxis = h.GetXaxis()
-                for j in range(n):
-                    if(j == 0): name = ''
-                    else:
-                        try: name = pdg_names_inv[j]
-                        except: name = ''
-                    xaxis.SetBinLabel(j+1,name)
-                xaxis.SetLabelSize(2.0e-2)
-                rt.gPad.SetGrid(1,0)
-            else: rt.gPad.SetGrid()
-
-            if(type(h) in [rt.TH1F, rt.TH1D, rt.TH1I, rt.TH1S]): h.Draw('HIST')
-            else:
-                h.Draw('COLZ')
-                rt.gPad.SetRightMargin(0.2)
-            rt.gPad.SetLogy()
-            c.Draw()
-            f.cd() # unnecessary
-            # c.Write(canvas_name)
-            h.Write(hist_name)
-        f.Close()
-        return
-
     def Process(self, hepmc_files, h5_file=None, verbosity=0):
         if(type(hepmc_files) == list): hepmc_files = ['{}/{}'.format(self.outdir,x) for x in hepmc_files]
         else: hepmc_files = '{}/{}'.format(self.outdir,hepmc_files)
@@ -303,22 +215,18 @@ class Processor:
             # Clear the buffer (for safety).
             for key in self.data.keys(): self.data[key][:] = 0
 
-            # TODO: Start here. Things like "final_state_events" will become "events" etc.
-
-            # Extract all the particles from the HepMC events, into memory.
-            particles = self.ExtractHepMCParticles(hepmc_events[start_idxs[i]:stop_idxs[i]],self.nparticles_max)
-
             # 0) Write some keys that are the same across all events in this chunk.
             self.WriteToDataBuffer(None,'is_signal',self.configurator.GetSignalFlag())
 
+            # 1) Save the stable truth-level particles from the event.
+            # Extract all the particles from the HepMC events, into memory.
+            particles = self.ExtractHepMCParticles(hepmc_events[start_idxs[i]:stop_idxs[i]])
+
             for j,event_particles in enumerate(particles): # Loop over events in this chunk
 
-                # 1) Save the stable truth-level particles from the event.
                 status = np.array([x.status for x in event_particles])
                 stable_particles = list(itertools.compress(event_particles, status == 1))
                 stable_particle_vecs = [rt.Math.PxPyPzEVector(x.momentum.px, x.momentum.py, x.momentum.pz, x.momentum.e) for x in stable_particles]
-
-                # print('[{}], {} stable particles.'.format(j,len(stable_particle_vecs)))
 
                 self.WriteToDataBuffer(j,'stableTruthParticles.Nobj',len(stable_particle_vecs))
 
@@ -340,9 +248,11 @@ class Processor:
                                        dimensions={1:self.nparticles_stable}
                 )
 
-                # 2) Extract the filtered truth record from the events.
-                truth_selected_status = np.full(len(event_particles),True) # TODO: New truth selection goes here.
-                truth_selected_particles = list(itertools.compress(event_particles, truth_selected_status == 1))
+            # 2) Extract the filtered truth record from the events.
+            truth_selected_event_particles = self.ExtractSelectedHepMCParticles(hepmc_events[start_idxs[i]:stop_idxs[i]])
+            for j,truth_selected_particles in enumerate(truth_selected_event_particles): # Loop over events in this chunk
+
+                # truth_selected_particles = list(itertools.compress(event_particles, truth_selected_status == 1))
                 truth_selected_particle_vecs = [rt.Math.PxPyPzEVector(x.momentum.px, x.momentum.py, x.momentum.pz, x.momentum.e) for x in truth_selected_particles]
 
                 self.WriteToDataBuffer(j,'truthParticles.Nobj',len(truth_selected_particle_vecs))
@@ -421,75 +331,6 @@ class Processor:
         # if(self.diagnostic_plots): self.OutputHistograms()
         return h5_file
 
-    def SelectFinalStateParticles(self, truth_particles, j, debug_print=False):
-        # Note: "vecs" will be Cartesian if not using Delphes. If using Delphes, it will be in (pt,eta,phi,m).
-
-        if(self.delphes):
-            vecs = np.vstack((
-                self.stable_particle_components['pt'],
-                self.stable_particle_components['eta'],
-                self.stable_particle_components['phi'],
-                self.stable_particle_components['m'],
-            )).T
-        else:
-            vecs = np.vstack((
-                self.stable_particle_components['e'],
-                self.stable_particle_components['px'],
-                self.stable_particle_components['py'],
-                self.stable_particle_components['pz'],
-            )).T
-
-        vecs_copy = np.copy(vecs) # TODO: Is this necessary?
-
-        if(self.jet_selection is None):
-            # If we're using Delphes, vecs is in cylindrical and we need to convert it to Cartesian since we're not
-            # calling the ClusterJets() routine (which internally handles the conversion via FastJet).
-            if(self.delphes): vecs = self.calculator.PtEtaPhiMToEPxPyPz(vecs[:,0], vecs[:,1],vecs[:,2],vecs[:,3]) #TODO: Is this conditional okay?
-            self.FillDataBuffer(j,vecs,None,truth_particles)
-        else:
-            # Any necessary cylindrical->Cartesian conversion (i.e. Delphes case) is handled within ClusterJets().
-            self.ClusterJets(vecs)
-            jets = self.jets_filtered
-
-            if(len(jets) == 0): # If there are no jets, throw out this event.
-                self.data['is_signal'][j] = -1 # Using -1 to mark as "no event". (To be discarded.)
-                return
-
-            try: truth = truth_particles[j]
-            except: truth = None # needed in case there was no truth selection
-
-            # Now we apply our jet selection algorithm.
-            selected_jet_idx = self.jet_selection(truth=truth, jets=jets)
-
-            if(selected_jet_idx < 0): # If we didn't select any jet, throw out this event.
-                self.data['is_signal'][j] = -1 # Using -1 to mark as "no event". (To be discarded.)
-                return
-            jet = jets[selected_jet_idx]
-
-            # Get the constituents of our selected jet, as well as their indices w.r.t. the final state.
-            selected_vecs, selected_indices = self.FetchJetConstituents(jet,self.n_constituents)
-
-            self.FillDataBuffer(j,selected_vecs,jet,truth_particles,final_state_indices=selected_indices)
-
-        # If PDG code information was provided, let's determine the codes of the selected particles.
-        # TODO: This will involve looping -> will be intensive. Is there a better way?
-        # See PseudoJet::set_user_index : http://www.fastjet.fr/repo/fastjet-doc-3.4.0.pdf
-        pdg = self.stable_particle_components['pdg']
-        if(pdg is not None and self.diagnostic_plots):
-            pdg_matching_tolerance = 1.0e-4
-            selected_pdgs = np.zeros(pdg.shape,dtype=bool)
-            candidate_particles = vecs_copy
-            for particle in vecs:
-                for k,candidate_particle in enumerate(candidate_particles):
-                    if(selected_pdgs[k] == 1): continue
-                    match_value = np.dot(candidate_particle-particle,candidate_particle-particle)
-                    if match_value < pdg_matching_tolerance:
-                        selected_pdgs[k] = 1
-                        break
-            selected_pdgs = pdg[selected_pdgs]
-            FillPdgHist(self.pdg_hist,selected_pdgs)
-        return
-
     def AddKeyToDataBuffer(self,key,value,dtype=None,dimensions=None):
         if(key in self.data.keys()):
             return
@@ -528,144 +369,6 @@ class Processor:
             self.data[key][event_index] = embed_array(value_array,self.data[key][event_index].shape)
         else:
             self.data[key][:] = embed_array(value_array,self.data[key].shape)
-        return
-
-    def FillDataBuffer(self,j,vecs,jet,truth_particles,final_state_indices=None):
-        npars = self.configurator.GetNPars()
-        truth_selection = self.configurator.GetTruthSelection()
-        n_truth = npars['n_truth']
-        l = vecs.shape[0]
-        self.data['Nobj'][j] = l
-        self.data['Pmu'][j,:l,:] = vecs
-        try: n_truth_local = len(truth_particles[j])
-        except: n_truth_local = 0
-        self.data['truth_Nobj'][j] = n_truth_local
-
-        # Filling the truth_Pmu array.
-        # For background generation, we may want to set "truth_selection" to None,
-        # but still fill some empty numpy arrays so that the data format matches
-        # some signal sample (if the arrays have different shapes, we may not be
-        # able to simply concatenate signal and background HDF5 files).
-        if(truth_selection is None):
-            self.data['truth_Pmu'][j,:,:] = np.zeros((n_truth,4))
-            self.data['truth_Pdg'][j,:] = np.zeros(n_truth)
-        else:
-            # Some truth-level selections may give a variable number of particles,
-            # the buffer array is of a fixed length so there will be zero-padding.
-            self.data['truth_Pmu'][j,:n_truth_local,:] = [
-                [par.momentum.e, par.momentum.px, par.momentum.py, par.momentum.pz]
-                for par in truth_particles[j]
-            ]
-            self.data['truth_Pdg'][j,:n_truth_local] = [par.pid for par in truth_particles[j]]
-
-        if(jet is None):
-            self.data['jet_Pmu'][j,:] = 0.
-            self.data['jet_Pmu_cyl'][j,:] = 0.
-        else:
-            self.data['jet_Pmu'][j,:]     = [jet.e(), jet.px(), jet.py(), jet.pz()]
-            self.data['jet_Pmu_cyl'][j,:] = [jet.pt(), jet.eta(), self.calculator.AdjustPhi(jet.phi()), jet.m()]
-
-            if(self.diagnostic_plots):
-                # Histogram the dR between the jet and each of the truth-level particles.
-                for i, pid in enumerate(self.data['truth_Pdg'][j,:]):
-                    if(pid not in self.jet_truth_dr_hists.keys()):
-                        self.jet_truth_dr_hists[pid] = rt.TH1D('jet_truth_dr_{}'.format(pid),'',200,0.,2.)
-                        title = '#Delta R #left( jet, {}_{} #right)'.format(pdg_names[pid],'{truth}')
-                        self.jet_truth_dr_hists[pid].SetTitle(title)
-                        self.jet_truth_dr_hists[pid].GetXaxis().SetTitle('#Delta R')
-                        self.jet_truth_dr_hists[pid].GetYaxis().SetTitle('Count')
-                    h = self.jet_truth_dr_hists[pid]
-                    dr = np.sqrt(self.calculator.DeltaR2(truth_particles[j][i].momentum.eta(),truth_particles[j][i].momentum.phi(), self.data['jet_Pmu_cyl'][j,1],self.data['jet_Pmu_cyl'][j,2]))
-                    h.Fill(dr)
-
-        if(self.separate_truth_particles):
-            n_separate = self.n_separate_truth_particles
-            if(n_separate <= 0): n_separate = n_truth
-            for k in range(n_separate):
-                if(truth_selection is None): # TODO: Is this redundant? Should be initialized to zeros.
-                    self.data['truth_Pmu_{}'.format(k)][j,:] = np.zeros(4)
-                else:
-                    if(k >= n_truth_local): break
-                    # print('k = {}, len(truth_particles[{}]) = {}'.format(k,j,len(truth_particles[j])))
-                    self.data['truth_Pmu_{}'.format(k)][j,:] = [truth_particles[j][k].momentum.e,truth_particles[j][k].momentum.px,truth_particles[j][k].momentum.py,truth_particles[j][k].momentum.pz]
-
-
-        if(self.record_final_state_indices and final_state_indices is not None):
-            self.data['final_state_idx'][j,:] = -1
-            self.data['final_state_idx'][j,:l] = final_state_indices
-
-        if(self.record_full_final_state):
-            # We want to get all final-state vectors going into jet-clustering.
-
-            if(self.delphes):
-                vecs = np.vstack((
-                    self.stable_particle_components['pt'],
-                    self.stable_particle_components['eta'],
-                    self.stable_particle_components['phi'],
-                    self.stable_particle_components['m'],
-                )).T
-                vecs = self.calculator.PtEtaPhiMToEPxPyPz(vecs[:,0], vecs[:,1],vecs[:,2],vecs[:,3])
-
-            else:
-                vecs = np.vstack((
-                    self.stable_particle_components['e'],
-                    self.stable_particle_components['px'],
-                    self.stable_particle_components['py'],
-                    self.stable_particle_components['pz'],
-                )).T
-            key = 'Pmu_full_final_state'
-            n = int(np.minimum(vecs.shape[0],self.data[key].shape[1]))
-            self.data['Pmu_full_final_state'][j,:n,:] = vecs[:n]
-
-        # Let's make some more diagnostic plots, to look at the jet kinematics, and the kinematics of the sum of jet constituents.
-        if(self.diagnostic_plots):
-
-            # Kinematic histograms for sum of Pmu (jet constituents).
-            s = np.sum(vecs,axis=0) # E, px, py, pz
-            s_cyl = self.calculator.EPxPyPzToPtEtaPhiM_single(*s)
-            s_pt,s_eta,s_phi,s_m = s_cyl
-            s_e = s[0]
-            y = self.calculator.EPzToRap(s[0],s[3])
-            s_et = s[0]/np.cosh(y)
-            self.pmu_sum_hists['pt'].Fill(s_pt)
-            self.pmu_sum_hists['eta'].Fill(s_eta)
-            self.pmu_sum_hists['phi'].Fill(s_phi)
-            self.pmu_sum_hists['m'].Fill(s_m)
-            self.pmu_sum_hists['e'].Fill(s_e)
-            self.pmu_sum_hists['et'].Fill(s_et)
-
-            if(jet is not None):
-
-                # Kinematic histograms for jets.
-                jet_pt = self.data['jet_Pmu_cyl'][j,0]
-                jet_eta = self.data['jet_Pmu_cyl'][j,1]
-                jet_phi = self.data['jet_Pmu_cyl'][j,2]
-                jet_m = self.data['jet_Pmu_cyl'][j,3]
-                jet_e = jet.e()
-                jet_et = jet.Et()
-
-                self.jet_hists['pt'].Fill(jet_pt)
-                self.jet_hists['eta'].Fill(jet_eta)
-                self.jet_hists['phi'].Fill(jet_phi)
-                self.jet_hists['m'].Fill(jet_m)
-                self.jet_hists['e'].Fill(jet_e)
-                self.jet_hists['et'].Fill(jet_et)
-
-                # Kinematic difference histograms.
-                delta_e = (s_e - jet_e) / jet_e
-                delta_m = (s_m - jet_m) / jet_m
-                delta_pt = (s_pt - jet_pt) / jet_pt
-                delta_et = (s_et - jet_et) / jet_et
-
-                self.jet_diff_hists['de'].Fill(delta_e)
-                self.jet_diff_hists['dm'].Fill(delta_m)
-                self.jet_diff_hists['dpt'].Fill(delta_pt)
-                self.jet_diff_hists['det'].Fill(delta_et)
-
-                self.jet_diff_hists_2d['de'].Fill(jet_e,delta_e)
-                self.jet_diff_hists_2d['dm'].Fill(jet_m,delta_m)
-                self.jet_diff_hists_2d['dpt'].Fill(jet_pt,delta_pt)
-                self.jet_diff_hists_2d['det'].Fill(jet_et,delta_et)
         return
 
     def PostProcess(self,hepmc_files, h5_files=None, indices_files=None):
@@ -721,12 +424,25 @@ class Processor:
             x.close()
         return
 
-    def ExtractHepMCParticles(self,events,n_par):
+    def ExtractHepMCParticles(self,events):
         particles = [
-            ev.particles[:int(np.minimum(len(ev.particles),n_par))]
+            ev.particles[:int(np.minimum(len(ev.particles),self.nparticles_max))]
             for ev in events
         ]
         return particles
+
+
+    def ExtractSelectedHepMCParticles(self,events):
+        particles = [
+            list(itertools.compress(ev.particles,np.atleast_1d(self.truth_selection(ev))))
+            for ev in events
+        ]
+
+        # possible truncation
+        particles = [x[:int(np.minimum(len(x),self.nparticles_truth_selected))] for x in particles]
+
+        return particles
+
 
     def PrepDelphesArrays(self,):
         # TODO: This uses uproot.lazy, which is part of uproot 4 but has been

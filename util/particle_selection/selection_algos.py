@@ -11,11 +11,10 @@ class SelectFinalState:
     def __init__(self):
         pass
 
-    def __call__(self,pythia_wrapper):
-        status = pythia_wrapper.GetStatus(hepmc=True)
+    def __call__(self,hepev):
+        status = [x.status for x in hepev.particles]
         stable = np.where(status==1)[0]
         return (len(stable) > 0), stable
-
 
 # Select the immediate daughters of some particle.
 class SelectDaughters:
@@ -28,12 +27,12 @@ class SelectDaughters:
         self.truth_selection = truth_selection
         self.gatherer = GatherDaughters()
 
-    def __call__(self,pythia_wrapper):
-        starting_particles = self.truth_selection(pythia_wrapper)
+    def __call__(self,hepev):
+        starting_particles = self.truth_selection(hepev)
         if(type(starting_particles) != list): starting_particles = [starting_particles]
         particles = []
         for p in starting_particles:
-            particles.append(self.gatherer(pythia_wrapper,p))
+            particles.append(self.gatherer(hepev,p))
         if(len(particles) == 0): return False, particles
 
         particles = np.array(particles,dtype=int).flatten()
@@ -72,13 +71,13 @@ class SelectFinalStateDaughters:
     def __init__(self,truth_selection):
         self.truth_selection = truth_selection
 
-    def __call__(self,pythia_wrapper):
-        starting_particles = self.truth_selection(pythia_wrapper)
+    def __call__(self,hepev):
+        starting_particles = self.truth_selection(hepev)
         if(type(starting_particles) not in [list,np.ndarray]): starting_particles = [starting_particles]
         particles = []
         for i,p in enumerate(starting_particles):
             gatherer = GatherStableDaughters()
-            daughters = gatherer(pythia_wrapper,p)
+            daughters = gatherer(hepev,p)
             particles.append(daughters)
         if(len(particles) == 0): return False, particles
 

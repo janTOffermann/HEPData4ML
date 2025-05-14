@@ -66,8 +66,6 @@ class Generator:
         self.header_status = False
         self.footer_status = False
 
-        self.full_hepmc = self.configurator.GetMakeFullHepMCFile() # whether or not to create full HepMC3 files, that contain all the event's particles and all indices
-
         # Variables related to handling of pileup.
         # TODO: Might want to eventually reorganize this, or move it into a separate class?
         self.pileup_handler = self.configurator.GetPileupHandling()
@@ -252,17 +250,17 @@ class Generator:
     def GetCurrentBufferSize(self):
         return len(self.hepev_buffer)
 
-    def ClearEventBuffers(self):
+    def ClearEventBuffer(self):
         self.hepev_buffer.clear()
 
-    def FillEventBuffers(self,hepev_full):
+    def FillEventBuffer(self,hepev_full):
         self.hepev_buffer.append(hepev_full)
 
-    def WriteEventBuffersToFile(self,header=False,footer=False):
+    def WriteEventBufferToFile(self,header=False,footer=False):
         if(header): self.header_status = True
         if(footer): self.footer_status = True
         HepMCOutput(self.hepev_buffer,self.buffername,self.filename_fullpath,header,footer)
-        self.ClearEventBuffers()
+        self.ClearEventBuffer()
 
     def GenerationLoop(self, nevents,i_real = 1, nevents_disp=None):
         """
@@ -286,45 +284,45 @@ class Generator:
 
             self.pythia.Generate() # generate an event!
 
-            # Get the truth-level particles, using our truth selector.
-            if(self.truth_selection is not None):
-                truth_indices = np.atleast_1d(np.array(self.truth_selection(self.pythia),dtype=int))
-                truth_selection_status = self.truth_selection.GetSelectionStatus()
-            else:
-                truth_indices = np.zeros(0)
-                truth_selection_status = True # no truth particles, but it is okay
+            # # Get the truth-level particles, using our truth selector.
+            # if(self.truth_selection is not None):
+            #     truth_indices = np.atleast_1d(np.array(self.truth_selection(self.pythia),dtype=int))
+            #     truth_selection_status = self.truth_selection.GetSelectionStatus()
+            # else:
+            #     truth_indices = np.zeros(0)
+            #     truth_selection_status = True # no truth particles, but it is okay
 
-            # Some checks -- if we expect a fixed # of truth-level particles from our selector,
-            # and it didn't give this, it means that something went wrong. In that case, we should
-            # skip this event.
-            if(not truth_selection_status):
-                n_fail += 1
-                continue
+            # # Some checks -- if we expect a fixed # of truth-level particles from our selector,
+            # # and it didn't give this, it means that something went wrong. In that case, we should
+            # # skip this event.
+            # if(not truth_selection_status):
+            #     n_fail += 1
+            #     continue
 
             # Here, we optionally apply pileup (or more generally, merging in some other event(s)).
             if(self.pileup_handler is not None):
                 self.pileup_handler(self.pythia)
 
-            # Get the final-state particles that we're saving (however we've defined our final state!).
-            final_state_indices = np.atleast_1d(np.array(self.final_state_selection(self.pythia),dtype=int))
-            final_state_selection_status = self.final_state_selection.GetSelectionStatus()
-            if(not final_state_selection_status):
-                n_fail += 1
-                continue
+            # # Get the final-state particles that we're saving (however we've defined our final state!).
+            # final_state_indices = np.atleast_1d(np.array(self.final_state_selection(self.pythia),dtype=int))
+            # final_state_selection_status = self.final_state_selection.GetSelectionStatus()
+            # if(not final_state_selection_status):
+            #     n_fail += 1
+            #     continue
 
-            # ===================================+======
-            # Now we apply an (optional) "event selection". This selects only a subset of the final-state particles
-            # to save to our output HepMC file. In practice this can be useful for reducing these files' sizes.
-            # For example, one may choose to only save final-state particles within some distance of one of
-            # the selected truth-level particles.
-            # ==========================================
-            # TODO: Probably want to remove this functionality? Can help with data reduction, but can also create all kinds of weird pathologies.
-            if(self.event_selection is not None):
-                try: # TODO Running into some very rare/stochastic (?) error with certain event selections (using VectorCalcs.DeltaR2Vectorized()).
-                    final_state_indices = self.event_selection(self.pythia, final_state_indices, truth_indices)
-                except: # easiest thing to do for this kind of exception is to just throw out the event and try again
-                    n_fail += 1
-                    continue
+            # # ===================================+======
+            # # Now we apply an (optional) "event selection". This selects only a subset of the final-state particles
+            # # to save to our output HepMC file. In practice this can be useful for reducing these files' sizes.
+            # # For example, one may choose to only save final-state particles within some distance of one of
+            # # the selected truth-level particles.
+            # # ==========================================
+            # # TODO: Probably want to remove this functionality? Can help with data reduction, but can also create all kinds of weird pathologies.
+            # if(self.event_selection is not None):
+            #     try: # TODO Running into some very rare/stochastic (?) error with certain event selections (using VectorCalcs.DeltaR2Vectorized()).
+            #         final_state_indices = self.event_selection(self.pythia, final_state_indices, truth_indices)
+            #     except: # easiest thing to do for this kind of exception is to just throw out the event and try again
+            #         n_fail += 1
+            #         continue
 
             # ==========================================
             # Now we apply an (optional) "event filter". This applies some condition to the set
@@ -332,7 +330,7 @@ class Generator:
             # this condition. If not we will count the event as failed, and generate another.
             # ==========================================
             if(self.event_filter is not None):
-                passed_filter = self.event_filter(self.pythia, final_state_indices)
+                passed_filter = self.event_filter(self.pythia)
                 if(not passed_filter):
                     n_fail += 1
                     continue
@@ -348,7 +346,7 @@ class Generator:
                 event_filter_flag_filename_full = '{}/{}'.format(self.outdir,self.event_filter_flag_filename)
                 f = h5.File(event_filter_flag_filename_full,'a')
                 key = self.event_filter_flag.GetName()
-                filter_flag = self.event_filter_flag(self.pythia, final_state_indices)
+                filter_flag = self.event_filter_flag(self.pythia)
                 if(i_real == 1):
                     filter_flag = np.expand_dims(filter_flag,axis=0)
                     f.create_dataset(key,data=filter_flag,compression='gzip',chunks=True,maxshape=(None,))
@@ -369,41 +367,17 @@ class Generator:
             # self.RecordFinalStateTruthOverlap(final_state_indices,truth_indices,i_real,'indices',self.configurator.GetNPars()['jet_n_par'])
 
             # ==========================================
-            # Now lets create HepMC events -- one holding just the truth-level particles
-            # and one holding just the final-state particles (however we've defined our
-            # "truth selection" and "final-state selection" in our configuration).
-            # By keeping these separate, we make it easy to (later) determine which
-            # particles are passed to jet clustering, at the cost of each event being
-            # split across two files.
-            #
-            # Keep in mind that these are also not totally complete HepMC files as we
-            # have optionally applied an "event selection" above that may have thrown out
-            # some particles (that are hopefully not relevant to whatever jets we're studying),
-            # and partly as a consequence of this event reduction (as well as the fact that we
-            # split things across two files) we're also not saving vertex information to
-            # these HepMC files.
-            #
-            # TODO: Might want to include vertex info! This is being done with CreateFullHepMCEvent,
-            #       but there might be some issues with it (events produced with it cannot be
-            #       be visualized by pyhepmc, suggests some vertices might be missing from output.)
+            # Now lets create the HepMC event.
             # ==========================================
-
-            final_state_hepev = CreateHepMCEvent(self.pythia,final_state_indices,i_real)
-
-            truth_hepev = None
-            if(len(truth_indices) > 0): # TODO: If this condition isn't met for whatever reason, will final-state and truth files' events not line up?
-                truth_hepev = CreateHepMCEvent(self.pythia,truth_indices, i_real)
-
-            full_hepev = CreateFullHepMCEvent(self.pythia,i_real)
+            hepmc_event = CreateFullHepMCEvent(self.pythia,i_real)
 
             # Fill the memory buffer with this event.
-            self.FillEventBuffers(full_hepev)
+            self.FillEventBuffer(hepmc_event)
 
             # If buffer is full (i.e. has reached max size), write it to file & flush.
             if(self.GetCurrentBufferSize() == self.buffer_size):
                 header = (self.loop_number == 0) and (not self.header_status)
-                footer = False
-                self.WriteEventBuffersToFile(header,footer)
+                self.WriteEventBufferToFile(header=header,footer=False)
 
             # Diagnostic plots.
             # TODO: Probably a lot of optimization to do for these, some new options thanks to PythiaWrapper.
@@ -426,7 +400,7 @@ class Generator:
         # we should flush it once more -- even if empty, since this is still where we may write the footer.
         header = (self.loop_number == 0) and (not self.header_status) # for writing HepMC header
         footer = n_fail == 0
-        self.WriteEventBuffersToFile(header,footer)
+        self.WriteEventBufferToFile(header=header,footer=footer)
 
         # Delete the buffer files.
         for fname in [self.buffername]:
