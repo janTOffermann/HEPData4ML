@@ -107,8 +107,12 @@ class Configurator:
             pythia_config['Print:quiet'] = 'on' # avoid printing reams of info
             pythia_config['Stat:showProcessLevel'] = 'off'
             pythia_config['Stat:showErrors'] = 'off'
-    #     pythia_config['Next:numberShowProcess'] = '2'
-    #     pythia_config['Next:numberShowEvent'] = '2'
+        else:
+            pythia_config['Print:quiet'] = 'off' # avoid printing reams of info
+            pythia_config['Stat:showProcessLevel'] = 'on'
+            pythia_config['Stat:showErrors'] = 'on'
+            pythia_config['Next:numberShowProcess'] = '2'
+            pythia_config['Next:numberShowEvent'] = '2'
         return pythia_config
 
     def GetPythiaRNGSeed(self):
@@ -143,7 +147,7 @@ class Configurator:
 
     def GetNPars(self):
         return_dict = {}
-        for key in ['jet_n_par','n_truth','n_stable','n_delphes']: return_dict[key] = self.config[key]
+        for key in ['n_truth','n_stable','n_delphes']: return_dict[key] = self.config[key]
 
         # some fanciness for the number of delphes objects, since it can be a list
         if(len(np.asarray(self.config['n_delphes'])) == 1):

@@ -19,7 +19,7 @@ class Generator:
         # Create our Pythia wrapper.
         self.pythia = PythiaWrapper(verbose=verbose)
         self.pythia_rng = pythia_rng
-        self.ConfigPythia(config_file=pythia_config_file)
+        self.ConfigPythia(config_file=pythia_config_file,quiet = (not verbose))
 
         # Particle selectors and event filters.
         self.event_selection = None
@@ -42,8 +42,6 @@ class Generator:
         self.SetIndexOverlapFilename() # will give a default name
         self.SetEventFilterFlagFilename() # will give a default name
         self.filename_fullpath = None
-        self.filename_truth_fullpath = None
-        self.filename_full_fullpath = None # TODO: fix naming scheme
 
         self.diagnostic_plots = True
         self.InitializeHistograms()
@@ -58,9 +56,7 @@ class Generator:
         self.loop_number = 0 # used for keeping track of successful generation loops
         self.nevents = None # number of events requested, will be set in generation function
 
-        self.hepev_buffer_fs = [] # list containing HepMC events, to be written to a file
-        self.hepev_buffer_truth = []
-        self.hepev_buffer_full = []
+        self.hepev_buffer = []
         self.SetBufferSize(100) # TODO: Should this be configurable? Could be too much detail.
         self.buffername = None
         self.buffername_truth = None
@@ -140,20 +136,9 @@ class Generator:
         if('.hepmc' not in name):
             name = '{}.hepmc'.format(name)
         self.filename = name
-        self.SetTruthFilename()
         if(rename_extra_files):
             self.SetIndexOverlapFilename(None)
             self.SetEventFilterFlagFilename(None)
-        return
-
-    def SetTruthFilename(self,name=None):
-        if(name is None):
-            self.truth_filename = self.filename.replace('.hepmc','_truth.hepmc')
-            return
-
-        if('.hepmc' not in name):
-            name = '{}.hepmc'.format(name)
-        self.truth_filename = name
         return
 
     def SetStatsFilename(self,name):
@@ -164,9 +149,6 @@ class Generator:
 
     def GetFilename(self):
         return self.filename
-
-    def GetTruthFilename(self):
-        return self.truth_filename
 
     def GetStatsFilename(self):
         return self.stats_filename
@@ -268,25 +250,18 @@ class Generator:
         self.buffer_size = size
 
     def GetCurrentBufferSize(self):
-        return len(self.hepev_buffer_fs)
+        return len(self.hepev_buffer)
 
     def ClearEventBuffers(self):
-        self.hepev_buffer_fs.clear()
-        self.hepev_buffer_truth.clear()
-        self.hepev_buffer_full.clear()
+        self.hepev_buffer.clear()
 
-    def FillEventBuffers(self,hepev_fs,hepev_truth=None,hepev_full=None):
-        self.hepev_buffer_fs.append(hepev_fs)
-        if(hepev_truth is not None): self.hepev_buffer_truth.append(hepev_truth)
-        if(hepev_full is not None): self.hepev_buffer_full.append(hepev_full)
+    def FillEventBuffers(self,hepev_full):
+        self.hepev_buffer.append(hepev_full)
 
     def WriteEventBuffersToFile(self,header=False,footer=False):
         if(header): self.header_status = True
         if(footer): self.footer_status = True
-        HepMCOutput(self.hepev_buffer_fs,self.buffername,self.filename_fullpath,header,footer)
-        HepMCOutput(self.hepev_buffer_truth,self.buffername_truth,self.filename_truth_fullpath,header,footer)
-        if(self.full_hepmc):
-            HepMCOutput(self.hepev_buffer_full,self.buffername_full,self.filename_full_fullpath,header,footer)
+        HepMCOutput(self.hepev_buffer,self.buffername,self.filename_fullpath,header,footer)
         self.ClearEventBuffers()
 
     def GenerationLoop(self, nevents,i_real = 1, nevents_disp=None):
@@ -305,11 +280,7 @@ class Generator:
         # down things, so we ultimately want to find some way to do a write with "append" functionality.
 
         self.filename_fullpath = '{}/{}'.format(self.outdir,self.filename)
-        self.filename_truth_fullpath = self.filename_fullpath.replace('.hepmc','_truth.hepmc')
-        self.filename_full_fullpath = self.filename_fullpath.replace('.hepmc','_full.hepmc')
         self.buffername = self.filename_fullpath.replace('.hepmc','_buffer.hepmc')
-        self.buffername_truth = self.buffername.replace('.hepmc','_truth.hepmc')
-        self.buffername_full = self.buffername.replace('.hepmc','_full.hepmc')
 
         for i in range(nevents):
 
@@ -347,6 +318,7 @@ class Generator:
             # For example, one may choose to only save final-state particles within some distance of one of
             # the selected truth-level particles.
             # ==========================================
+            # TODO: Probably want to remove this functionality? Can help with data reduction, but can also create all kinds of weird pathologies.
             if(self.event_selection is not None):
                 try: # TODO Running into some very rare/stochastic (?) error with certain event selections (using VectorCalcs.DeltaR2Vectorized()).
                     final_state_indices = self.event_selection(self.pythia, final_state_indices, truth_indices)
@@ -371,6 +343,7 @@ class Generator:
             # this condition. The result is recorded in an HDF5 file that will be merged into the
             # final dataset.
             # ==========================================
+            # TODO: Rework or remove this. Don't want to create anything other than the HepMC at this stage.
             if(self.event_filter_flag is not None):
                 event_filter_flag_filename_full = '{}/{}'.format(self.outdir,self.event_filter_flag_filename)
                 f = h5.File(event_filter_flag_filename_full,'a')
@@ -393,7 +366,7 @@ class Generator:
             # hits and any (stable) particles within among our truth particle array. To do this, we will ultimately
             # need to determine these truth particles' indices w.r.t. the final_state_hepev that we create further below.
             # ==========================================
-            self.RecordFinalStateTruthOverlap(final_state_indices,truth_indices,i_real,'indices',self.configurator.GetNPars()['jet_n_par'])
+            # self.RecordFinalStateTruthOverlap(final_state_indices,truth_indices,i_real,'indices',self.configurator.GetNPars()['jet_n_par'])
 
             # ==========================================
             # Now lets create HepMC events -- one holding just the truth-level particles
@@ -421,12 +394,10 @@ class Generator:
             if(len(truth_indices) > 0): # TODO: If this condition isn't met for whatever reason, will final-state and truth files' events not line up?
                 truth_hepev = CreateHepMCEvent(self.pythia,truth_indices, i_real)
 
-            full_hepev = None
-            if(self.full_hepmc):
-                full_hepev = CreateFullHepMCEvent(self.pythia,i_real) # TODO: Adding full event recording, with vertices. Currently unused in pipeline.
+            full_hepev = CreateFullHepMCEvent(self.pythia,i_real)
 
             # Fill the memory buffer with this event.
-            self.FillEventBuffers(final_state_hepev, truth_hepev,full_hepev)
+            self.FillEventBuffers(full_hepev)
 
             # If buffer is full (i.e. has reached max size), write it to file & flush.
             if(self.GetCurrentBufferSize() == self.buffer_size):
@@ -458,7 +429,7 @@ class Generator:
         self.WriteEventBuffersToFile(header,footer)
 
         # Delete the buffer files.
-        for fname in [self.buffername,self.buffername_truth,self.buffername_full]:
+        for fname in [self.buffername]:
             comm = ['rm', fname]
             try: sub.check_call(comm,stderr=sub.DEVNULL)
             except: pass
