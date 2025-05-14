@@ -50,7 +50,7 @@ class FirstSelector:
             intersection = np.intersect1d(pdgid_idx, status_idx)
             del status_idx
         else: intersection = np.copy(pdgid_idx)
-        del pdgid_idx
+        # del pdgid_idx
         if(len(intersection) == 0):
             self.selection_status = False
             return None

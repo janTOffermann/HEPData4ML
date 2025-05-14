@@ -3,6 +3,7 @@
 # to limit code clutter elsewhere.
 
 import numpy as np
+import itertools
 #==========================================
 # Here are a bunch of convenience
 # functions, which may be useful
@@ -115,8 +116,8 @@ class GatherStableDaughters:
         stable_indices = np.array([IsStable(hepev,x) for x in daughters],dtype=bool)
         not_stable_indices = np.array([not x for x in stable_indices],dtype=bool)
 
-        stable_daughters = daughters[stable_indices]
-        not_stable_daughters = daughters[not_stable_indices]
+        stable_daughters = list(itertools.compress(daughters,stable_indices))
+        not_stable_daughters = list(itertools.compress(daughters,not_stable_indices))
 
         for d in stable_daughters:
             if(d not in self.particle_list):
