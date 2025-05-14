@@ -93,9 +93,9 @@ def CreateFullHepMCEvent(pythia_wrapper, event_number):
     mother_indices = pythia_wrapper.GetMothers()
     prod = pythia_wrapper.GetProd() # production vertices' positions (t,x,y,z)
 
-    # First add the particles.
+    # Fetch the particles.
     particles = [hep.GenParticle(momentum=momentum[i], pid=pdgid[i], status=status[i]) for i in range(len(momentum))]
-    for par in particles: hepev.add_particle(par) # not strictly necessary, vertices will take care of this, but this enforces nice particle ordering
+    # for par in particles: hepev.add_particle(par) # this line broke things in the weirdest way, led to inconsistencies with # of vertices & disconnected graphs
 
     # Now add the vertices, based on mother/daughter information.
     # Note that we do not want to create duplicate vertices, which will
@@ -135,7 +135,18 @@ def CreateFullHepMCEvent(pythia_wrapper, event_number):
             vertex_idx = used_mothers[np.where(used_mothers[:,-1] == used_mother_idx)[0][0],0]
             vertices[vertex_idx].add_particle_out(particles[i])
 
-    for vertex in vertices: hepev.add_vertex(vertex)
+        hepev.add_vertex(vertex)
+
+    # print('Wrote {} vertices'.format(len(vertices)))
+    # print('\nChecking vertices.')
+    # print('{} vertices in hepev.'.format(len(hepev.vertices)))
+    # for i,vertex in enumerate(hepev.vertices):
+    #     print('[{}]: {}\tid = {}'.format(i,vertex,vertex.id))
+    #     for p in vertex.particles_in:
+    #         print('\t-> {}'.format(p))
+    #     for p in vertex.particles_out:
+    #         print('\t<- {}'.format(p))
+
     return hepev
 
 def AddToHepMCEvent(pythia_wrapper, particle_indices, hepev):
@@ -196,8 +207,9 @@ def ExtractHepMCEvents(files,get_nevents=False, silent=False):
             continue
 
         with hep.io.ReaderAscii(file) as f:
-            for evt in f:
+            for i,evt in enumerate(f):
                 events.append(evt)
                 if(get_nevents): nevents += 1
+
     if(get_nevents): return events, nevents
     return events
