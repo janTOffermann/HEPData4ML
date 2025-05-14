@@ -433,16 +433,15 @@ class Processor:
 
 
     def ExtractSelectedHepMCParticles(self,events):
+
         particles = [
-            list(itertools.compress(ev.particles,np.atleast_1d(self.truth_selection(ev))))
+            [ev.particles[x] for x in np.atleast_1d(self.truth_selection(ev))] # TODO: use intertools.compress() -- tried before, but it didn't work as expected?
             for ev in events
         ]
 
         # possible truncation
         particles = [x[:int(np.minimum(len(x),self.nparticles_truth_selected))] for x in particles]
-
         return particles
-
 
     def PrepDelphesArrays(self,):
         # TODO: This uses uproot.lazy, which is part of uproot 4 but has been
