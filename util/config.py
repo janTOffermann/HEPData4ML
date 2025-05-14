@@ -111,8 +111,8 @@ class Configurator:
             pythia_config['Print:quiet'] = 'off' # avoid printing reams of info
             pythia_config['Stat:showProcessLevel'] = 'on'
             pythia_config['Stat:showErrors'] = 'on'
-            pythia_config['Next:numberShowProcess'] = '2'
-            pythia_config['Next:numberShowEvent'] = '2'
+            pythia_config['Next:numberShowProcess'] = '1'
+            pythia_config['Next:numberShowEvent'] = '1'
         return pythia_config
 
     def GetPythiaRNGSeed(self):
@@ -208,12 +208,6 @@ class Configurator:
         if(key in self.config.keys()):
             return self.config[key]
         else: return ['Tower'] # some default result, maybe good for backwards compatibility!
-
-    def GetMakeFullHepMCFile(self):
-        key = 'full_hepmc_output'
-        if(key in self.config.keys()):
-            return self.config[key]
-        else: return False # some default result, maybe good for backwards compatibility!
 
     def GetPileupHandling(self):
         key = 'pileup_handling'

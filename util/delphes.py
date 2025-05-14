@@ -101,7 +101,6 @@ class DelphesWrapper:
         try: os.remove(output_file)
         except: pass
         command = [self.executable, delphes_card, output_file, hepmc_file]
-        print(command)
         if(logfile is not None):
             with open(logfile,'w') as f:
                 sub.check_call(command, stdout=f, stderr=f)

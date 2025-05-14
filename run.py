@@ -236,19 +236,13 @@ def main(args):
         hep_file = 'events_{}-{}.hepmc'.format(float_to_str(pt_min),float_to_str(pt_max))
 
         generator = Generator(pt_min,pt_max, configurator, pythia_rng,pythia_config_file=pythia_config,verbose=verbose)
-        generator.SetEventSelection(configurator.GetEventSelection())
-        generator.SetTruthSelection(configurator.GetTruthSelection())
-        generator.SetFinalStateSelection(configurator.GetFinalStateSelection())
+        # generator.SetTruthSelection(configurator.GetTruthSelection())
         generator.SetEventFilter(configurator.GetEventFilter())
         generator.SetEventFilterFlag(configurator.GetEventFilterFlag())
         # generator.SetJetConfig(configurator.GetJetConfig())
-        generator.SetNTruth(configurator.GetNPars()['n_truth'])
+        # generator.SetNTruth(configurator.GetNPars()['n_truth'])
 
         generator.SetOutputDirectory(outdir)
-
-        # hist_filename = 'hists_{}.root'.format(i)
-        hist_filename = hep_file.replace('.hepmc','_hists.root')
-        generator.SetHistFilename(hist_filename)
 
         generator.SetFilename(hep_file, rename_extra_files=False)
 
@@ -325,8 +319,6 @@ def main(args):
     processor.SetNentriesPerChunk(100) # the larger this is, the larger the chunks in memory (and higher the memory usage)
     processor.SetDelphesFiles(delphes_files)
     processor.SetOutputDirectory(outdir)
-    processor.SetHistFilename(hist_filename)
-    processor.SetDiagnosticPlots(diagnostic_plots)
     processor.SetSeparateTruthParticles(separate_truth_particles)
     processor.SetNSeparateTruthParticles(n_separate_truth_particles)
     processor.SetRecordFullFinalState(debug)
@@ -334,8 +326,8 @@ def main(args):
     if(not separate_h5):
         # The simple way to run this code -- it immediately makes a single HDF5 file with all events, from all pT-binned HepMC/Delphes files,
         # and this file will optionally be split (in a later step) into training, testing and validation samples.
-        print('\tProducing a single HDF5 file, from all the HepMC or Delphes/ROOT files.')
-        print('\tWarning: This will skip any requested post-processing steps. If you want these, re-run with "-separate_h5 1".')
+        print('\nProducing a single HDF5 file, from all the HepMC or Delphes/ROOT files.')
+        print('\nWarning: This will skip any requested post-processing steps. If you want these, re-run with "-separate_h5 1".')
 
         processor.Process(hepmc_files,h5_file,verbosity=h5_conversion_verbosity)
         processor.MergeEventFilterFlag(h5_file,filter_flag_files,copts=compression_opts)
@@ -345,7 +337,7 @@ def main(args):
         # Making the binned files first may allow us to (more easily) run some algorithms where we may want to compare across
         # the HepMC/Delphes and HDF5 files, since they are all binned it'll be easy to match events across files.
         h5_files = []
-        print('\tProducing separate HDF5 files for each pT bin, and then concatenating these.')
+        print('\nProducing separate HDF5 files for each pT bin, and then concatenating these.')
         delete_individual_h5 = True
         nentries_per_chunk = int(nentries_per_chunk/nbins)
         for i in range(nbins):
@@ -356,9 +348,7 @@ def main(args):
             h5_file_individual = h5_file.replace('.h5','_{}-{}.h5'.format(float_to_str(pt_min),float_to_str(pt_max)))
             processor.SetProgressBarPrefix('\tConverting HepMC3 -> HDF5 for pT bin [{},{}]:'.format(pt_min,pt_max))
 
-            print('\tStart process')
             processor.Process(hepmc_files,h5_file_individual,verbosity=h5_conversion_verbosity)
-            print('\tEnd process')
 
             # To each HDF5 event file, we will add event indices. These may be useful/necessary for the post-processing step.
             # We will remove these indices when concatenating files, since as one of our last steps we'll add indices again
