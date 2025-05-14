@@ -42,17 +42,6 @@ class Processor:
         self.bl = 50
         self.verbose = False
 
-        # self.SetupFastJet()
-        # sys.path.append(self.fastjet_dir)
-        # import fastjet as fj # This is where fastjet is really imported & cached by Python, but there are other import statements peppered throughout since this has limited scope.
-        # #TODO: Is there a nicer way to handle this import, which requires a filepath passed to this class's constructor?
-
-        self.jet_config, self.jetdef = self.InitFastJet()
-        self.jet_selection = self.jet_config['jet_selection']
-        if(self.jet_selection is not None):
-            self.jet_selection.Initialize(self.configurator)
-        self.n_constituents = self.configurator.GetNPars()['jet_n_par']
-
         self.outdir = ''
 
         self.hist_filename = 'hists.root'

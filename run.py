@@ -150,17 +150,17 @@ def main(args):
         print('Error: Configuration has bad status. Exiting.')
         assert(False)
 
-    # Set up FastJet -- we will need this later on (except for the special use case of no jet clustering!).
-    # To keep our printouts clean, we are initializing FastJet here instead of later on in a loop, so that
-    # we can get the FastJet banner printout out of the way. We remove the banner with some ANSI printing
-    # hackery, since it's really not useful and clutters up our printout (we acknowledge the use in the
-    # documentation, having this unavoidable printout for a single package's use is quite gratuitous).
-    print(13 * '\n')
-    dummy_processor = Processor(configurator)
-    line_up = '\033[1A'
-    line_clear = '\x1b[2K'
-    for i in range(13):
-        print(line_up, end=line_clear)
+    # # Set up FastJet -- we will need this later on (except for the special use case of no jet clustering!).
+    # # To keep our printouts clean, we are initializing FastJet here instead of later on in a loop, so that
+    # # we can get the FastJet banner printout out of the way. We remove the banner with some ANSI printing
+    # # hackery, since it's really not useful and clutters up our printout (we acknowledge the use in the
+    # # documentation, having this unavoidable printout for a single package's use is quite gratuitous).
+    # print(13 * '\n')
+    # dummy_processor = Processor(configurator)
+    # line_up = '\033[1A'
+    # line_clear = '\x1b[2K'
+    # for i in range(13):
+    #     print(line_up, end=line_clear)
 
     # Setting the verbosity for the HDF5 conversion.
     # If there are many events it might take a bit, so some printout
@@ -235,13 +235,13 @@ def main(args):
         pt_max = pt_bin_edges[i+1]
         hep_file = 'events_{}-{}.hepmc'.format(float_to_str(pt_min),float_to_str(pt_max))
 
-        generator = Generator(pt_min,pt_max, configurator, pythia_rng,pythia_config_file=pythia_config)
+        generator = Generator(pt_min,pt_max, configurator, pythia_rng,pythia_config_file=pythia_config,verbose=verbose)
         generator.SetEventSelection(configurator.GetEventSelection())
         generator.SetTruthSelection(configurator.GetTruthSelection())
         generator.SetFinalStateSelection(configurator.GetFinalStateSelection())
         generator.SetEventFilter(configurator.GetEventFilter())
         generator.SetEventFilterFlag(configurator.GetEventFilterFlag())
-        generator.SetJetConfig(configurator.GetJetConfig())
+        # generator.SetJetConfig(configurator.GetJetConfig())
         generator.SetNTruth(configurator.GetNPars()['n_truth'])
 
         generator.SetOutputDirectory(outdir)
@@ -273,9 +273,6 @@ def main(args):
 
         if(generate): generator.Generate(nevents_per_bin)
 
-        # Extract the truth-level particles from the full HepMC file.
-        truthfile = generator.GetTruthFilename()
-        truth_files.append(truthfile)
 
         stat_files.append(generator.GetStatsFilename())
         final_state_truth_overlap_indices_files.append(generator.GetIndexOverlapFilename())
@@ -359,7 +356,9 @@ def main(args):
             h5_file_individual = h5_file.replace('.h5','_{}-{}.h5'.format(float_to_str(pt_min),float_to_str(pt_max)))
             processor.SetProgressBarPrefix('\tConverting HepMC3 -> HDF5 for pT bin [{},{}]:'.format(pt_min,pt_max))
 
+            print('\tStart process')
             processor.Process(hepmc_files,h5_file_individual,verbosity=h5_conversion_verbosity)
+            print('\tEnd process')
 
             # To each HDF5 event file, we will add event indices. These may be useful/necessary for the post-processing step.
             # We will remove these indices when concatenating files, since as one of our last steps we'll add indices again
@@ -381,16 +380,16 @@ def main(args):
     if(use_delphes):
         if(delete_delphes):
             # Cleanup: Delete the jet files -- which are Delphes/ROOT files, since they can always be recreated from the (compressed) HepMC files.
-            jet_files = ['{}/{}'.format(outdir,x) for x in jet_files]
-            comm = ['rm'] + jet_files
+            delphes_files = ['{}/{}'.format(outdir,x) for x in delphes_files]
+            comm = ['rm'] + delphes_files
             sub.check_call(comm)
 
     else:
         #Cleanup: Compress the HepMC files.
         if(delete_hepmc):
-            for file in jet_files:
+            for file in hepmc_files:
                 sub.check_call(['rm','{}/{}'.format(outdir,file)])
-        elif(compress_hepmc): CompressHepMC(jet_files,True,cwd=outdir)
+        elif(compress_hepmc): CompressHepMC(hepmc_files,True,cwd=outdir)
 
     # Combine the stats files.
     # TODO: Can we handle some of the stats file stuff under-the-hood? Or just access all the files
