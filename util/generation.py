@@ -7,8 +7,9 @@ from util.pythia.utils import PythiaWrapper
 from util.qol_utils.pdg import pdg_names, pdg_plotcodes, FillPdgHist
 from util.calcs import Calculator
 from util.particle_selection.algos import IsNeutrino
-from util.hepmc import CreateHepMCEvent, CreateFullHepMCEvent, HepMCOutput
-import util.qol_utils.qol_util as qu
+from util.hepmc import CreateFullHepMCEvent, HepMCOutput
+from util.qol_utils.misc import RN
+from util.qol_utils.progress_bar import printProgressBarColor
 
 class Generator:
     def __init__(self, pt_min, pt_max, configurator, pythia_rng=None, pythia_config_file=None, verbose=False):
@@ -192,7 +193,7 @@ class Generator:
 
     def InitializeHistograms(self):
         self.hists = []
-        self.hist_fs_pdgid = rt.TH1D(qu.RN(),'Final-state particles;Particle;Count',47,0.,47)
+        self.hist_fs_pdgid = rt.TH1D(RN(),'Final-state particles;Particle;Count',47,0.,47)
         self.hists.append(self.hist_fs_pdgid)
 
         # Initialize histograms for sum of energy, E_T and p_T for final-state particles.
@@ -201,9 +202,9 @@ class Generator:
 
         for key,key_insert in zip(('all','invisible','visible'),('',' (invisibles)',' (visibles)')):
             d = {}
-            d['e'] = rt.TH1D(qu.RN(),'#sum Energy {};E [GeV];Count'.format(key_insert),*hist_binning)
-            d['et'] = rt.TH1D(qu.RN(),'#sum ET {};ET [GeV];Count'.format(key_insert).replace('ET','E_{T}'),*hist_binning)
-            d['pt'] = rt.TH1D(qu.RN(),'#sum pT {};pT [GeV];Count'.format(key_insert).replace('pT','p_{T}'),*hist_binning)
+            d['e'] = rt.TH1D(RN(),'#sum Energy {};E [GeV];Count'.format(key_insert),*hist_binning)
+            d['et'] = rt.TH1D(RN(),'#sum ET {};ET [GeV];Count'.format(key_insert).replace('ET','E_{T}'),*hist_binning)
+            d['pt'] = rt.TH1D(RN(),'#sum pT {};pT [GeV];Count'.format(key_insert).replace('pT','p_{T}'),*hist_binning)
             self.kinematic_hists[key] = d
             for h in d.values():
                 self.hists.append(h)
@@ -386,7 +387,7 @@ class Generator:
                 # HistogramFinalStateCodes(arr,self.hist_fs_pdgid)
                 # HistogramFinalStateKinematics(arr,self.kinematic_hists)
 
-            if(self.progress_bar): qu.printProgressBarColor(i_real,nevents_disp, prefix=self.prefix, suffix=self.suffix, length=self.bl)
+            if(self.progress_bar): printProgressBarColor(i_real,nevents_disp, prefix=self.prefix, suffix=self.suffix, length=self.bl)
 
             # Record this event's weight.
             self.weights[i_real-1] = self.pythia.GetEventWeight() # convert from 1-indexing to 0-indxing
@@ -439,7 +440,7 @@ class Generator:
         # tmp = InitFastJet()
         # del tmp
 
-        if(self.progress_bar): qu.printProgressBarColor(0,nevents, prefix=self.prefix, suffix=self.suffix, length=self.bl)
+        if(self.progress_bar): printProgressBarColor(0,nevents, prefix=self.prefix, suffix=self.suffix, length=self.bl)
 
         # Loop in such a way as to guarantee that we get as many events as requested.
         # This logic is required as events could technically fail selections, e.g. not have the

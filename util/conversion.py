@@ -3,13 +3,9 @@ import numpy as np
 import h5py as h5
 import ROOT as rt
 import uproot as ur
-# import pyhepmc as hep
 import subprocess as sub
 from util.calcs import Calculator
-from util.qol_utils.qol_util import printProgressBarColor, RN
-from util.qol_utils.pdg import pdg_plotcodes, pdg_names, FillPdgHist
-# from util.particle_selection.algos import IsNeutrino
-from util.fastjet import FastJetSetup
+from util.qol_utils.progress_bar import printProgressBarColor
 from util.hepmc import ExtractHepMCEvents
 
 def embed_array(array, target_shape,padding_value=0):
@@ -228,23 +224,23 @@ class Processor:
                 stable_particles = list(itertools.compress(event_particles, status == 1))
                 stable_particle_vecs = [rt.Math.PxPyPzEVector(x.momentum.px, x.momentum.py, x.momentum.pz, x.momentum.e) for x in stable_particles]
 
-                self.WriteToDataBuffer(j,'stableTruthParticles.Nobj',len(stable_particle_vecs))
+                self.WriteToDataBuffer(j,'StableTruthParticles.Nobj',len(stable_particle_vecs))
 
-                self.WriteToDataBuffer(j, 'stableTruthParticles.Pmu', np.vstack([
+                self.WriteToDataBuffer(j, 'StableTruthParticles.Pmu', np.vstack([
                     [getattr(vec, method)() for vec in stable_particle_vecs]
                     for method in ['E','Px','Py','Pz']
                 ]).T,
                                        dimensions={1:self.nparticles_stable}
                 )
 
-                self.WriteToDataBuffer(j, 'stableTruthParticles.Pmu_cyl', np.vstack([
+                self.WriteToDataBuffer(j, 'StableTruthParticles.Pmu_cyl', np.vstack([
                     [getattr(vec, method)() for vec in stable_particle_vecs]
                     for method in ['Pt','Eta','Phi','M']
                 ]).T,
                                        dimensions={1:self.nparticles_stable}
                 )
 
-                self.WriteToDataBuffer(j,'stableTruthParticles.PdgId',[x.pid for x in stable_particles],
+                self.WriteToDataBuffer(j,'StableTruthParticles.PdgId',[x.pid for x in stable_particles],
                                        dimensions={1:self.nparticles_stable}
                 )
 
@@ -255,23 +251,23 @@ class Processor:
                 # truth_selected_particles = list(itertools.compress(event_particles, truth_selected_status == 1))
                 truth_selected_particle_vecs = [rt.Math.PxPyPzEVector(x.momentum.px, x.momentum.py, x.momentum.pz, x.momentum.e) for x in truth_selected_particles]
 
-                self.WriteToDataBuffer(j,'truthParticles.Nobj',len(truth_selected_particle_vecs))
+                self.WriteToDataBuffer(j,'TruthParticles.Nobj',len(truth_selected_particle_vecs))
 
-                self.WriteToDataBuffer(j, 'truthParticles.Pmu', np.vstack([
+                self.WriteToDataBuffer(j, 'TruthParticles.Pmu', np.vstack([
                     [getattr(vec, method)() for vec in truth_selected_particle_vecs]
                     for method in ['E','Px','Py','Pz']
                 ]).T,
                                        dimensions={1:self.nparticles_truth_selected}
                 )
 
-                self.WriteToDataBuffer(j, 'truthParticles.Pmu_cyl', np.vstack([
+                self.WriteToDataBuffer(j, 'TruthParticles.Pmu_cyl', np.vstack([
                     [getattr(vec, method)() for vec in truth_selected_particle_vecs]
                     for method in ['Pt','Eta','Phi','M']
                 ]).T,
                                         dimensions={1:self.nparticles_truth_selected}
                 )
 
-                self.WriteToDataBuffer(j,'truthParticles.PdgId',[x.pid for x in truth_selected_particles],
+                self.WriteToDataBuffer(j,'TruthParticles.PdgId',[x.pid for x in truth_selected_particles],
                                         dimensions={1:self.nparticles_truth_selected}
                 )
 
