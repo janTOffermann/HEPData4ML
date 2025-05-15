@@ -4,10 +4,8 @@ import sys,itertools
 import subprocess as sub
 import numpy as np
 import h5py as h5
-# from util.post_processing.utils.jhtagger import JHTaggerSetup, JHTopTagger
 from util.fastjet import FastJetSetup
-from util.calcs import Calculator
-import util.qol_utils.qol_util as qu
+from util.qol_utils.progress_bar import printProgressBarColor
 
 class JetFinder:
     """
@@ -15,13 +13,14 @@ class JetFinder:
     (arbitrary) set of inputs representing four-momenta of some objects.
     """
 
-    def __init__(self, jet_algorithm='anti_kt',radius=0.4, jet_name='AK04Jets', save_constituents=True, fastjet_dir=None,verbose=False):
+    def __init__(self, input_collections=['StableTruthParticles'], jet_algorithm='anti_kt',radius=0.4, jet_name='AK04Jets', save_constituents=True, fastjet_dir=None,verbose=False):
 
         self.status = False
 
+        self.SetInputCollections(input_collections)
         self.jet_algorithm_name = jet_algorithm
         self.jet_name = jet_name
-        self.jet_radius = radius
+        self.radius = radius
         self.min_pt = 15.
         self.max_eta = 4.
         self.constituents_flag = save_constituents
@@ -77,7 +76,7 @@ class JetFinder:
 
         # Now, if possible we initialize fastjet
         if(self.fastjet_dir is not None):
-            self.SetupFastjet()
+            self.SetupFastJet()
             sys.path.append(self.fastjet_dir)
             import fastjet as fj # This is where fastjet is really imported & cached by Python, but there may be other import statements peppered throughout since this has limited scope.
             self.fastjet_init_flag = True
@@ -93,6 +92,10 @@ class JetFinder:
         self.h5_file = file
 
     def SetInputCollections(self,collections):
+        if(type(collections) != list):
+            collections = [collections]
+        collections = ['{}.Pmu'.format(collection) for collection in collections]
+
         self.input_collections = collections
 
     def SetMaxEta(self,eta):
@@ -110,7 +113,6 @@ class JetFinder:
     def SetConfigurator(self,configurator):
         self.configurator = configurator
 
-
     def _input_consistency_check(self):
         f = h5.File(self.h5_file,'r')
         keys = list(f.keys())
@@ -119,10 +121,9 @@ class JetFinder:
         cleaned_collections = []
         for collection in self.input_collections:
             # we will be using the Cartesian versions of each collection for clustering
-            branch = '{}.Pmu'.format(collection)
-            found = branch in keys
+            found = collection in keys
             if(not found):
-                self._print('Warning: Did not find key {} in file {}. Disabling as input...'.format(branch,self.h5_file))
+                self._print('Warning: Did not find key {} in file {}. Disabling as input...'.format(collection,self.h5_file))
             else:
                 cleaned_collections.append(collection)
         self.input_collections = cleaned_collections
@@ -176,7 +177,7 @@ class JetFinder:
 
         if(self.verbose):
             print('{}.Process: Number of events = {}'.format(self.print_prefix,self.nevents))
-            qu.printProgressBarColor(0,self.nevents,prefix=self.progress_bar_prefix,suffix=self.progress_bar_suffix,length=self.progress_bar_length)
+            printProgressBarColor(0,self.nevents,prefix=self.progress_bar_prefix,suffix=self.progress_bar_suffix,length=self.progress_bar_length)
 
         for i in range(self.nevents):
 
@@ -189,10 +190,10 @@ class JetFinder:
                 self._fetchJetConstituents() # fills self.constituent_vectors, self.constituent_indices
 
             # now write to buffer
-            self._writeToBuffer()
+            self._writeToBuffer(i)
 
             if(self.verbose):
-                qu.printProgressBarColor(i+1,self.nevents,prefix=self.progress_bar_prefix,suffix=self.progress_bar_suffix,length=self.progress_bar_length)
+                printProgressBarColor(i+1,self.nevents,prefix=self.progress_bar_prefix,suffix=self.progress_bar_suffix,length=self.progress_bar_length)
 
         return
 

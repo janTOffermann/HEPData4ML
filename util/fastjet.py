@@ -1,6 +1,6 @@
 import os, glob,pathlib
 import subprocess as sub
-import util.qol_utils.qol_util as qu
+from util.qol_utils.misc import stdout_redirected
 
 class FastJetSetup:
     def __init__(self,fastjet_dir=None, full_setup=False,verbose=True):
@@ -76,7 +76,7 @@ class FastJetSetup:
 
             # Depending on Linux/macOS, we use wget or curl.
             has_wget = True
-            with qu.stdout_redirected():
+            with stdout_redirected():
                 try: sub.check_call('which wget'.split(' '))
                 except:
                     has_wget = False
