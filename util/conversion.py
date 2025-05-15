@@ -295,7 +295,7 @@ class Processor:
                         delphes_phi = delphes_arr[var_map[delphes_type]['phi']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
                         delphes_m   = np.zeros(delphes_pt.shape)
 
-                        delphes_vecs = [rt.Math.PxPyPzEVector(*x) for x in zip(delphes_pt,delphes_eta,delphes_phi,delphes_m)]
+                        delphes_vecs = [rt.Math.PtEtaPhiMVector(*x) for x in zip(delphes_pt,delphes_eta,delphes_phi,delphes_m)]
 
                         self.WriteToDataBuffer(j,'{}.Nobj'.format(delphes_type),len(delphes_pt))
 
