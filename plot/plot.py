@@ -130,13 +130,14 @@ def main(args):
     truth_names = [pdg_names[x] for x in truth_Pdg]
 
     # Define a bunch of binning settings.
+    # TODO: Make these configurable?
     binning = {
         'n':(200,0.,200.),
-        'pt':(40,500.,700.),
-        'eta':(200,-2.5,2.5),
+        'pt':(100,0.,1000.),
+        'eta':(200,-4,4),
         'phi':(100,-np.pi,np.pi),
         'm':(250,0.,250.),
-        'e':(200,0.,2000.),
+        'e':(100,0.,1000.),
         'jet_dr':(100,0.,2.)
     }
 
