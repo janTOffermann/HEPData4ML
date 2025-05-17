@@ -4,25 +4,9 @@ import h5py as h5
 import ROOT as rt
 import uproot as ur
 import subprocess as sub
-from util.calcs import Calculator
+from util.calcs import embed_array
 from util.qol_utils.progress_bar import printProgressBarColor
 from util.hepmc import ExtractHepMCEvents
-
-def embed_array(array, target_shape,padding_value=0):
-    """
-    A generic function for embedding an input array into some target shape.
-    The array will be truncated or padded as needed.
-
-    """
-    # Create the output array
-    result = np.full(target_shape, padding_value, dtype=array.dtype)
-
-    # Calculate the effective shape (minimum dimensions)
-    effective_shape = tuple(min(s, t) for s, t in zip(array.shape, target_shape))
-
-    slices = tuple(slice(0, dim) for dim in effective_shape)
-    result[slices] = array[slices]
-    return result
 
 class Processor:
     """
@@ -51,12 +35,12 @@ class Processor:
         self.jets = None
         self.jets_filtered = None
 
-        self.SetRecordFinalStateIndices(False)
+        # self.SetRecordFinalStateIndices(False)
         self.SetPostProcessing()
 
         self.SetRecordFullFinalState(False) # by default we don't want this, it may significantly increase filesize!
 
-        self.calculator = Calculator(use_vectorcalcs=self.configurator.GetUseVectorCalcs())
+        # self.calculator = Calculator(use_vectorcalcs=self.configurator.GetUseVectorCalcs())
 
         # Data buffer
         self.data = {}
@@ -69,19 +53,19 @@ class Processor:
         self.n_delphes = self.configurator.GetNPars()['n_delphes']
 
         # truth selector
-        self.SetTruthSelection()
+        self.SetParticleSelection()
 
     def _identity_selector(self,event):
         """
         A placeholder truth particle selector.
         """
-        return event.particles
+        return {'TruthParticles',event.particles}
 
-    def SetTruthSelection(self):
+    def SetParticleSelection(self):
         if(self.configurator is None):
             self.truth_selection = self._identity_selector # placeholder
         else:
-            self.truth_selection = self.configurator.GetTruthSelection()
+            self.truth_selection = self.configurator.GetParticleSelection()
 
     def SetNentriesPerChunk(self,val):
         self.nevents_per_chunk = int(val)
@@ -136,25 +120,22 @@ class Processor:
     def SetProgressBarPrefix(self,text):
         self.prefix_level1 = text
 
-    def SetRecordFinalStateIndices(self,flag):
-        self.record_final_state_indices = flag
-
     def SetPostProcessing(self,post_proc=None):
         if(post_proc is None): post_proc = self.configurator.GetPostProcessing()
         self.post_processing = post_proc
         if(self.post_processing is None):
             return
 
-        # Determine whether or not to generate files containing indices
-        # of particles that were both in the truth and final-state selections.
-        # Useful for things like particle daughter tracing.
-        # TODO: There might be a neater way to handle this.
-        self.SetRecordFinalStateIndices(False)
-        for p in post_proc:
-            if(p is None): continue
-            if(p.RequiresIndexing()):
-                self.SetRecordFinalStateIndices(True)
-                break
+        # # Determine whether or not to generate files containing indices
+        # # of particles that were both in the truth and final-state selections.
+        # # Useful for things like particle daughter tracing.
+        # # TODO: There might be a neater way to handle this.
+        # self.SetRecordFinalStateIndices(False)
+        # for p in post_proc:
+        #     if(p is None): continue
+        #     if(p.RequiresIndexing()):
+        #         self.SetRecordFinalStateIndices(True)
+        #         break
 
     def SetStatsFile(self,filename):
         self.stats_file = filename
@@ -224,7 +205,7 @@ class Processor:
                 stable_particles = list(itertools.compress(event_particles, status == 1))
                 stable_particle_vecs = [rt.Math.PxPyPzEVector(x.momentum.px, x.momentum.py, x.momentum.pz, x.momentum.e) for x in stable_particles]
 
-                self.WriteToDataBuffer(j,'StableTruthParticles.Nobj',len(stable_particle_vecs))
+                self.WriteToDataBuffer(j,'StableTruthParticles.N',len(stable_particle_vecs))
 
                 self.WriteToDataBuffer(j, 'StableTruthParticles.Pmu', np.vstack([
                     [getattr(vec, method)() for vec in stable_particle_vecs]
@@ -245,31 +226,32 @@ class Processor:
                 )
 
             # 2) Extract the filtered truth record from the events.
-            truth_selected_event_particles = self.ExtractSelectedHepMCParticles(hepmc_events[start_idxs[i]:stop_idxs[i]])
-            for j,truth_selected_particles in enumerate(truth_selected_event_particles): # Loop over events in this chunk
+            for key,selection in self.truth_selection.items():
+                truth_selected_event_particles = self.ExtractSelectedHepMCParticles(hepmc_events[start_idxs[i]:stop_idxs[i]],selection)
+                for j,truth_selected_particles in enumerate(truth_selected_event_particles): # Loop over events in this chunk
 
-                # truth_selected_particles = list(itertools.compress(event_particles, truth_selected_status == 1))
-                truth_selected_particle_vecs = [rt.Math.PxPyPzEVector(x.momentum.px, x.momentum.py, x.momentum.pz, x.momentum.e) for x in truth_selected_particles]
+                    # truth_selected_particles = list(itertools.compress(event_particles, truth_selected_status == 1))
+                    truth_selected_particle_vecs = [rt.Math.PxPyPzEVector(x.momentum.px, x.momentum.py, x.momentum.pz, x.momentum.e) for x in truth_selected_particles]
 
-                self.WriteToDataBuffer(j,'TruthParticles.Nobj',len(truth_selected_particle_vecs))
+                    self.WriteToDataBuffer(j,'{}.N'.format(key),len(truth_selected_particle_vecs))
 
-                self.WriteToDataBuffer(j, 'TruthParticles.Pmu', np.vstack([
-                    [getattr(vec, method)() for vec in truth_selected_particle_vecs]
-                    for method in ['E','Px','Py','Pz']
-                ]).T,
-                                       dimensions={1:self.nparticles_truth_selected}
-                )
-
-                self.WriteToDataBuffer(j, 'TruthParticles.Pmu_cyl', np.vstack([
-                    [getattr(vec, method)() for vec in truth_selected_particle_vecs]
-                    for method in ['Pt','Eta','Phi','M']
-                ]).T,
+                    self.WriteToDataBuffer(j, '{}.Pmu'.format(key), np.vstack([
+                        [getattr(vec, method)() for vec in truth_selected_particle_vecs]
+                        for method in ['E','Px','Py','Pz']
+                    ]).T,
                                         dimensions={1:self.nparticles_truth_selected}
-                )
+                    )
 
-                self.WriteToDataBuffer(j,'TruthParticles.PdgId',[x.pid for x in truth_selected_particles],
-                                        dimensions={1:self.nparticles_truth_selected}
-                )
+                    self.WriteToDataBuffer(j, '{}.Pmu_cyl'.format(key), np.vstack([
+                        [getattr(vec, method)() for vec in truth_selected_particle_vecs]
+                        for method in ['Pt','Eta','Phi','M']
+                    ]).T,
+                                            dimensions={1:self.nparticles_truth_selected}
+                    )
+
+                    self.WriteToDataBuffer(j,'{}.PdgId'.format(key),[x.pid for x in truth_selected_particles],
+                                            dimensions={1:self.nparticles_truth_selected}
+                    )
 
             # 3) Optional: Extract the full event record, store it separately. This is both particles and vertices.
 
@@ -293,7 +275,7 @@ class Processor:
 
                         delphes_vecs = [rt.Math.PtEtaPhiMVector(*x) for x in zip(delphes_pt,delphes_eta,delphes_phi,delphes_m)]
 
-                        self.WriteToDataBuffer(j,'{}.Nobj'.format(delphes_type),len(delphes_pt))
+                        self.WriteToDataBuffer(j,'{}.N'.format(delphes_type),len(delphes_pt))
 
                         self.WriteToDataBuffer(j, '{}.Pmu'.format(delphes_type), np.vstack([
                             [getattr(vec, method)() for vec in delphes_vecs]
@@ -377,16 +359,13 @@ class Processor:
 
         for post_proc in self.post_processing:
             if(post_proc is None): continue
+            # print('\tRunning post processor: {}'.format(post_proc))
             post_proc.SetConfigurator(self.configurator)
             for i in range(nfiles):
-                # truth_file = None
                 h5_file = None
-                idx_file = None
-                fs_file = '{}/{}'.format(self.outdir,hepmc_files[i])
-                # if(truth_files is not None): truth_file = '{}/{}'.format(self.outdir,truth_files[i])
                 if(h5_files is not None): h5_file = '{}/{}'.format(self.outdir,h5_files[i])
-                if(indices_files is not None): idx_file = '{}/{}'.format(self.outdir,indices_files[i])
-                post_proc(fs_file,h5_file,idx_file)
+                hepmc_file = '{}/{}'.format(self.outdir,hepmc_files[i])
+                post_proc(hepmc_file,h5_file,h5_file)
         return
 
     def MergeEventFilterFlag(self,h5_file,event_filter_flag_files,copts=9):
@@ -428,10 +407,10 @@ class Processor:
         return particles
 
 
-    def ExtractSelectedHepMCParticles(self,events):
+    def ExtractSelectedHepMCParticles(self,events,selection):
 
         particles = [
-            [ev.particles[x] for x in np.atleast_1d(self.truth_selection(ev))] # TODO: use intertools.compress() -- tried before, but it didn't work as expected?
+            [ev.particles[x] for x in np.atleast_1d(selection(ev))] # TODO: use intertools.compress() -- tried before, but it didn't work as expected?
             for ev in events
         ]
 

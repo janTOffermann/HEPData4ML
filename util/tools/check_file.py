@@ -48,10 +48,14 @@ def _print2d(array):
         print('[{}]: {}'.format(i,array[i]))
     return
 
-def _print3d(array):
+def _print3d(array,lims=[]):
     for i in range(array.shape[0]):
+        if(len(lims) > 0 and lims[0] is not None):
+            if(i >= lims[0]): break
         print('[{}]:'.format(i))
         for j in range(array.shape[1]):
+            if(len(lims) > 1 and lims[1] is not None):
+                if(j >= lims[1]): break
             print('\t[{}]: {}'.format(j,array[i,j]))
     return
 
@@ -70,14 +74,31 @@ def _check_event(filename,idx=0):
         print('{}:'.format(printkey))
         data = f[key][idx]
 
+
+
         if('Pmu' in key):
-            try:
-                lkey = key.replace('Pmu_cyl','Nobj')
-                lkey = lkey.replace('Pmu','Nobj')
-                l = f[lkey][idx] + 1 # add one, to check the zero-padding
-                data = f[key][idx,:l]
-            except:
-                pass
+            if('Constituents' in key):
+                # try:
+                lkey1 = key.replace('Constituents.Pmu_cyl','N')
+                lkey1 = lkey1.replace('Constituents.Pmu','N')
+
+                lkey2 = key.replace('Pmu_cyl','N')
+                lkey2 = lkey2.replace('Pmu','N')
+
+                l1 = f[lkey1][idx] + 1 # add one, to check the zero-padding
+                l2 = np.max(f[lkey2][idx] + 1) # add one, to check the zero-padding
+
+                data = f[key][idx,:l1,:l2]
+
+            else:
+                try:
+                    lkey = key.replace('Pmu_cyl','N')
+                    lkey = lkey.replace('Pmu','N')
+                    l = f[lkey][idx] + 1 # add one, to check the zero-padding
+                    data = f[key][idx,:l]
+                except:
+                    pass
+
 
         if(data.ndim == 1):
             print(data)
@@ -92,7 +113,6 @@ def _check_event(filename,idx=0):
 
     f.close()
     return
-
 
 def main(args):
     parser = ap.ArgumentParser()

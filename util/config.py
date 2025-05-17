@@ -118,11 +118,8 @@ class Configurator:
     def GetPythiaRNGSeed(self):
         return self.config['rng']
 
-    def GetTruthSelection(self):
-        return self.config['truth_selection']
-
-    def GetFinalStateSelection(self):
-        return self.config['final_state_selection']
+    def GetParticleSelection(self):
+        return self.config['particle_selection']
 
     def GetJetConfig(self):
         return_dict = {}
@@ -200,8 +197,8 @@ class Configurator:
     def SetPrintDelphes(self,val):
         self.print_delphes = val
 
-    def GetUseVectorCalcs(self):
-        return self.config['use_vectorcalcs']
+    # def GetUseVectorCalcs(self): # temporarily (?) disabling
+    #     return self.config['use_vectorcalcs']
 
     def GetDelphesObjects(self):
         key = 'delphes_output'
