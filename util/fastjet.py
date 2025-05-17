@@ -1,4 +1,5 @@
-import os, glob,pathlib
+import sys, os, glob,pathlib, operator
+import numpy as np
 import subprocess as sub
 from util.qol_utils.misc import stdout_redirected
 
@@ -103,6 +104,201 @@ class FastJetSetup:
                         shell=False, cwd=self.source_dir, stdout=f, stderr=g)
         self.SetPythonDirectory()
         return
+
+
+class JetFinderBase:
+    """
+    This is a base class, for using the Fastjet library to perform jet clustering.
+    It is leveraged by the JetFinder class in utils/post_processing/jets.py .
+    This base class exists to avoid some possible import loops.
+    It lacks some useful functionality that JetFinder includes.
+    """
+
+    def __init__(self,fastjet_dir=None):
+
+        self.jet_algorithm_name = ''
+        self.jet_name = ''
+        self.radius = 0.4
+        self.min_pt = 0.
+        self.max_eta = 10.
+
+        self.fastjet_dir = fastjet_dir
+        self.fastjet_init_flag = False
+
+        # some fastjet-specific vars, for internal usage
+        self.jet_algorithm = None
+        self.jetdef = None
+        self.cluster_sequence = None
+        self.jets = None
+        self.jet_vectors = None
+        self.jet_vectors_cyl = None
+        self.constituent_vectors = None
+        self.constituent_vectors_cyl = None
+        self.constituent_indices = None
+
+        self.input_vecs = None
+        self.configurator = None
+
+    def _initialize_fastjet(self):
+
+        if(self.fastjet_init_flag):
+            return
+
+        if(self.fastjet_dir is None):
+            if(self.configurator is None):
+                return
+            else: # Fetch fastjet directory from configurator. This is foreseen as the "typical" usage.
+                self.fastjet_dir = self.configurator.GetFastjetDirectory()
+
+        # Now, if possible we initialize fastjet
+        if(self.fastjet_dir is not None):
+            self._setupFastJet()
+            sys.path.append(self.fastjet_dir)
+            import fastjet as fj # This is where fastjet is really imported & cached by Python, but there may be other import statements peppered throughout since this has limited scope.
+            self.fastjet_init_flag = True
+        return
+
+    def SetMaxEta(self,eta):
+        self.max_eta = np.abs(eta)
+
+    def SetMinPt(self,pt):
+        self.min_pt = pt # GeV
+
+    def SetNConstituentsMax(self,n):
+        self.n_constituents_max = n
+
+    def SetRadius(self,radius):
+        self.radius = radius
+
+    def SetConfigurator(self,configurator):
+        self.configurator = configurator
+
+    def _setupFastJet(self):
+        verbose = self.configurator.GetPrintFastjet()
+        self.fastjet_setup = FastJetSetup(self.configurator.GetFastjetDirectory(),full_setup=True,verbose=verbose)
+        self.configurator.SetPrintFastjet(False)
+        self.fastjet_dir = self.fastjet_setup.GetPythonDirectory()
+        return
+
+    def _parse_jet_algorithm(self):
+        self._initialize_fastjet()
+        import fastjet as fj
+
+        self.jet_algorithm = None
+        for key in ['anti_kt','anti kt','anti-kt']:
+            if(key in self.jet_algorithm_name.lower()):
+                self.jet_algorithm = fj.antikt_algorithm
+                return True
+
+        for key in ['kt']:
+            if(key in self.jet_algorithm_name.lower()):
+                self.jet_algorithm = fj.kt_algorithm
+                return True
+
+        # TODO: C/A algorithm
+        return False
+
+    def _initialize_jet_definition(self):
+        self._initialize_fastjet()
+        import fastjet as fj
+        # Print the FastJet banner -- it's unavoidable (other packages don't do this!).
+        fj.ClusterSequence.print_banner()
+
+        # determine what jet algorithm to use
+        self._parse_jet_algorithm()
+
+        self.jetdef = fj.JetDefinition(self.jet_algorithm, self.radius)
+        return
+
+    def _clusterJets(self):
+        self._initialize_fastjet()
+        import fastjet as fj # hacky, but will work because _setupFastJet() was run in __init__()
+
+        # vecs has format (E,px,py,pz) -- FastJet uses (px,py,pz,E) so we must modify it. Using np.roll.
+        pj = [fj.PseudoJet(*x) for x in np.roll(self.input_vecs,-1,axis=-1)]
+
+        # Attach indices to the pseudojet objects, so that we can trace them through jet clustering.
+        # Indices will correspond to the order they were input (with zero-indexing).
+        for i,pseudojet in enumerate(pj):
+            pseudojet.set_user_index(i)
+
+        # selector = fj.SelectorPtMin(jet_config['jet_min_pt']) & fj.SelectorAbsEtaMax(jet_config['jet_max_eta'])
+        # Note: Switched from the old method, this is more verbose but seems to do the same thing anyway.
+        self.cluster_sequence = fj.ClusterSequence(pj, self.jetdef) # member of class, otherwise goes out-of-scope when ref'd later
+        self.jets = self.cluster_sequence.inclusive_jets()
+
+        # Now we will apply our (optional) pt and eta cuts to the jets.
+        # TODO: Make this a post-processor of the jets.
+        jet_eta = np.array([jet.eta() for jet in self.jets])
+        jet_pt  = np.array([jet.pt()  for jet in self.jets])
+
+        selected_eta = np.where(np.abs(jet_eta) <= np.abs(self.max_eta))[0]
+        selected_pt  = np.where(jet_pt          >= self.min_pt )[0]
+        selected = np.sort(np.intersect1d(selected_eta, selected_pt)) # TODO: Is the sort needed?
+        self.jets = [self.jets[x] for x in selected]
+        self._jetsToVectors()
+
+    def _jetsToVectors(self):
+        self.jet_vectors = np.array([[x.e(), x.px(), x.py(),x.pz()] for x in self.jets])
+        self.jet_vectors_cyl = np.array([[x.pt(), x.eta(), x.phi(),x.m()] for x in self.jets])
+
+    def _ptSort(self):
+        """
+        Sorts jets by decreasing pT, and truncates to
+        take only the first self.n_jets_max jets.
+        """
+        if len(self.jets) <= 1:
+            return
+
+        jet_pt  = np.array([jet.pt() for jet in self.jets])
+        pt_sorting = np.argsort(-jet_pt)
+        if(len(pt_sorting) > self.n_jets_max):
+            pt_sorting = pt_sorting[:self.n_jets_max]
+
+        self.jets = list(operator.itemgetter(*pt_sorting)(self.jets)) #NOTE: Possibly a little obscure, but maybe more efficient than list comprehension? -Jan
+        self._jetsToVectors()
+
+    def _fetchJetConstituents(self):
+        results = [self._fetchJetConstituentsSingle(jet, self.n_constituents_max) for jet in self.jets]
+        self.constituent_vectors = [x[0] for x in results]
+        self.constituent_vectors_cyl = [x[1] for x in results]
+        self.constituent_indices = [x[2] for x in results]
+
+    def _fetchJetConstituentsSingle(self,jet,n_constituents):
+        pt,eta,phi,m,e,px,py,pz = np.hsplit(np.array([[x.pt(), x.eta(), x.phi(), x.m(), x.e(), x.px(),x.py(),x.pz()] for x in jet.constituents()]),8)
+
+        # The indices of the jet constituents, corresponding with the order in which they
+        # were passed to jet clustering.
+        indices = np.array([x.user_index() for x in jet.constituents()],dtype=np.dtype('i4')).flatten()
+
+        # Sort by decreasing pt, and only keep leading constituents.
+        sorting = np.argsort(-pt.flatten())
+        l = int(np.minimum(n_constituents,len(pt)))
+        vecs = np.vstack([x.flatten() for x in [e,px,py,pz]]).T[sorting][:l]
+        vecs_cyl = np.vstack([x.flatten() for x in [pt,eta,phi,m]]).T[sorting][:l]
+        indices = indices[sorting][:l]
+
+        return vecs, vecs_cyl, indices
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 class ParticleInfo(object):
     """Illustrative class for use in assigning pythonic user information

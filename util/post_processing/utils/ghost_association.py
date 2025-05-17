@@ -7,18 +7,14 @@ class GhostAssociator():
 
     def __init__(self,key,indices):
 
-
         self.vec_key = '{}.Pmu_cyl'.format(key)
         self.ghost_key = '{}.Ghost.Pmu'.format(key)
         self.indices = indices
 
-
     def MakeGhosts(self,vecs, a=1.0e-10):
 
         result = np.zeros(vecs.shape)
-
         for i,vec in enumerate(vecs):
-
             v = rt.Math.PtEtaPhiMVector(a, vec[1], vec[2], a)
             result[i] = np.array([v.E(),v.Px(),v.Py(),v.Pz()])
         return result
@@ -79,8 +75,8 @@ class GhostAssociator():
                     mask[i] = True
                     break
 
-        obj.jets = list(itertools.compress(obj.jets,mask)) # NOTE: Not really necessary
-        obj.jet_vectors = list(itertools.compress(obj.jet_vectors,mask))
+        obj.jets            = list(itertools.compress(obj.jets,mask           ))
+        obj.jet_vectors     = list(itertools.compress(obj.jet_vectors,mask    ))
         obj.jet_vectors_cyl = list(itertools.compress(obj.jet_vectors_cyl,mask))
 
         return
