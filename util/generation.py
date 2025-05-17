@@ -4,9 +4,8 @@ import ROOT as rt
 import h5py as h5
 import subprocess as sub
 from util.pythia.utils import PythiaWrapper
-from util.qol_utils.pdg import pdg_names, pdg_plotcodes, FillPdgHist
+from util.qol_utils.pdg import pdg_names, pdg_plotcodes
 from util.calcs import Calculator
-from util.particle_selection.algos import IsNeutrino
 from util.hepmc import CreateFullHepMCEvent, HepMCOutput
 from util.qol_utils.misc import RN
 from util.qol_utils.progress_bar import printProgressBarColor
@@ -45,7 +44,7 @@ class Generator:
         self.filename_fullpath = None
 
         self.diagnostic_plots = True
-        self.InitializeHistograms()
+        # self.InitializeHistograms()
 
         # Containers for event-level information.
         self.weights = None
@@ -71,7 +70,7 @@ class Generator:
         # TODO: Might want to eventually reorganize this, or move it into a separate class?
         self.pileup_handler = self.configurator.GetPileupHandling()
 
-        self.calculator = Calculator(use_vectorcalcs=self.configurator.GetUseVectorCalcs())
+        # self.calculator = Calculator(use_vectorcalcs=self.configurator.GetUseVectorCalcs())
 
     def SetVerbose(self,val):
         self.pythia.SetVerbose(val)
@@ -192,6 +191,7 @@ class Generator:
         self.pythia.InitializePythia()
 
     def InitializeHistograms(self):
+        #TODO: DEPRECATED
         self.hists = []
         self.hist_fs_pdgid = rt.TH1D(RN(),'Final-state particles;Particle;Count',47,0.,47)
         self.hists.append(self.hist_fs_pdgid)
@@ -210,6 +210,7 @@ class Generator:
                 self.hists.append(h)
 
     def OutputHistograms(self):
+        #TODO: DEPRECATED
         hist_filename = '{}/{}'.format(self.outdir,self.hist_filename)
         f = rt.TFile(hist_filename,'UPDATE')
         for i,h in enumerate(self.hists):
@@ -285,45 +286,10 @@ class Generator:
 
             self.pythia.Generate() # generate an event!
 
-            # # Get the truth-level particles, using our truth selector.
-            # if(self.truth_selection is not None):
-            #     truth_indices = np.atleast_1d(np.array(self.truth_selection(self.pythia),dtype=int))
-            #     truth_selection_status = self.truth_selection.GetSelectionStatus()
-            # else:
-            #     truth_indices = np.zeros(0)
-            #     truth_selection_status = True # no truth particles, but it is okay
-
-            # # Some checks -- if we expect a fixed # of truth-level particles from our selector,
-            # # and it didn't give this, it means that something went wrong. In that case, we should
-            # # skip this event.
-            # if(not truth_selection_status):
-            #     n_fail += 1
-            #     continue
-
             # Here, we optionally apply pileup (or more generally, merging in some other event(s)).
             if(self.pileup_handler is not None):
+                #TODO: This needs to be reworked.
                 self.pileup_handler(self.pythia)
-
-            # # Get the final-state particles that we're saving (however we've defined our final state!).
-            # final_state_indices = np.atleast_1d(np.array(self.final_state_selection(self.pythia),dtype=int))
-            # final_state_selection_status = self.final_state_selection.GetSelectionStatus()
-            # if(not final_state_selection_status):
-            #     n_fail += 1
-            #     continue
-
-            # # ===================================+======
-            # # Now we apply an (optional) "event selection". This selects only a subset of the final-state particles
-            # # to save to our output HepMC file. In practice this can be useful for reducing these files' sizes.
-            # # For example, one may choose to only save final-state particles within some distance of one of
-            # # the selected truth-level particles.
-            # # ==========================================
-            # # TODO: Probably want to remove this functionality? Can help with data reduction, but can also create all kinds of weird pathologies.
-            # if(self.event_selection is not None):
-            #     try: # TODO Running into some very rare/stochastic (?) error with certain event selections (using VectorCalcs.DeltaR2Vectorized()).
-            #         final_state_indices = self.event_selection(self.pythia, final_state_indices, truth_indices)
-            #     except: # easiest thing to do for this kind of exception is to just throw out the event and try again
-            #         n_fail += 1
-            #         continue
 
             # ==========================================
             # Now we apply an (optional) "event filter". This applies some condition to the set
@@ -336,36 +302,25 @@ class Generator:
                     n_fail += 1
                     continue
 
-            # ==========================================
-            # Now we apply an (optional) "event filter" flag. This applies some condition to the set
-            # of truth and final-state particles selected above, and checks if the event passes
-            # this condition. The result is recorded in an HDF5 file that will be merged into the
-            # final dataset.
-            # ==========================================
-            # TODO: Rework or remove this. Don't want to create anything other than the HepMC at this stage.
-            if(self.event_filter_flag is not None):
-                event_filter_flag_filename_full = '{}/{}'.format(self.outdir,self.event_filter_flag_filename)
-                f = h5.File(event_filter_flag_filename_full,'a')
-                key = self.event_filter_flag.GetName()
-                filter_flag = self.event_filter_flag(self.pythia)
-                if(i_real == 1):
-                    filter_flag = np.expand_dims(filter_flag,axis=0)
-                    f.create_dataset(key,data=filter_flag,compression='gzip',chunks=True,maxshape=(None,))
-                else:
-                    f[key].resize(f[key].shape[0] + 1,axis=0)
-                    f[key][-1] = filter_flag
-                f.close()
-
-            # ==========================================
-            # In some cases we may be interested in particles which are counted as both truth particles and final-state particles.
-            # For example, we may be using our "truth particles" list to store the stable daughter particles of a particular
-            # particle (like the stable daughters of a W boson decay).
-            # These particles may be interesting to keep track of if we're using Delphes -- the Delphes output contains information
-            # on the indices of particles that hit each detector element, and we may need to map between the detector
-            # hits and any (stable) particles within among our truth particle array. To do this, we will ultimately
-            # need to determine these truth particles' indices w.r.t. the final_state_hepev that we create further below.
-            # ==========================================
-            # self.RecordFinalStateTruthOverlap(final_state_indices,truth_indices,i_real,'indices',self.configurator.GetNPars()['jet_n_par'])
+            # # ==========================================
+            # # Now we apply an (optional) "event filter" flag. This applies some condition to the set
+            # # of truth and final-state particles selected above, and checks if the event passes
+            # # this condition. The result is recorded in an HDF5 file that will be merged into the
+            # # final dataset.
+            # # ==========================================
+            # # TODO: Rework or remove this. Don't want to create anything other than the HepMC at this stage.
+            # if(self.event_filter_flag is not None):
+            #     event_filter_flag_filename_full = '{}/{}'.format(self.outdir,self.event_filter_flag_filename)
+            #     f = h5.File(event_filter_flag_filename_full,'a')
+            #     key = self.event_filter_flag.GetName()
+            #     filter_flag = self.event_filter_flag(self.pythia)
+            #     if(i_real == 1):
+            #         filter_flag = np.expand_dims(filter_flag,axis=0)
+            #         f.create_dataset(key,data=filter_flag,compression='gzip',chunks=True,maxshape=(None,))
+            #     else:
+            #         f[key].resize(f[key].shape[0] + 1,axis=0)
+            #         f[key][-1] = filter_flag
+            #     f.close()
 
             # ==========================================
             # Now lets create the HepMC event.
@@ -380,19 +335,12 @@ class Generator:
                 header = (self.loop_number == 0) and (not self.header_status)
                 self.WriteEventBufferToFile(header=header,footer=False)
 
-            # Diagnostic plots.
-            # TODO: Probably a lot of optimization to do for these, some new options thanks to PythiaWrapper.
-            # if(self.diagnostic_plots):
-                # Record the PDG codes of all selected final-state particles (i.e. all those that made it into the HepMC output).
-                # HistogramFinalStateCodes(arr,self.hist_fs_pdgid)
-                # HistogramFinalStateKinematics(arr,self.kinematic_hists)
-
             if(self.progress_bar): printProgressBarColor(i_real,nevents_disp, prefix=self.prefix, suffix=self.suffix, length=self.bl)
 
-            # Record this event's weight.
+            # Record this event's weight and process code from Pythia.
+            #TODO: Consider removing this, or adjusting how it is handled -- if the user provides
+            #      externally-produced HepMC files, they won't have these things.
             self.weights[i_real-1] = self.pythia.GetEventWeight() # convert from 1-indexing to 0-indxing
-
-            # Record this event's process code.
             self.process_codes[i_real-1] = self.pythia.GetProcessCode() # convert from 1-indexing to 0-indxing
 
             i_real += 1 # If success, increase i_real -- this is a counter for the number of successful events
@@ -465,6 +413,7 @@ class Generator:
             self.xsecs[i,:] = xsec_dictionary[pcode]
 
         # Create/append a stats file, and put in information on event weights & cross-sections.
+        #TODO: Will want to rework this.
         f = h5.File('{}/{}'.format(self.outdir,self.stats_filename),'a')
         compression = 'gzip'
         copts = 9
@@ -476,42 +425,6 @@ class Generator:
 
         # if(self.diagnostic_plots): self.OutputHistograms()
         return
-
-    def RecordFinalStateTruthOverlap(self,final_state_indices,truth_indices,i_real,key='indices',indices_max=200):
-
-        # Get indices (w.r.t. full Pythia event) of particles that are listed in both the final_state and truth.
-        final_state_truth_overlap = np.intersect1d(final_state_indices,truth_indices)
-
-        # We want to make an (n,2) array, where for n listings, we give
-        # - the final_state_index in position 0,
-        # - and the truth_index in position 1.
-        # This is complicated by the possibility of a particle appearing multiple times in either list of indices.
-        # (e.g. the truth selection selects decay products of W, but also all stable W daughters -- and the W decays to lepton + neutrino).
-        # TODO: We currently deal with this complication via the "[0][0]" indexing in fs_truth_overlap_wrt_fs and fs_truth_overlap_wrt_truth.
-        #       This means that we just count the first instance of the particle's listing. Maybe causes potential confusion in the case where
-        #       it actually appears multiple times.
-
-        # When final_state_indices is written to final_state_hepev, the particles will be re-indexed in the order they're given.
-        # Note that HepMC3 uses 1-indexing, we will save these with 1-indexing too.
-        # TODO: Seems to cause crash if a final-state particle shows up multiple times in the truth listing.
-        fs_truth_overlap_wrt_fs    = np.array([np.where(final_state_indices==x)[0][0] + 1 for x in final_state_truth_overlap]).flatten()
-        fs_truth_overlap_wrt_truth = np.array([np.where(truth_indices==x)[0][0] + 1 for x in final_state_truth_overlap]).flatten()
-
-        indices = np.zeros((indices_max,2),dtype=int) # order will be (index w.r.t. final-state HepMC file, index w.r.t. truth-selection HepMC file)
-        l = np.minimum(indices_max,len(fs_truth_overlap_wrt_fs))
-        indices[:l,0] = fs_truth_overlap_wrt_fs[:l]
-        indices[:l,1] = fs_truth_overlap_wrt_truth[:l]
-
-        fs_truth_overlap_filename_full = '{}/{}'.format(self.outdir,self.fs_truth_overlap_filename)
-        f = h5.File(fs_truth_overlap_filename_full,'a')
-        if(i_real == 1):
-            indices = np.expand_dims(indices,axis=0)
-            f.create_dataset(key,data=indices,compression='gzip',chunks=True,maxshape=(None,indices_max,2))
-        else:
-            f[key].resize(f[key].shape[0] + 1,axis=0)
-            f[key][-1] = indices
-        f.close()
-
 
     # Get the MC event weights (will typically just be 1 for each event).
     # This reads from a file, which is only written to when an event is written to disk.
@@ -540,45 +453,3 @@ class Generator:
     # those thrown out events are still included in computing the cross-section estimates.
     def GetSigmaDictionary(self):
         return self.pythia.GetSigmaDictionary()
-
-    # def HistogramFinalStateCodes(self,arr):
-    #     codes = []
-    #     for entry in arr:
-    #         codes.append(entry[-2])
-    #     FillPdgHist(self.hist_fs_pdgid,codes)
-    #     return
-
-    # Some utility functions, which were previously in a separate sub-library.
-    # -- plotting functionality below --
-    def HistogramFinalStateCodes(self,arr,hist):
-        codes = []
-        for entry in arr:
-            codes.append(entry[-2])
-        FillPdgHist(hist,codes)
-        return
-
-    def HistogramFinalStateKinematics(self,arr,kinematic_hist_dict):
-        # We will make histograms of sum E, E_T and p_T. For each, we consider a sum over all particles,
-        # as well as separate sums over invisibles (i.e. neutrinos) and visibles.
-        full_sum = np.zeros(4)
-        inv_sum = np.zeros(4)
-        vis_sum = np.zeros(4)
-
-        for par in arr:
-            par_array = np.array([par[0],par[1],par[2],par[3]] )
-            full_sum += par_array
-            invisible = IsNeutrino(p=par) # TODO: Not sure if this will still work based on other updates to the code?
-            if(invisible): inv_sum += par_array
-            else: vis_sum += par_array
-
-        for vec,key in zip((full_sum,inv_sum,vis_sum),('all','invisible','visible')):
-            e = vec[0]
-            px = vec[1]
-            py = vec[2]
-            pz = vec[3]
-            vec_cyl = self.calculator.PxPyPzEToPtEtaPhiM([px],[py],[pz],[e])[0]
-            pt = vec_cyl[0]
-            et = e / np.cosh(vec_cyl[1])
-            kinematic_hist_dict[key]['e'].Fill(e)
-            kinematic_hist_dict[key]['et'].Fill(et)
-            kinematic_hist_dict[key]['pt'].Fill(pt)

@@ -405,7 +405,8 @@ def main(args):
     AddEventIndices(h5_file,cwd=outdir,copts=compression_opts,offset=index_offset)
 
     # Remove any failed events (e.g. detector-level events with no jets passing cuts).
-    print('\tRemoving any failed events from file {}.\n\tThese may be events where there weren\'t any jets passing the requested cuts.'.format('/'.join((outdir,h5_file))))
+    # print('\tRemoving any failed events from file {}.\n\tThese may be events where there weren\'t any jets passing the requested cuts.'.format('/'.join((outdir,h5_file))))
+    print('\tRemoving any failed events from file {}.'.format('/'.join((outdir,h5_file))))
     RemoveFailedFromHDF5(h5_file,cwd=outdir)
 
     # Now, add some metadata to the file -- we use the HDF5 file attributes to store lists of metadata, and create columns that reference these lists.

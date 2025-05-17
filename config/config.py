@@ -1,17 +1,14 @@
 import numpy as np
-import util.jet_selection as jetsel
 import util.particle_selection.particle_selection as parsel
 import util.particle_selection.selection_algos as algos
-import util.event_selection as eventsel
 import util.event_filter as eventfilter
-import util.post_processing.tracing as tracing
-import util.post_processing.truth_sum as truth_sum
-import util.post_processing.rotate as rotate
-import util.post_processing.containment as containment
-import util.post_processing.jh_tagging as jh_tagging
-import config.selectors as s
-
-selections = s.selections
+# import util.post_processing as postproc
+import util.post_processing.jets as jets
+# import util.post_processing.tracing as tracing
+# import util.post_processing.truth_sum as truth_sum
+# import util.post_processing.rotate as rotate
+# import util.post_processing.containment as containment
+# import util.post_processing.jh_tagging as jh_tagging
 
 config = {
     'proc' : 'bbar', # Name must correspond to a card name (without extension) in util/pythia_templates
@@ -30,20 +27,25 @@ config = {
     'n_truth' : 1 + 60, # max number of truth particles to save per jet
     'event_filter' : None, # if not using any event filter
     'event_filter_flag': None, # an event_filter algorithm, but instead of filtering out events it will simply add a boolean flag to the dataset
-    'truth_selection' : parsel.MultiSelection(
-        [
-            parsel.FirstSelector(23,5), # bottom quark
-            # parsel.AlgoSelection(algos.SelectFinalStateDaughters(parsel.FirstSelector(23,5)),n=60) # up to 60 stable daughters of b quark
-        ]
-    ),
-    'final_state_selection': parsel.AlgoSelection(algos.SelectFinalState(),200),
-    'invisibles' : False, # if False, invisible particles in the final-state selection (neutrinos) will be discarded. If true, they may be input to jet clustering (which may be an issue at truth-level, though not DELPHES)!
-    'jet_selection':jetsel.GetNearestJet(truth_code=5,max_dr=0.4), # pick jet nearest truth-level b, and within dR=0.4
+    'particle_selection' : {
+        'TruthParticles':
+        parsel.MultiSelection(
+            [
+                parsel.FirstSelector(23,5), # bottom quark
+                parsel.AlgoSelection(algos.SelectFinalStateDaughters(parsel.FirstSelector(23,5)),n=60) # up to 60 stable daughters of b quark
+            ]
+        ),
+    },
     'signal_flag' : 1, # What to provide as the "signal_flag" for these events. (relevant if combining datasets). Must be >= 0.
-    'record_final_state_indices' : True, # Whether or not to record jet constituents' indices w.r.t. the order they were passed to jet clustering (order of particles in HepMC file, or order of Delphes objects if using Delphes).
     'split_seed' : 1, # seed to be used for the RNG when splitting dataset into train/test/validation samples
-    'use_vectorcalcs' : False, # whether or not to use the VectorCalcs C++/ROOT library (which is part of this repo). May speed up some computations, but can lead to issues if there's a problem with the ROOT build (e.g. CVMFS/LCG_103 seems to cause issues)
-    'post_processing': None
+    # 'use_vectorcalcs' : False, # whether or not to use the VectorCalcs C++/ROOT library (which is part of this repo). May speed up some computations, but can lead to issues if there's a problem with the ROOT build (e.g. CVMFS/LCG_103 seems to cause issues)
+    'post_processing': [
+        # cluster jets
+        jets.JetFinder('StableTruthParticles',jet_algorithm='anti_kt',radius=0.4,jet_name='AntiKt04GenJets'),
+        jets.JetFinder('StableTruthParticles',jet_algorithm='anti_kt',radius=0.4,jet_name='AntiKt04GenJets_bGhostAssociated').GhostAssociation('TruthParticles',0),
+        jets.JetFinder(['EFlowPhoton','EFlowNeutralHadron','EFlowTrack'],jet_algorithm='anti_kt',radius=0.4,jet_name='AntiKt04EFlowJets'),
+        jets.JetFinder(['EFlowPhoton','EFlowNeutralHadron','EFlowTrack'],jet_algorithm='anti_kt',radius=0.8,jet_name='AntiKt08EFlowJets')
+    ]
 }
 
 # Don't adjust the lines below.
