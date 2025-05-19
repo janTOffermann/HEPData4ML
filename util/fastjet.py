@@ -173,6 +173,9 @@ class JetFinderBase:
     def SetConfigurator(self,configurator):
         self.configurator = configurator
 
+    def SetInputs(self,vecs):
+        self.input_vecs = vecs
+
     def _setupFastJet(self):
         verbose = self.configurator.GetPrintFastjet()
         self.fastjet_setup = FastJetSetup(self.configurator.GetFastjetDirectory(),full_setup=True,verbose=verbose)
@@ -195,7 +198,11 @@ class JetFinderBase:
                 self.jet_algorithm = fj.kt_algorithm
                 return True
 
-        # TODO: C/A algorithm
+        for key in ['c/a','cambridge','aachen']:
+            if(key in self.jet_algorithm_name.lower()):
+                self.jet_algorithm = fj.cambridge_aachen_algorithm
+                return True
+
         return False
 
     def _initialize_jet_definition(self):
@@ -264,7 +271,7 @@ class JetFinderBase:
         self.constituent_vectors_cyl = [x[1] for x in results]
         self.constituent_indices = [x[2] for x in results]
 
-    def _fetchJetConstituentsSingle(self,jet,n_constituents):
+    def _fetchJetConstituentsSingle(self,jet,n_constituents=-1):
         pt,eta,phi,m,e,px,py,pz = np.hsplit(np.array([[x.pt(), x.eta(), x.phi(), x.m(), x.e(), x.px(),x.py(),x.pz()] for x in jet.constituents()]),8)
 
         # The indices of the jet constituents, corresponding with the order in which they
@@ -273,7 +280,9 @@ class JetFinderBase:
 
         # Sort by decreasing pt, and only keep leading constituents.
         sorting = np.argsort(-pt.flatten())
-        l = int(np.minimum(n_constituents,len(pt)))
+        l = len(pt)
+        if(n_constituents > 0):
+            l = int(np.minimum(n_constituents,l))
         vecs = np.vstack([x.flatten() for x in [e,px,py,pz]]).T[sorting][:l]
         vecs_cyl = np.vstack([x.flatten() for x in [pt,eta,phi,m]]).T[sorting][:l]
         indices = indices[sorting][:l]
