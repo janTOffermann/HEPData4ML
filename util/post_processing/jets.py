@@ -299,13 +299,13 @@ class JetFinder(JetFinderBase):
 
         return self
 
-    def Softdrop(self):
+    def Softdrop(self,zcut,beta):
         """
         Lorem ipsum.
 
         Returns self, so this can be chained with the constructor.
         """
-        self.processors.append(softdrop.Softdrop())
+        self.processors.append(softdrop.Softdrop(zcut,beta))
         return self
 
 

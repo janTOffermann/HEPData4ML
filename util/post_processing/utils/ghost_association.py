@@ -4,6 +4,12 @@ import numpy as np
 import itertools
 
 class GhostAssociator():
+    """
+    Ghost-associates jets with particles labeled by `key`,
+    at the given particle indices (within each event).
+
+    See: https://arxiv.org/abs/0802.1188 [JHEP 04 (2008) 005]
+    """
 
     def __init__(self,key,indices):
 
