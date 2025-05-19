@@ -135,6 +135,7 @@ class JetFinderBase:
         self.constituent_vectors = None
         self.constituent_vectors_cyl = None
         self.constituent_indices = None
+        self.user_info = None
 
         self.input_vecs = None
         self.configurator = None
@@ -229,6 +230,13 @@ class JetFinderBase:
         for i,pseudojet in enumerate(pj):
             pseudojet.set_user_index(i)
 
+        # Attach any optional information to the pseudojet objects. This can be leveraged by other classes
+        # or extensions.
+        if(self.user_info is not None):
+            for idx, val in self.user_info.items(): # in practice, val will be a dictionary itself -- allows for attaching multiple things
+                pj[idx].set_python_info(val)
+
+
         # selector = fj.SelectorPtMin(jet_config['jet_min_pt']) & fj.SelectorAbsEtaMax(jet_config['jet_max_eta'])
         # Note: Switched from the old method, this is more verbose but seems to do the same thing anyway.
         self.cluster_sequence = fj.ClusterSequence(pj, self.jetdef) # member of class, otherwise goes out-of-scope when ref'd later
@@ -288,25 +296,6 @@ class JetFinderBase:
         indices = indices[sorting][:l]
 
         return vecs, vecs_cyl, indices
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 class ParticleInfo(object):
