@@ -39,7 +39,6 @@ def embed_array_inplace(array, target, padding_value=0):
 
     # Copy data from array to target
     target[slices] = array_np[slices]
-
     return
 
 # Note: Some functions have a funny-looking structure - they
@@ -189,16 +188,6 @@ class Calculator:
 
     def EPzToRap(self,e,pz):
         return 0.5 * np.log((e + pz)/(e - pz))
-
-    def AdjustPhi(self,phi):
-        """
-        Adjusts phi values so that they lie in [-pi,pi].
-        """
-        phi = np.asarray(phi)
-        phi[phi > np.pi] -= 2.0 * np.pi
-        phi[phi < -np.pi] += 2.0 * np.pi
-        if(phi.shape == (1,)): return phi[0]
-        return phi
 
     def _dPhi(self,phi1,phi2):
         """

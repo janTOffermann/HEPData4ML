@@ -1,9 +1,15 @@
-import os,glob,pathlib
+import os,glob,pathlib,itertools
 import subprocess as sub
 import numpy as np
 import ROOT as rt
+from util.calcs import embed_array_inplace
 
 class JHTaggerSetup:
+    """
+    This class is for setting up the Johns Hopkins top tagger (JHTagger) code.
+    This is some custom C++/ROOT code, that leverages the JHTagger implementation
+    in the Fastjet library.
+    """
     def __init__(self,configurator,jhtagger_dir=None):
         self.SetDirectory(jhtagger_dir)
         self.SetConfigurator(configurator)
@@ -103,17 +109,35 @@ class JHTaggerSetup:
         assert status == 0, 'The JHTagger lib did not load properly.'
         return
 
-class JHTopTagger:
-    def __init__(self,delta_p=0.1,delta_r=0.19,cos_theta_W_max=0.7,top_mass_range=(150.,200.),W_mass_range=(65.,95.)):
+class JohnsHopkinsTagger:
+    """
+    The Johns Hopkins top tagger. This class leverages our custom
+    ROOT::JHTagger::JohnnyTagger() class, that interfaces with the Fastjet
+    JH tagger implementation.
+
+    See: https://arxiv.org/abs/0806.0848 [Phys.Rev.Lett. 101 (2008) 142001]
+
+    """
+    def __init__(self,delta_p=0.1,delta_r=0.19,cos_theta_W_max=0.7,top_mass_range=(150.,200.),W_mass_range=(65.,95.), mode='filter',tag_name=None):
+        self.mode = mode
+        assert self.mode in ['tag','filter']
+        self.tag_name = tag_name
+        self.tags = None
+
+        # Prepare the JHTagger library.
+        self.jh_setup = None
+
+        self.tagger = None
         self.SetDeltaP(delta_p,init=False)
         self.SetDeltaR(delta_r,init=False)
         self.SetCosThetaWMax(cos_theta_W_max,init=False)
         self.SetTopMassRange(*top_mass_range,init=False)
         self.SetWMassRange(*W_mass_range,init=False)
-        self.InitTagger()
+        # self.InitTagger()
 
-        self.status = False
+        self.tag_status = False
         self.w_candidate = None
+        self.w_constituents = None
 
     def SetDeltaP(self,p,init=True):
         self.delta_p = p
@@ -136,17 +160,17 @@ class JHTopTagger:
         if(init): self.InitTagger()
 
     def InitTagger(self):
+        if(self.tagger is not None):
+            del self.tagger # TODO: Is this necessary?
         self.tagger = rt.JHTagger.JohnnyTagger(self.delta_p,self.delta_r,self.cos_theta_W_max,*self.top_mass_range,*self.W_mass_range)
 
-    def TagEvent(self,pmu):
-        # Have to do things like this since fastjet objects on the Python side of things aren't actually identical
-        # to fastjet objects on the C++ side of things. I.e. even if our custom ROOT library's function takes
-        # a fastjet::PseudoJet as an argument, we can't pass it a fastjet.PseudoJet from Python -- it won't
-        # be recognized as the same type.
-        self.tagger.TagJet( pmu[:,0].flatten(), pmu[:,1].flatten(), pmu[:,2].flatten(), pmu[:,3].flatten() )
-        self.status = self.tagger.GetStatus()
+    def _tag(self,vecs):
+        #NOTE: This usage of TagJet() is a bit awkward, but I've had some issues when trying to pass a fastjet.PseudoJet object.
+        #      I think this has to do with some weirdness around the Fastjet Python interface, or Python/C++ interfaces in general.
+        self.tagger.TagJet( vecs[:,0].flatten(), vecs[:,1].flatten(), vecs[:,2].flatten(), vecs[:,3].flatten() )
+        self.tag_status = self.tagger.GetStatus()
         self.w_candidate = None
-        if(self.status):
+        if(self.tag_status):
             try:
                 w = self.tagger.GetWCandidate() # Fastjet::PseudoJet (C++ type, PyROOT seems to handle interface here!)
                 self.w_candidate = np.array([w.e(),w.px(),w.py(),w.pz()]) # TODO: Can this array return be handled by the C++/ROOT class?
@@ -154,18 +178,9 @@ class JHTopTagger:
                 self.w_candidate = np.full(4,np.nan)
         return
 
-    def GetStatus(self):
-        return self.status
-
-    def GetWCandidate(self):
-        return self.w_candidate
-
-    def GetWCandidateConstituents(self):
-        if(not self.status): return None
-        # n = self.tagger.GetWCandidateNConstituents() #TODO: Why does n seem to be 1 too small in some tests?
-        # if(n == 0):
-        #     return None
-        pt = np.array(self.tagger.GetWCandidateConstituentsProperty("pt")) # used for ordering
+    def _getWConstituents(self):
+        if(not self.tag_status): return None
+        pt = np.array(self.tagger.GetWCandidateConstituentsProperty("pt"))
         n = pt.shape[0]
         if(n == 0):
             return None
@@ -177,5 +192,75 @@ class JHTopTagger:
             vecs[:,2] = np.array(self.tagger.GetWCandidateConstituentsProperty("py"))[ordering]
             vecs[:,3] = np.array(self.tagger.GetWCandidateConstituentsProperty("pz"))[ordering]
         except:
-            vecs = np.full((n,4),np.nan)
-        return vecs
+            vecs = None
+        self.w_constituents = vecs
+
+    def ModifyInitialization(self,obj):
+        #NOTE: Might want to move this to constructor, which will need to take obj as input.
+        self.jh_setup = JHTaggerSetup(obj.configurator)
+        # self.jh_setup.SetConfigurator(obj.configurator)
+        self.jh_setup.FullPreparation()
+        self.InitTagger()
+        return
+
+    def ModifyInputs(self,obj):
+        return
+
+    def ModifyJets(self, obj):
+        """
+        This function will tag jets with the JH tagger, and fill the corresponding branches.
+        """
+        import fastjet as fj # NOTE: In practice, fastjet will have been initialized already by JetFinder. Can similarly do this in Softdrop
+
+        # Fetch the jet constituents. This fills obj.constituent_indices
+        obj._fetchJetConstituents()
+
+        self.w_constituents = None
+
+        self.tags = np.full(len(obj.jets),False)
+        w_candidates = len(obj.jets) * [None]
+
+        for i in range(len(obj.constituent_vectors)):
+            self._tag(obj.constituent_vectors[i]) # fills self.tag_status, self.w_candidate
+            self.tags[i] = self.tag_status
+            w_candidates[i] = self.w_candidate
+
+        if(self.mode=='filter'):
+            obj.jets            = list(itertools.compress(obj.jets,self.tags           ))
+            obj._jetsToVectors() # refresh the jet vectors, to deal with the filtering
+            obj._fetchJetConstituents()
+
+    def ModifyConstituents(self, obj):
+        return
+
+    def ModifyWrite(self,obj):
+        if(self.mode=='filter'):
+            return # do nothing
+        else:
+            self._initializeBuffer(obj) # will initialize buffer if it doesn't already exist
+            self._addFlagToBuffer(obj)
+
+    def _initializeBuffer(self,obj):
+        """
+        Used if self.mode=='tag', in which case we're writing all jets,
+        and including a new branch to indicate whether or not a jet is
+        JH-tagged.
+        """
+        #NOTE: I considered saving the specific indices of the particles to which
+        #      each jet is ghost-associated, but I think that gets a bit complicated
+        #      and it's not clear that it would be worthwhile.
+        if(self.tag_name is None):
+            self.tag_name = '{}.JHTag'.format(obj.jet_name)
+        if(self.tag_name not in obj.buffer.keys()):
+            obj.buffer[self.tag_name] = np.full((obj.nevents,obj.n_jets_max),False,dtype=bool)
+        return
+
+    def _addFlagToBuffer(self,obj):
+        """
+        Adds the JH tags to the buffer, for writing.
+        Note that the pT sorting of obj is applied,
+        which will have been filled by obj._ptSort().
+        """
+        #TODO: Is there a cleaner way to handle the pT sorting?
+        #      Is this current implementation robust?
+        embed_array_inplace(self.tags[obj.pt_sorting],obj.buffer[self.tag_name][obj._i])

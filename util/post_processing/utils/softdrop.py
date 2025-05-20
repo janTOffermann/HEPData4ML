@@ -22,7 +22,7 @@ class Softdrop():
 
         self.cluster_sequences = []
 
-    def _initialize_fastjet(self):
+    def _initialize_fastjet(self): #TODO: This can probably be removed, as in practice JetFinder will have taken care of this
         """
         Based on JetFinderBase._initialize_fastjet().
         Not sure if this is really needed in practice.
@@ -69,15 +69,18 @@ class Softdrop():
 
             # Recluster with C/A
             ca_jet = self._recluster(jet)
-            # cluster_sequence = ca_jet.validated_cluster_sequence()
-            # self.cluster_sequences.append(cluster_sequence)
 
             # Now run softdrop
             groomed_jet = self._softdrop(ca_jet)
             new_jets.append(groomed_jet)
 
         obj.jets = new_jets
+        obj._jetsToVectors()
+
         return
+
+    def ModifyWrite(self,obj):
+        return # does nothing
 
     def _recluster(self,jet):
         # Gather the jet constituents, recluster with C/A
@@ -88,6 +91,7 @@ class Softdrop():
         # Store the cluster sequence from jet finder.
         # Need these to not go out-of-scope if constituents are accessed later.
         # This will get refreshed next time self.ModifyJets() is called.
+        # (Python memory management is sometimes quite a pain compared to C++!)
         self.cluster_sequences.append(self.jet_finder.cluster_sequence)
 
         #NOTE: Based on setup, there should only be one jet. Nonetheless, as a precaution
@@ -108,7 +112,6 @@ class Softdrop():
 
         while(current_jet.has_parents(parent1,parent2)):
 
-            # parent1, parent2 = current_jet.parents(cluster_sequence) # NOTE: assuming length = 2
             if(parent2.pt() > parent1.pt()):
                 parent1, parent2 = parent2, parent1
 
@@ -124,10 +127,6 @@ class Softdrop():
 
         if(groomed_jet is None):
             groomed_jet = current_jet # will be whatever the last hard subjet was
-
-        # # Some hackery, to deal with cluster sequences going out-of-scope.
-        # constituents = groomed_jet.constituents()
-        # groomed_jet = fj.join(constituents)
 
         return groomed_jet
 

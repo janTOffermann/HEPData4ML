@@ -136,6 +136,7 @@ class JetFinderBase:
         self.constituent_vectors_cyl = None
         self.constituent_indices = None
         self.user_info = None
+        self.pt_sorting = None # allows access to the sorting array
 
         self.input_vecs = None
         self.configurator = None
@@ -266,11 +267,11 @@ class JetFinderBase:
             return
 
         jet_pt  = np.array([jet.pt() for jet in self.jets])
-        pt_sorting = np.argsort(-jet_pt)
-        if(len(pt_sorting) > self.n_jets_max):
-            pt_sorting = pt_sorting[:self.n_jets_max]
+        self.pt_sorting = np.argsort(-jet_pt)
+        if(len(self.pt_sorting) > self.n_jets_max):
+            self.pt_sorting = self.pt_sorting[:self.n_jets_max]
 
-        self.jets = list(operator.itemgetter(*pt_sorting)(self.jets)) #NOTE: Possibly a little obscure, but maybe more efficient than list comprehension? -Jan
+        self.jets = list(operator.itemgetter(*self.pt_sorting)(self.jets)) #NOTE: Possibly a little obscure, but maybe more efficient than list comprehension? -Jan
         self._jetsToVectors()
 
     def _fetchJetConstituents(self):

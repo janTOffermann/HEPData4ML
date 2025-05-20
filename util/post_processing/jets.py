@@ -9,6 +9,7 @@ from util.calcs import embed_array_inplace
 
 import util.post_processing.utils.ghost_association as ghost_assoc
 import util.post_processing.utils.softdrop as softdrop
+import util.post_processing.utils.jhtagger as jhtagger
 
 class JetFinder(JetFinderBase):
     """
@@ -16,7 +17,7 @@ class JetFinder(JetFinderBase):
     (arbitrary) set of inputs representing four-momenta of some objects.
     """
 
-    def __init__(self, input_collections=['StableTruthParticles'], jet_algorithm='anti_kt',radius=0.4, jet_name='AK04Jets', save_constituents=True, fastjet_dir=None,verbose=False):
+    def __init__(self, input_collections=['StableTruthParticles'], jet_algorithm='anti_kt',radius=0.4, jet_name='AK04Jets', n_jets_max=10,save_constituents=True, fastjet_dir=None,verbose=False):
 
         self.status = False
 
@@ -27,22 +28,12 @@ class JetFinder(JetFinderBase):
         self.min_pt = 15.
         self.max_eta = 4.
         self.constituents_flag = save_constituents
-        self.n_jets_max = 10 # max number of jets to save per event (will be pt-ordered)
+        self.n_jets_max = n_jets_max # max number of jets to save per event (will be pt-ordered)
         self.n_constituents_max = 200 # max number of constituents to save per jet
 
         self.fastjet_dir = fastjet_dir
         self.fastjet_init_flag = False
 
-        # some fastjet-specific vars, for internal usage
-        self.jet_algorithm = None
-        self.jetdef = None
-        self.cluster_sequence = None
-        self.jets = None
-        self.jet_vectors = None
-        self.jet_vectors_cyl = None
-        self.constituent_vectors = None
-        self.constituent_vectors_cyl = None
-        self.constituent_indices = None
         self.buffer = {}
 
         self.input_collection_arrays = None
@@ -207,7 +198,12 @@ class JetFinder(JetFinderBase):
                 self._modifyConstituents()
 
             # now write to buffer
+            # TODO: Will turn the buffer into a more complex object, that outwardly looks like a dictionary
+            #       but takes care of chunking/writing itself.
             self._writeToBuffer()
+
+            # Optional extension of writing to buffer. May be harnessed by some special configurations.
+            self._modifyWrite()
 
             if(self.verbose):
                 printProgressBarColor(self._i+1,self.nevents,prefix=self.progress_bar_prefix,suffix=self.progress_bar_suffix,length=self.progress_bar_length)
@@ -227,6 +223,10 @@ class JetFinder(JetFinderBase):
         for processor in self.processors:
             processor.ModifyJets(self)
         return
+
+    def _modifyWrite(self):
+        for processor in self.processors:
+            processor.ModifyWrite(self)
 
     def _modifyConstituents(self):
         #NOTE: Considering removing this, might cause weird interplay
@@ -273,6 +273,9 @@ class JetFinder(JetFinderBase):
         if(event_index is None):
             event_index = self._i
 
+        if(len(self.jets) == 0):
+            return #TODO: Check that this is OK?
+
         # fill jets
         self.buffer['{}.N'.format(self.jet_name)][event_index] = len(self.jet_vectors)
 
@@ -293,37 +296,41 @@ class JetFinder(JetFinderBase):
     #       These will be member functions that return self, so you can do "constructor().function()" instead of just "constructor()"
     #       and in this way chain together a complex configuration without the constructor having to take a huge number of args.
 
-    def GhostAssociation(self,truth_key,truth_indices):
+    def GhostAssociation(self,truth_key,truth_indices,mode='filter',tag_name=None):
         """
-        This function sets up ghost association, so that
+        This function performs ghost association, so that
         we will only return jets are that ghost-associated
         to particles from the branch corresponding with truth_key,
         at the indices specified by truth_indices.
 
-        We achieve this by modifying the behavior of the
-        _modifyInputs() and _modifyJets() functions.
+        With mode=='filter', it will filter out non-associated jets.
+        With mode=='tag', it will save a ghost association flag to the output.
 
         Returns self, so this can be chained with the constructor.
         """
 
-        self.processors.append(ghost_assoc.GhostAssociator(truth_key,truth_indices))
-
-        # NOTE: Using a so-called "observer" pattern instead.
-        # Lambdas might be nicer for dealing with arguments, but maybe it is simpler to just stuff
-        # those into the processor constructor? If not, can always switch to a different paradigm.
-
-        # self._modifyInitialization = lambda: ghost_assoc.ModifyInitialization(self,truth_key, truth_indices)
-        # self._modifyInputs = lambda: ghost_assoc.ModifyInputs(self,truth_key)
-        # self._modifyJets = lambda: ghost_assoc.ModifyJets(self, truth_key)
-        # self._modifyConstituents = lambda: ghost_assoc.ModifyConstituents(self, truth_key)
-
+        self.processors.append(ghost_assoc.GhostAssociator(truth_key,truth_indices,mode,tag_name))
         return self
 
     def Softdrop(self,zcut,beta):
         """
-        Lorem ipsum.
+        This function performs the softdrop algorithm.
 
         Returns self, so this can be chained with the constructor.
         """
         self.processors.append(softdrop.Softdrop(zcut,beta))
+        return self
+
+    def JohnsHopkinsTagger(self,delta_p=0.1,delta_r=0.19,cos_theta_W_max=0.7,top_mass_range=(150.,200.),W_mass_range=(65.,95.), mode='filter',tag_name=None):
+        """
+        This function performs top-tagging via
+        the Johns Hopkins top tagger.
+
+        With mode=='filter', it will filter out non-associated jets.
+        With mode=='tag', it will save a ghost association flag to the output.
+
+        Returns self, so this can be chained with the constructor.
+        """
+
+        self.processors.append(jhtagger.JohnsHopkinsTagger(delta_p,delta_r,cos_theta_W_max,top_mass_range,W_mass_range,mode,tag_name))
         return self
