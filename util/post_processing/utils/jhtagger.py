@@ -314,6 +314,6 @@ class JohnsHopkinsTagger:
         embed_array_inplace(self.w_candidates[obj.pt_sorting],obj.buffer[self.w_name][obj._i])
         embed_array_inplace(self.w_candidates_cyl[obj.pt_sorting],obj.buffer[self.w_name + '_cyl'][obj._i])
 
-        embed_array_inplace(self.n_constituents,obj.buffer[self.w_nconst_name][obj._i])
+        embed_array_inplace(self.n_constituents[obj.pt_sorting],obj.buffer[self.w_nconst_name][obj._i])
         embed_array_inplace(self.w_constituents[obj.pt_sorting],obj.buffer[self.w_constituents_name][obj._i])
         embed_array_inplace(self.w_constituents_cyl[obj.pt_sorting],obj.buffer[self.w_constituents_name + '_cyl'][obj._i])
