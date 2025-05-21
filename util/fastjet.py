@@ -263,7 +263,7 @@ class JetFinderBase:
         Sorts jets by decreasing pT, and truncates to
         take only the first self.n_jets_max jets.
         """
-        if len(self.jets) <= 1:
+        if(len(self.jets) < 1):
             return
 
         jet_pt  = np.array([jet.pt() for jet in self.jets])
@@ -271,7 +271,10 @@ class JetFinderBase:
         if(len(self.pt_sorting) > self.n_jets_max):
             self.pt_sorting = self.pt_sorting[:self.n_jets_max]
 
-        self.jets = list(operator.itemgetter(*self.pt_sorting)(self.jets)) #NOTE: Possibly a little obscure, but maybe more efficient than list comprehension? -Jan
+        if(len(self.jets) == 1): #TODO: Weird behaviour otherwise
+            self.jets = [self.jets[self.pt_sorting[0]]]
+        else:
+            self.jets = list(operator.itemgetter(*self.pt_sorting)(self.jets)) #NOTE: Possibly a little obscure, but maybe more efficient than list comprehension? -Jan
         self._jetsToVectors()
 
     def _fetchJetConstituents(self):
