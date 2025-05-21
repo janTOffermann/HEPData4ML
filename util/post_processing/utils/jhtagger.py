@@ -153,7 +153,6 @@ class JohnsHopkinsTagger:
         self.w_constituents = None
         self.w_constituents_cyl = None
 
-
         self.n_w_constituents_max = n_w_constituents_max
 
     def SetDeltaP(self,p,init=True):
@@ -301,7 +300,6 @@ class JohnsHopkinsTagger:
         #TODO: Is there a cleaner way to handle the pT sorting?
         #      Is this current implementation robust?
         embed_array_inplace(self.tags[obj.pt_sorting],obj.buffer[self.tag_name][obj._i])
-
 
     def _addWToBuffer(self,obj):
         """
