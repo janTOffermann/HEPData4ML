@@ -312,14 +312,24 @@ class JetFinder(JetFinderBase):
         self.processors.append(ghost_assoc.GhostAssociator(truth_key,truth_indices,mode,tag_name))
         return self
 
-    def Softdrop(self,zcut,beta):
+    def Softdrop(self,z_cut,beta):
         """
         This function performs the softdrop algorithm.
 
         Returns self, so this can be chained with the constructor.
         """
-        self.processors.append(softdrop.Softdrop(zcut,beta))
+        self.processors.append(softdrop.Softdrop(z_cut,beta))
         return self
+
+    def IteratedSoftdrop(self,z_cut,beta,dR_cut,max_depth=10,mode='tag'):
+        """
+        This function performs the iterated softdrop algorithm.
+
+        Returns self, so this can be chained with the constructor.
+        """
+        self.processors.append(softdrop.IteratedSoftdrop(z_cut,beta,dR_cut,max_depth,mode))
+        return self
+
 
     def JohnsHopkinsTagger(self,delta_p=0.1,delta_r=0.19,cos_theta_W_max=0.7,top_mass_range=(150.,200.),W_mass_range=(65.,95.), mode='filter',tag_name=None):
         """
