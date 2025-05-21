@@ -41,6 +41,8 @@ def embed_array_inplace(array, target, padding_value=0):
     target[slices] = array_np[slices]
     return
 
+
+class Calculator:
 # Note: Some functions have a funny-looking structure - they
 #       will try to use our custom "VectorCalcs" C++/ROOT library,
 #       but fall back on pure Python if there is an issue. This is
@@ -49,8 +51,6 @@ def embed_array_inplace(array, target, padding_value=0):
 #       have not been able to reproduce elsewhere. It involves
 #       an error with "cling JIT" not being able to allocate
 #       memory, so this is a bit of a workaround. - Jan
-
-class Calculator:
     def __init__(self, use_vectorcalcs=True):
         self.vc_manager = VectorCalcsManager()
         self.use_vectorcalcs = use_vectorcalcs

@@ -10,7 +10,10 @@ from util.hepmc import CreateFullHepMCEvent, HepMCOutput
 from util.qol_utils.misc import RN
 from util.qol_utils.progress_bar import printProgressBarColor
 
-class Generator:
+class PythiaGenerator:
+    """
+    Generates events using Pythia8.
+    """
     def __init__(self, pt_min, pt_max, configurator, pythia_rng=None, pythia_config_file=None, verbose=False):
         self.configurator = configurator
         self.pt_min = pt_min
@@ -39,7 +42,6 @@ class Generator:
         self.SetHistFilename('hists.root')
         self.SetFilename('events.hepmc')
         self.stats_filename = 'stats.h5'
-        self.SetIndexOverlapFilename() # will give a default name
         self.SetEventFilterFlagFilename() # will give a default name
         self.filename_fullpath = None
 
@@ -114,7 +116,6 @@ class Generator:
         self.SetFilename('events.hepmc')
         self.SetHistFilename('hists.root')
         self.stats_filename = 'stats.h5'
-        self.SetIndexOverlapFilename()
         self.SetEventFilterFlagFilename()
 
     def SetProgressBar(self,flag):
@@ -135,7 +136,6 @@ class Generator:
             name = '{}.hepmc'.format(name)
         self.filename = name
         if(rename_extra_files):
-            self.SetIndexOverlapFilename(None)
             self.SetEventFilterFlagFilename(None)
         return
 
@@ -154,18 +154,10 @@ class Generator:
     def GetHistFilename(self):
         return self.hist_filename
 
-    def SetIndexOverlapFilename(self,name=None):
-        if(name is None): self.fs_truth_overlap_filename = self.filename.replace('.hepmc','_final-state_truth_overlap_indices.h5')
-        else: self.fs_truth_overlap_filename = name
-        return
-
     def SetEventFilterFlagFilename(self,name=None):
         if(name is None): self.event_filter_flag_filename = self.filename.replace('.hepmc','_event_filter_flag.h5')
         else: self.event_filter_flag_filename = name
         return
-
-    def GetIndexOverlapFilename(self):
-        return self.fs_truth_overlap_filename
 
     def GetEventFilterFlagFilename(self):
         return self.event_filter_flag_filename
@@ -372,21 +364,6 @@ class Generator:
     # We do perform event selection: Only certain particles are saved to the file to begin with.
     def Generate(self,nevents):
         self.nevents = nevents # total number of events we request
-
-        # File for keeping track of any particle indices that correspond with particles saved in *both*
-        # our "final-state" and "truth" selections. Indices are stored in two ways:
-        #   1) with respect to how they appear in the final-state HepMC3 files, and
-        #   2) with respect to how they appear in the truth selection HepMC3 files.
-        #
-        # This may be useful for studying Delphes output, e.g. keeping track of which calorimeter towers were
-        # hit by stable daughters of a W-boson (which were selected by "final-state" and "truth" selectors).
-        fs_truth_overlap_filename_full = '{}/{}'.format(self.outdir,self.fs_truth_overlap_filename)
-        try: sub.check_call(['rm',fs_truth_overlap_filename_full],stderr=sub.DEVNULL)
-        except: pass
-
-        # # Get the Fastjet banner out of the way # TODO: This should be done elsewhere.
-        # tmp = InitFastJet()
-        # del tmp
 
         if(self.progress_bar): printProgressBarColor(0,nevents, prefix=self.prefix, suffix=self.suffix, length=self.bl)
 
