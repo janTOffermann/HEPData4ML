@@ -1,4 +1,4 @@
-import sys, glob, uuid, itertools
+import glob, uuid, itertools
 import numpy as np
 import h5py as h5
 import ROOT as rt
@@ -24,23 +24,12 @@ class Processor:
 
         self.outdir = ''
 
-        # self.hist_filename = 'hists.root'
-        # self.diagnostic_plots = True
-        # self.InitializeHists()
-
-        self.separate_truth_particles = False
-        self.n_separate_truth_particles = -1
-
         self.cluster_sequence = None
         self.jets = None
         self.jets_filtered = None
 
         # self.SetRecordFinalStateIndices(False)
         self.SetPostProcessing()
-
-        self.SetRecordFullFinalState(False) # by default we don't want this, it may significantly increase filesize!
-
-        # self.calculator = Calculator(use_vectorcalcs=self.configurator.GetUseVectorCalcs())
 
         # Data buffer
         self.data = {}
@@ -114,9 +103,6 @@ class Processor:
             'pdg':None
         }
 
-    def SetRecordFullFinalState(self,flag):
-        self.record_full_final_state = flag
-
     def SetProgressBarPrefix(self,text):
         self.prefix_level1 = text
 
@@ -139,12 +125,6 @@ class Processor:
 
     def SetStatsFile(self,filename):
         self.stats_file = filename
-
-    def SetSeparateTruthParticles(self,flag):
-        self.separate_truth_particles = flag
-
-    def SetNSeparateTruthParticles(self,n):
-        self.n_separate_truth_particles = n
 
     def SetVerbosity(self,flag):
         self.verbose = flag
@@ -177,8 +157,6 @@ class Processor:
 
         ## Extract final-state truth particle info from the HepMC files.
         hepmc_events, nentries = ExtractHepMCEvents(hepmc_files,get_nevents=True)
-
-        # self.PrepDataBuffer(self.nentries_per_chunk,self.separate_truth_particles,self.n_separate_truth_particles,self.record_final_state_indices,self.record_full_final_state)
 
         # Some indexing preparation for writing in chunks.
         start_idxs,stop_idxs,ranges = self.PrepIndexRanges(nentries,self.nevents_per_chunk)
@@ -349,13 +327,12 @@ class Processor:
             self.data[key][:] = embed_array(value_array,self.data[key].shape)
         return
 
-    def PostProcess(self,hepmc_files, h5_files=None, indices_files=None):
+    def PostProcess(self,hepmc_files, h5_files=None):
         if(self.post_processing is None):
             return
         nfiles = len(hepmc_files)
         # if(truth_files is not None): assert(nfiles == len(truth_files)) # TODO: may have to rework some of this logic
         if(h5_files is not None): assert(nfiles == len(h5_files))
-        if(indices_files is not None): assert(nfiles == len(indices_files))
 
         for post_proc in self.post_processing:
             if(post_proc is None): continue
