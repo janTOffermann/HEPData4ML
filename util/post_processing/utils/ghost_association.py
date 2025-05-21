@@ -23,6 +23,7 @@ class GhostAssociator():
 
         self.tag_name=tag_name
         self.tags = None
+        self.print_prefix = '\n\t\tGhostAssociator'
 
     def _makeGhosts(self,vecs, a=1.0e-10):
 
@@ -140,4 +141,8 @@ class GhostAssociator():
         embed_array_inplace(self.tags[obj.pt_sorting],obj.buffer[self.tag_name][obj._i])
 
     def ModifyConstituents(self, obj):
+        return
+
+    def _print(self,val):
+        print('{}: {}'.format(self.print_prefix,val))
         return

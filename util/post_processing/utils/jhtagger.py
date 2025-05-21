@@ -155,6 +155,8 @@ class JohnsHopkinsTagger:
 
         self.n_w_constituents_max = n_w_constituents_max
 
+        self.print_prefix = '\n\t\tJohnsHopkinsTagger'
+
     def SetDeltaP(self,p,init=True):
         self.delta_p = p
         if(init): self.InitTagger()
@@ -297,8 +299,7 @@ class JohnsHopkinsTagger:
         Note that the pT sorting of obj is applied,
         which will have been filled by obj._ptSort().
         """
-        #TODO: Is there a cleaner way to handle the pT sorting?
-        #      Is this current implementation robust?
+
         embed_array_inplace(self.tags[obj.pt_sorting],obj.buffer[self.tag_name][obj._i])
 
     def _addWToBuffer(self,obj):
@@ -315,3 +316,7 @@ class JohnsHopkinsTagger:
         embed_array_inplace(self.n_constituents[obj.pt_sorting],obj.buffer[self.w_nconst_name][obj._i])
         embed_array_inplace(self.w_constituents[obj.pt_sorting],obj.buffer[self.w_constituents_name][obj._i])
         embed_array_inplace(self.w_constituents_cyl[obj.pt_sorting],obj.buffer[self.w_constituents_name + '_cyl'][obj._i])
+
+    def _print(self,val):
+        print('{}: {}'.format(self.print_prefix,val))
+        return
