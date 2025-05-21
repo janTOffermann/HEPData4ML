@@ -23,6 +23,8 @@ class Softdrop:
 
         self.cluster_sequences = []
 
+        self.print_prefix = '\n\t\tSoftdrop'
+
     def _initialize_fastjet(self): #TODO: This can probably be removed, as in practice JetFinder will have taken care of this
         """
         Based on JetFinderBase._initialize_fastjet().
@@ -76,7 +78,8 @@ class Softdrop:
             new_jets.append(groomed_jet)
 
         obj.jets = new_jets
-        obj._jetsToVectors()
+        obj._ptSort() # TODO: Check this.
+        # obj._jetsToVectors()
 
         return
 
@@ -134,13 +137,16 @@ class Softdrop:
     def ModifyConstituents(self, obj):
         return
 
+    def _print(self,val):
+        print('{}: {}'.format(self.print_prefix,val))
+        return
 
 class IteratedSoftdrop:
     """
     Performs the Iterated Softdrop (ISD) algorithm.
     See: https://arxiv.org/abs/1704.06266 [JHEP 09 (2017) 083]
     """
-
+    # TODO: Inherit from Softdrop()?
     def __init__(self,zcut,beta, dR_cut, max_depth=5, mode='prune',name='IteratedSoftDrop'):
 
         self.zcut = zcut
@@ -161,6 +167,8 @@ class IteratedSoftdrop:
         self.dRi = None
 
         self.cluster_sequences = []
+
+        self.print_prefix = '\n\t\tIterated Softdrop'
 
     def ModifyInitialization(self,obj):
         # Take the opportunity to set up FastJet.
@@ -209,7 +217,9 @@ class IteratedSoftdrop:
 
         if(self.mode=='prune'):
             obj.jets = new_jets
-            obj._jetsToVectors()
+            obj._ptSort() # TODO: Forces pt-sorting, which may be relevant/intended if there will be other post-processors chained after this.
+            #Should double-check this doesn't break things somehow.
+            # obj._jetsToVectors() # not needed if calling pbj._ptSort()
 
         return
 
@@ -315,3 +325,6 @@ class IteratedSoftdrop:
         embed_array_inplace(self.zi[obj.pt_sorting],obj.buffer[self.zi_name][obj._i])
         embed_array_inplace(self.dRi[obj.pt_sorting],obj.buffer[self.dRi_name][obj._i])
 
+    def _print(self,val):
+        print('{}: {}'.format(self.print_prefix,val))
+        return

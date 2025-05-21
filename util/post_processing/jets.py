@@ -10,6 +10,7 @@ from util.calcs import embed_array_inplace
 import util.post_processing.utils.ghost_association as ghost_assoc
 import util.post_processing.utils.softdrop as softdrop
 import util.post_processing.utils.jhtagger as jhtagger
+import util.post_processing.utils.jet_filter as jet_filter
 
 class JetFinder(JetFinderBase):
     """
@@ -296,6 +297,14 @@ class JetFinder(JetFinderBase):
     #       These will be member functions that return self, so you can do "constructor().function()" instead of just "constructor()"
     #       and in this way chain together a complex configuration without the constructor having to take a huge number of args.
 
+    def PtFilter(self,pt_min=15.):
+        self.processors.append(jet_filter.PtFilter(pt_min))
+        return self
+
+    def EtaFilter(self,eta_max=2.):
+        self.processors.append(jet_filter.EtaFilter(eta_max))
+        return self
+
     def GhostAssociation(self,truth_key,truth_indices,mode='filter',tag_name=None):
         """
         This function performs ghost association, so that
@@ -329,7 +338,6 @@ class JetFinder(JetFinderBase):
         """
         self.processors.append(softdrop.IteratedSoftdrop(z_cut,beta,dR_cut,max_depth,mode))
         return self
-
 
     def JohnsHopkinsTagger(self,delta_p=0.1,delta_r=0.19,cos_theta_W_max=0.7,top_mass_range=(150.,200.),W_mass_range=(65.,95.), mode='filter',tag_name=None):
         """
