@@ -263,6 +263,10 @@ class JetFinderBase:
         Sorts jets by decreasing pT, and truncates to
         take only the first self.n_jets_max jets.
         """
+
+        # TODO: Here, or in another dedicated function, we also need to sort any other branches
+        #       associated with these jets. For example, tags from the JHTagger processor.
+
         if(len(self.jets) < 1):
             return
 
@@ -271,11 +275,22 @@ class JetFinderBase:
         if(len(self.pt_sorting) > self.n_jets_max):
             self.pt_sorting = self.pt_sorting[:self.n_jets_max]
 
+        # # If sorting is unchanged -- i.e. the jets were already sorted -- return now,
+        # # avoiding extra calls to self._jetsToVectors() and self._fetchJetConstituents()
+        # if(len(self.pt_sorting) == len(jet_pt)):
+        #     if(np.sum(self.pt_sorting == np.arange(len(jet_pt))) == len(jet_pt)): # TODO: Too contrived? Effectively an element-wise comparison of bool arrays.
+        #         return
+
         if(len(self.jets) == 1): #TODO: Weird behaviour otherwise
             self.jets = [self.jets[self.pt_sorting[0]]]
         else:
             self.jets = list(operator.itemgetter(*self.pt_sorting)(self.jets)) #NOTE: Possibly a little obscure, but maybe more efficient than list comprehension? -Jan
         self._jetsToVectors()
+
+        # As an extra precaution, we will refresh the constituent vectors,
+        # at the risk of doing it unnecessarily.
+        # TODO: Is this OK? Could add unnecessary computation time if this function is called a lot.
+        self._fetchJetConstituents()
 
     def _fetchJetConstituents(self):
         results = [self._fetchJetConstituentsSingle(jet, self.n_constituents_max) for jet in self.jets]
@@ -284,6 +299,11 @@ class JetFinderBase:
         self.constituent_indices = [x[2] for x in results]
 
     def _fetchJetConstituentsSingle(self,jet,n_constituents=-1):
+
+        # TODO: Understand if/when this is called on a jet without constituents (i.e. a base PseudoJet).
+        if(not jet.has_constituents()):
+            return np.empty((0, 4)), np.empty((0, 4)), np.empty((0, 4)) # TODO: Is this OK?
+
         pt,eta,phi,m,e,px,py,pz = np.hsplit(np.array([[x.pt(), x.eta(), x.phi(), x.m(), x.e(), x.px(),x.py(),x.pz()] for x in jet.constituents()]),8)
 
         # The indices of the jet constituents, corresponding with the order in which they
@@ -300,7 +320,6 @@ class JetFinderBase:
         indices = indices[sorting][:l]
 
         return vecs, vecs_cyl, indices
-
 
 class ParticleInfo(object):
     """Illustrative class for use in assigning pythonic user information

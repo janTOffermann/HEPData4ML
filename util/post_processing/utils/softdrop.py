@@ -10,9 +10,8 @@ class Softdrop:
 
     Note: Keep in mind that based on how JetFinder is structured,
           the soft-dropped jets will be pT-sorted *after* the softdrop.
-          Thus if you have a separate JetFinder producing the same jets
-          but without softdrop, they might not line up jet-by-jet, because
-          performing softdrop will change the jet pT and thus possibly ordering.
+          This is important to remember if comparing the resulting jets
+          to a branch produced by a duplicate JetFinder *without* softdrop.
     """
 
     def __init__(self,zcut,beta):
@@ -20,6 +19,7 @@ class Softdrop:
         self.zcut = zcut
         self.beta = beta
         self.jet_finder = JetFinderBase()
+        self.jets = []
 
         self.cluster_sequences = []
 
@@ -62,7 +62,7 @@ class Softdrop:
         This involves re-clustering jets with the C/A algorithm.
         """
         # self.old_jets = [] # prevent the pre-softdrop jets from immediately going out-of-scope
-        new_jets = []
+        self.jets = []
 
         # We must store cluster sequences, otherwise they will go out-of-scope.
         # This is an issue if we try to access jet constituents later.
@@ -75,11 +75,13 @@ class Softdrop:
 
             # Now run softdrop
             groomed_jet = self._softdrop(ca_jet)
-            new_jets.append(groomed_jet)
+            self.jets.append(groomed_jet)
 
-        obj.jets = new_jets
-        obj._ptSort() # TODO: Check this.
-        # obj._jetsToVectors()
+        # TODO: debug
+        assert len(obj.jets) == len(self.jets)
+
+        obj.jets = self.jets
+        obj._ptSort()
 
         return
 
@@ -100,7 +102,7 @@ class Softdrop:
 
         #NOTE: Based on setup, there should only be one jet. Nonetheless, as a precaution
         #      we will take the leading (highest-pT) one.
-        jet_pt = [x.pt for x in self.jet_finder.jets]
+        jet_pt = [x.pt() for x in self.jet_finder.jets]
         ca_jet = self.jet_finder.jets[np.argmax(jet_pt)]
         return ca_jet
 
@@ -153,6 +155,7 @@ class IteratedSoftdrop:
         self.beta = beta
         self.dR_cut = dR_cut
         self.jet_finder = JetFinderBase()
+        self.jets = []
 
         self.max_depth = max_depth
         self.mode = mode.lower()
@@ -198,7 +201,7 @@ class IteratedSoftdrop:
         Depending on the run mode, this may actually modify the jets,
         or it may simply compute the ISD observables.
         """
-        new_jets = []
+        self.jets = []
         self.zi =  np.zeros((obj.n_jets_max,self.max_depth))
         self.dRi = np.zeros((obj.n_jets_max,self.max_depth))
 
@@ -213,10 +216,10 @@ class IteratedSoftdrop:
 
             # Now run softdrop
             groomed_jet = self._softdrop(ca_jet,i) # also fills self.zi, self.dRi for this jet
-            new_jets.append(groomed_jet)
+            self.jets.append(groomed_jet)
 
         if(self.mode=='prune'):
-            obj.jets = new_jets
+            obj.jets = self.jets
             obj._ptSort() # TODO: Forces pt-sorting, which may be relevant/intended if there will be other post-processors chained after this.
             #Should double-check this doesn't break things somehow.
             # obj._jetsToVectors() # not needed if calling pbj._ptSort()
