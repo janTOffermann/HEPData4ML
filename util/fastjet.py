@@ -275,11 +275,11 @@ class JetFinderBase:
         if(len(self.pt_sorting) > self.n_jets_max):
             self.pt_sorting = self.pt_sorting[:self.n_jets_max]
 
-        # # If sorting is unchanged -- i.e. the jets were already sorted -- return now,
-        # # avoiding extra calls to self._jetsToVectors() and self._fetchJetConstituents()
-        # if(len(self.pt_sorting) == len(jet_pt)):
-        #     if(np.sum(self.pt_sorting == np.arange(len(jet_pt))) == len(jet_pt)): # TODO: Too contrived? Effectively an element-wise comparison of bool arrays.
-        #         return
+        # If sorting is unchanged -- i.e. the jets were already sorted -- return now,
+        # avoiding extra calls to self._jetsToVectors() and self._fetchJetConstituents()
+        if(len(self.pt_sorting) == len(jet_pt)):
+            if(np.sum(self.pt_sorting == np.arange(len(jet_pt))) == len(jet_pt)): # TODO: Too contrived? Effectively an element-wise comparison of bool arrays.
+                return
 
         if(len(self.jets) == 1): #TODO: Weird behaviour otherwise
             self.jets = [self.jets[self.pt_sorting[0]]]
