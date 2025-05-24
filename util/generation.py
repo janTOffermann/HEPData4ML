@@ -45,7 +45,7 @@ class PythiaGenerator:
         self.SetEventFilterFlagFilename() # will give a default name
         self.filename_fullpath = None
 
-        self.diagnostic_plots = True
+        # self.diagnostic_plots = True
         # self.InitializeHistograms()
 
         # Containers for event-level information.
@@ -125,8 +125,8 @@ class PythiaGenerator:
         if(dir is None): dir = os.getcwd()
         self.outdir = dir
 
-    def SetDiagnosticPlots(self,flag):
-        self.diagnostic_plots = flag
+    # def SetDiagnosticPlots(self,flag):
+    #     self.diagnostic_plots = flag
 
     def SetHistFilename(self,name):
         self.hist_filename = name
@@ -182,61 +182,61 @@ class PythiaGenerator:
         self.pythia.ReadStringsFromFile(self.pythia_config_file)
         self.pythia.InitializePythia()
 
-    def InitializeHistograms(self):
-        #TODO: DEPRECATED
-        self.hists = []
-        self.hist_fs_pdgid = rt.TH1D(RN(),'Final-state particles;Particle;Count',47,0.,47)
-        self.hists.append(self.hist_fs_pdgid)
+    # def InitializeHistograms(self):
+    #     #TODO: DEPRECATED
+    #     self.hists = []
+    #     self.hist_fs_pdgid = rt.TH1D(RN(),'Final-state particles;Particle;Count',47,0.,47)
+    #     self.hists.append(self.hist_fs_pdgid)
 
-        # Initialize histograms for sum of energy, E_T and p_T for final-state particles.
-        self.kinematic_hists = {}
-        hist_binning = (1000,0.,1000.)
+    #     # Initialize histograms for sum of energy, E_T and p_T for final-state particles.
+    #     self.kinematic_hists = {}
+    #     hist_binning = (1000,0.,1000.)
 
-        for key,key_insert in zip(('all','invisible','visible'),('',' (invisibles)',' (visibles)')):
-            d = {}
-            d['e'] = rt.TH1D(RN(),'#sum Energy {};E [GeV];Count'.format(key_insert),*hist_binning)
-            d['et'] = rt.TH1D(RN(),'#sum ET {};ET [GeV];Count'.format(key_insert).replace('ET','E_{T}'),*hist_binning)
-            d['pt'] = rt.TH1D(RN(),'#sum pT {};pT [GeV];Count'.format(key_insert).replace('pT','p_{T}'),*hist_binning)
-            self.kinematic_hists[key] = d
-            for h in d.values():
-                self.hists.append(h)
+    #     for key,key_insert in zip(('all','invisible','visible'),('',' (invisibles)',' (visibles)')):
+    #         d = {}
+    #         d['e'] = rt.TH1D(RN(),'#sum Energy {};E [GeV];Count'.format(key_insert),*hist_binning)
+    #         d['et'] = rt.TH1D(RN(),'#sum ET {};ET [GeV];Count'.format(key_insert).replace('ET','E_{T}'),*hist_binning)
+    #         d['pt'] = rt.TH1D(RN(),'#sum pT {};pT [GeV];Count'.format(key_insert).replace('pT','p_{T}'),*hist_binning)
+    #         self.kinematic_hists[key] = d
+    #         for h in d.values():
+    #             self.hists.append(h)
 
-    def OutputHistograms(self):
-        #TODO: DEPRECATED
-        hist_filename = '{}/{}'.format(self.outdir,self.hist_filename)
-        f = rt.TFile(hist_filename,'UPDATE')
-        for i,h in enumerate(self.hists):
-            canvas_name = 'c_{}'.format(i)
-            hist_name = 'h_{}'.format(i)
-            c = rt.TCanvas(canvas_name,'',800,600)
+    # def OutputHistograms(self):
+    #     #TODO: DEPRECATED
+    #     hist_filename = '{}/{}'.format(self.outdir,self.hist_filename)
+    #     f = rt.TFile(hist_filename,'UPDATE')
+    #     for i,h in enumerate(self.hists):
+    #         canvas_name = 'c_{}'.format(i)
+    #         hist_name = 'h_{}'.format(i)
+    #         c = rt.TCanvas(canvas_name,'',800,600)
 
-            if(i == 0): # pdg_hist
-                pdg_names_inv = {}
-                for key,val in pdg_plotcodes.items():
-                    code = val
-                    name = pdg_names[key]
-                    pdg_names_inv[code] = name
+    #         if(i == 0): # pdg_hist
+    #             pdg_names_inv = {}
+    #             for key,val in pdg_plotcodes.items():
+    #                 code = val
+    #                 name = pdg_names[key]
+    #                 pdg_names_inv[code] = name
 
-                n = h.GetNbinsX()
-                xaxis = h.GetXaxis()
-                for j in range(n):
-                    if(j == 0): name = ''
-                    else:
-                        try: name = pdg_names_inv[j]
-                        except: name = ''
-                    xaxis.SetBinLabel(j+1,name)
-                xaxis.SetLabelSize(2.0e-2)
-                rt.gPad.SetGrid(1,0)
-            else: rt.gPad.SetGrid()
+    #             n = h.GetNbinsX()
+    #             xaxis = h.GetXaxis()
+    #             for j in range(n):
+    #                 if(j == 0): name = ''
+    #                 else:
+    #                     try: name = pdg_names_inv[j]
+    #                     except: name = ''
+    #                 xaxis.SetBinLabel(j+1,name)
+    #             xaxis.SetLabelSize(2.0e-2)
+    #             rt.gPad.SetGrid(1,0)
+    #         else: rt.gPad.SetGrid()
 
-            h.Draw('HIST')
-            rt.gPad.SetLogy()
-            c.Draw()
-            f.cd() # unnecessary
-            # c.Write(canvas_name)
-            h.Write(hist_name)
-        f.Close()
-        return
+    #         h.Draw('HIST')
+    #         rt.gPad.SetLogy()
+    #         c.Draw()
+    #         f.cd() # unnecessary
+    #         # c.Write(canvas_name)
+    #         h.Write(hist_name)
+    #     f.Close()
+    #     return
 
     def SetBufferSize(self,size=100):
         self.buffer_size = size
@@ -400,7 +400,6 @@ class PythiaGenerator:
         f.create_dataset('cross_section_uncertainty',data=self.xsecs[:,1],compression=compression,compression_opts=copts)
         f.close()
 
-        # if(self.diagnostic_plots): self.OutputHistograms()
         return
 
     # Get the MC event weights (will typically just be 1 for each event).

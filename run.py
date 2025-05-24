@@ -35,7 +35,6 @@ def main(args):
     parser.add_argument('-o',            '--outfile',           type=str,          default='events.h5',      help='Output HDF5 file name.')
     parser.add_argument('-O',            '--outdir',            type=none_or_str,  default=None,             help='Output directory.')
     parser.add_argument('-g',            '--generation',        type=int,          default=True,             help='Whether or not to do event generation.')
-    parser.add_argument('-d',            '--diagnostic_plots',  type=int,          default=False,            help='Whether or not to make diagnostic plots.')
     parser.add_argument('-v',            '--verbose',           type=int,          default=0,                help='Verbosity.')
     parser.add_argument('-h5',           '--hdf5',              type=int,          default=1,                help='Whether or not to produce final HDF5 files. If false, stops after HepMC or Delphes/ROOT file production.')
     parser.add_argument('-f',            '--force',             type=int,          default=0,                help='Whether or not to force generation -- if true, will possibly overwrite existing HepMC files in output directory.')
@@ -73,7 +72,6 @@ def main(args):
     h5_file = args['outfile']
     outdir = args['outdir']
     do_generation =args['generation'] > 0 # TODO: Find nicer way to handle Boolean -- argparse is weird.
-    diagnostic_plots = args['diagnostic_plots'] > 0
     verbose = args['verbose'] > 0
     do_h5 = args['hdf5']
     compress_hepmc = args['compress']
@@ -165,9 +163,7 @@ def main(args):
     delphes_files = []
     jet_files = []
     truth_files = []
-    hist_files = []
     stat_files = []
-    final_state_truth_overlap_indices_files = [] # only used in certain cases, these files record indices of particles that show up in both truth and final-state selections (indices w.r.t. final-state HepMC files)
     filter_flag_files = [] # only used in certain cases, these files hold a boolean flag given by the "event_filter_flag"
 
     # Prepare the output directory.
@@ -234,7 +230,7 @@ def main(args):
         extra_data_file = hep_file.replace('.hepmc','_data.h5')
         generator.SetStatsFilename(extra_data_file)
         generator.SetEventFilterFlagFilename(extra_data_file)
-        generator.SetDiagnosticPlots(diagnostic_plots)
+        # generator.SetDiagnosticPlots(diagnostic_plots)
         generator.SetProgressBar(progress_bar)
 
         hepfile_exists = pathlib.Path('{}/{}'.format(outdir,hep_file)).exists()
@@ -250,7 +246,6 @@ def main(args):
 
         stat_files.append(generator.GetStatsFilename())
         filter_flag_files.append(generator.GetEventFilterFlagFilename())
-        hist_files.append(generator.GetHistFilename())
         hepmc_files.append(hep_file)
 
         if(use_delphes): # Case 1: Using Delphes
@@ -267,7 +262,6 @@ def main(args):
                 print('\tDelphes card: {}'.format(delphes_card))
 
             delphes_file = delphes_wrapper.HepMC3ToDelphes(hepmc_file=hep_file, output_file=delphes_file, cwd=outdir, delphes_card=delphes_card)
-            # jet_files.append(delphes_file)
             delphes_files.append(delphes_file)
 
             # We can now delete or compress the HepMC file. If it's compressed, we delete the original file to recover space.
@@ -276,15 +270,6 @@ def main(args):
 
         else: # Case 2: No Delphes
             jet_files.append(hep_file)
-
-    # Join together the histogram ROOT files.
-    hist_filename = 'hists.root'
-    if(do_generation and diagnostic_plots):
-        comm = ['hadd', hist_filename]
-        comm += hist_files
-        sub.check_call(comm,cwd=outdir,stderr=sub.DEVNULL,stdout=sub.DEVNULL)
-        comm = ['rm'] + hist_files
-        sub.check_call(comm,cwd=outdir)
 
     # Optionally stop here, if we're not interested in progressing beyond HepMC or Delphes/ROOT.
     if(not do_h5):
