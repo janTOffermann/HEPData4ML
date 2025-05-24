@@ -72,7 +72,7 @@ class GhostAssociator():
 
         for i in range(len(obj.input_vecs)):
             ghost_dict = {'GhostAssociation:Ghost':(i < len(ghost_vecs))}
-            obj.AddUserInfo(i,ghost_dict)
+            obj.AddUserInfo(i,ghost_dict) # TODO: Fetch existing UserInfo first, and add this instead? Don't want to accidentally overwrite something else.
         return
 
     def ModifyJets(self, obj):
@@ -84,23 +84,29 @@ class GhostAssociator():
         """
         import fastjet as fj # NOTE: In practice, fastjet will have been initialized already by JetFinder. Can similarly do this in Softdrop
 
-        # Fetch the jet constituents. This fills obj.constituent_indices
+        # Fetch the jet constituents. This fills obj.constituent_indices -- good to do for safety.
         obj._fetchJetConstituents()
 
-        self.tags = np.full(len(obj.jets),False)
+        # store tags in a dictionary, where the keys are the jet indices from obj
+        self.tags = {key:False for key in obj.jets_dict.keys()}
 
-        for i,jet in enumerate(obj.jets):
-            ghost_mask = np.array([x.python_info()['GhostAssociation:Ghost'] for x in jet.constituents()])
+        for i,jet in obj.jets_dict.items():
+            ghost_mask = [False]
+            if(jet.has_constituents()):
+                ghost_mask = np.array([x.python_info()['GhostAssociation:Ghost'] for x in jet.constituents()])
             self.tags[i] = np.sum(ghost_mask) > 0
 
             # For the jets with ghosts, modify them to remove the ghost --
-            # we don't want to pass it to anyfurther steps.
+            # we don't want to pass it to any further steps.
             if(self.tags[i]):
-                obj.jets[i] = fj.join([x for x in list(itertools.compress(list(jet.constituents()),~ghost_mask))])
+                obj.jets_dict[i] = fj.join([x for x in list(itertools.compress(list(jet.constituents()),~ghost_mask))])
 
         if(self.mode=='filter'):
-            obj.jets            = list(itertools.compress(obj.jets,self.tags           ))
-            obj._jetsToVectors() # refresh the jet vectors, to deal with the filtering
+
+            obj.jet_ordering = [key for key in obj.jet_ordering if self.tags[key]]
+            obj._updateJetDictionary()
+            # Refresh vectors and constituents -- always need to do this if we filter jets_dict.
+            obj._jetsToVectors()
             obj._fetchJetConstituents()
         # else:
         #     for i,entry in enumerate(self.tags):
@@ -132,13 +138,10 @@ class GhostAssociator():
 
     def _addFlagToBuffer(self,obj):
         """
-        Adds the JH tags to the buffer, for writing.
-        Note that the pT sorting of obj is applied,
-        which will have been filled by obj._ptSort().
+        Adds the ghost association tags to the buffer, for writing.
         """
-        #TODO: Is there a cleaner way to handle the pT sorting?
-        #      Is this current implementation robust?
-        embed_array_inplace(self.tags[obj.pt_sorting],obj.buffer[self.tag_name][obj._i])
+
+        embed_array_inplace([self.tags[i] for i in obj.jet_ordering],obj.buffer[self.tag_name][obj._i])
 
     def ModifyConstituents(self, obj):
         return

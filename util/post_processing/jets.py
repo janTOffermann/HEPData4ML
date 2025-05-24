@@ -26,8 +26,6 @@ class JetFinder(JetFinderBase):
         self.jet_algorithm_name = jet_algorithm
         self.jet_name = jet_name
         self.radius = radius
-        self.min_pt = 15.
-        self.max_eta = 4.
         self.constituents_flag = save_constituents
         self.n_jets_max = n_jets_max # max number of jets to save per event (will be pt-ordered)
         self.n_constituents_max = 200 # max number of constituents to save per jet
@@ -73,12 +71,6 @@ class JetFinder(JetFinderBase):
         collections = ['{}.Pmu'.format(collection) for collection in collections]
 
         self.input_collections = collections
-
-    def SetMaxEta(self,eta):
-        self.max_eta = np.abs(eta)
-
-    def SetMinPt(self,pt):
-        self.min_pt = pt # GeV
 
     def SetNConstituentsMax(self,n):
         self.n_constituents_max = n
@@ -183,7 +175,7 @@ class JetFinder(JetFinderBase):
             # Optional modification of inputs. May be harnessed by some special configurations.
             self._modifyInputs()
 
-            self._clusterJets() # fills self.jets
+            self._clusterJets() # fills self.jets_dict
 
             # Optional modification of jets. May be harnessed by some special configurations.
             self._modifyJets()
@@ -209,6 +201,12 @@ class JetFinder(JetFinderBase):
             if(self.verbose):
                 printProgressBarColor(self._i+1,self.nevents,prefix=self.progress_bar_prefix,suffix=self.progress_bar_suffix,length=self.progress_bar_length)
         return
+
+    # def _ptSort(self):
+    #     super()._ptSort()
+
+    #     # Now, we also have to apply the new sorting to entries in any branches of our buffer
+    #     # that are "related" to the jets. For example, if we have a
 
     def _modifyInitialization(self):
         for processor in self.processors:
@@ -274,22 +272,26 @@ class JetFinder(JetFinderBase):
         if(event_index is None):
             event_index = self._i
 
-        if(len(self.jets) == 0):
+        if(len(self.jets_dict) == 0):
             return #TODO: Check that this is OK?
 
         # fill jets
         self.buffer['{}.N'.format(self.jet_name)][event_index] = len(self.jet_vectors)
 
-        embed_array_inplace(self.jet_vectors,self.buffer['{}.Pmu'.format(self.jet_name)][event_index])
-        embed_array_inplace(self.jet_vectors_cyl,self.buffer['{}.Pmu_cyl'.format(self.jet_name)][event_index])
+        embed_array_inplace(np.vstack([self.jet_vectors[i] for i in self.jet_ordering]),self.buffer['{}.Pmu'.format(self.jet_name)][event_index])
+        embed_array_inplace(np.vstack([self.jet_vectors_cyl[i] for i in self.jet_ordering]),self.buffer['{}.Pmu_cyl'.format(self.jet_name)][event_index])
+
+        # embed_array_inplace(self.jet_vectors,self.buffer['{}.Pmu'.format(self.jet_name)][event_index])
+        # embed_array_inplace(self.jet_vectors_cyl,self.buffer['{}.Pmu_cyl'.format(self.jet_name)][event_index])
 
         # fill jet constituents
         if(self.constituents_flag):
-            embed_array_inplace([len(x) for x in self.constituent_vectors], self.buffer['{}.Constituents.N'.format(self.jet_name)][event_index])
+            embed_array_inplace([len(self.constituent_vectors[i]) for i in self.jet_ordering], self.buffer['{}.Constituents.N'.format(self.jet_name)][event_index])
 
-            for i in range(len(self.constituent_vectors)):
-                embed_array_inplace(self.constituent_vectors[i],self.buffer['{}.Constituents.Pmu'.format(self.jet_name)][event_index,i])
-                embed_array_inplace(self.constituent_vectors_cyl[i],self.buffer['{}.Constituents.Pmu_cyl'.format(self.jet_name)][event_index,i])
+            # Now we loop, as we're embedding what is really jagged information
+            for i,j in enumerate(self.jet_ordering):
+                embed_array_inplace(self.constituent_vectors[j],self.buffer['{}.Constituents.Pmu'.format(self.jet_name)][event_index,i])
+                embed_array_inplace(self.constituent_vectors_cyl[j],self.buffer['{}.Constituents.Pmu_cyl'.format(self.jet_name)][event_index,i])
         return
 
     # NOTE: Will define various functions for performing some modifications to clustering or post-processing of results.
