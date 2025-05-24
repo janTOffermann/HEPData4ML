@@ -62,26 +62,26 @@ class Softdrop:
         This involves re-clustering jets with the C/A algorithm.
         """
         # self.old_jets = [] # prevent the pre-softdrop jets from immediately going out-of-scope
-        self.jets = []
+        self.jets = {}
 
         # We must store cluster sequences, otherwise they will go out-of-scope.
         # This is an issue if we try to access jet constituents later.
         self.cluster_sequences = []
 
-        for jet in obj.jets:
+        for i,jet in obj.jets_dict.items():
 
             # Recluster with C/A
             ca_jet = self._recluster(jet)
 
             # Now run softdrop
             groomed_jet = self._softdrop(ca_jet)
-            self.jets.append(groomed_jet)
+            self.jets[i] = groomed_jet
 
         # TODO: debug
-        assert len(obj.jets) == len(self.jets)
+        assert len(obj.jets_dict) == len(self.jets)
 
-        obj.jets = self.jets
-        obj._ptSort()
+        obj.jets_dict = self.jets # safe to modify this directly, as no jets are destroyed by the above
+        obj._ptSort() # re-sorts obj.jet_ordering
 
         return
 
@@ -102,8 +102,9 @@ class Softdrop:
 
         #NOTE: Based on setup, there should only be one jet. Nonetheless, as a precaution
         #      we will take the leading (highest-pT) one.
-        jet_pt = [x.pt() for x in self.jet_finder.jets]
-        ca_jet = self.jet_finder.jets[np.argmax(jet_pt)]
+
+        self.jet_finder._ptSort()
+        ca_jet = self.jet_finder.jets_dict[self.jet_finder.jet_ordering[0]]
         return ca_jet
 
     def _softdrop(self,jet):
@@ -117,6 +118,11 @@ class Softdrop:
         parent2 = fj.PseudoJet()
 
         while(current_jet.has_parents(parent1,parent2)):
+
+            # Edge case: both jets have pt = 0. Can happen if there's no filtering ahead of this processor.
+            if(parent1.pt() == 0. and parent2.pt() == 0.):
+                current_jet = parent1
+                continue
 
             if(parent2.pt() > parent1.pt()):
                 parent1, parent2 = parent2, parent1
@@ -201,29 +207,29 @@ class IteratedSoftdrop:
         Depending on the run mode, this may actually modify the jets,
         or it may simply compute the ISD observables.
         """
-        self.jets = []
-        self.zi =  np.zeros((obj.n_jets_max,self.max_depth))
-        self.dRi = np.zeros((obj.n_jets_max,self.max_depth))
+        self.jets = {}
+        # self.zi =  np.zeros((obj.n_jets_max,self.max_depth))
+        # self.dRi = np.zeros((obj.n_jets_max,self.max_depth))
+
+        self.zi = {i:np.zeros(self.max_depth) for i in obj.jets_dict.keys()}
+        self.dRi = {i:np.zeros(self.max_depth) for i in obj.jets_dict.keys()}
 
         # We must store cluster sequences, otherwise they will go out-of-scope.
         # This is an issue if we try to access jet constituents later.
         self.cluster_sequences = []
 
-        for i,jet in enumerate(obj.jets):
+        for i,jet in obj.jets_dict.items():
 
             # Recluster with C/A
             ca_jet = self._recluster(jet)
 
             # Now run softdrop
             groomed_jet = self._softdrop(ca_jet,i) # also fills self.zi, self.dRi for this jet
-            self.jets.append(groomed_jet)
+            self.jets[i] = groomed_jet
 
         if(self.mode=='prune'):
-            obj.jets = self.jets
-            obj._ptSort() # TODO: Forces pt-sorting, which may be relevant/intended if there will be other post-processors chained after this.
-            #Should double-check this doesn't break things somehow.
-            # obj._jetsToVectors() # not needed if calling pbj._ptSort()
-
+            obj.jets_dict = self.jets # safe to modify this directly, as no jets are destroyed by the above
+            obj._ptSort() # re-sort obj.jet_sorting
         return
 
     def ModifyWrite(self,obj):
@@ -245,8 +251,8 @@ class IteratedSoftdrop:
 
         #NOTE: Based on setup, there should only be one jet. Nonetheless, as a precaution
         #      we will take the leading (highest-pT) one.
-        jet_pt = [x.pt for x in self.jet_finder.jets]
-        ca_jet = self.jet_finder.jets[np.argmax(jet_pt)]
+        self.jet_finder._ptSort()
+        ca_jet = self.jet_finder.jets_dict[self.jet_finder.jet_ordering[0]]
         return ca_jet
 
     def _softdrop(self,jet,i):
@@ -261,6 +267,11 @@ class IteratedSoftdrop:
         parent2 = fj.PseudoJet()
 
         while(current_jet.has_parents(parent1,parent2)):
+
+            # Edge case: both jets have pt = 0. Can happen if there's no filtering ahead of this processor.
+            if(parent1.pt() == 0. and parent2.pt() == 0.):
+                current_jet = parent1
+                continue
 
             if(parent2.pt() > parent1.pt()):
                 parent1, parent2 = parent2, parent1
@@ -278,8 +289,8 @@ class IteratedSoftdrop:
 
                 # save the Zi and dRi
                 if(N < self.max_depth):
-                    self.zi[i,N] = z
-                    self.dRi[i,N] = dR
+                    self.zi[i][N] = z
+                    self.dRi[i][N] = dR
 
                 # iterate the counter
                 N += 1
@@ -325,8 +336,9 @@ class IteratedSoftdrop:
         """
         #NOTE: The embed is not needed, since we've constructed the inputs and the buffer to already match in size.
         #      The zero-padding is actually being handled within self.ModifyJets(), where the embed function is used.
-        embed_array_inplace(self.zi[obj.pt_sorting],obj.buffer[self.zi_name][obj._i])
-        embed_array_inplace(self.dRi[obj.pt_sorting],obj.buffer[self.dRi_name][obj._i])
+
+        embed_array_inplace(np.vstack([self.zi[i] for i in obj.jet_ordering]),obj.buffer[self.zi_name][obj._i])
+        embed_array_inplace(np.vstack([self.dRi[i] for i in obj.jet_ordering]),obj.buffer[self.dRi_name][obj._i])
 
     def _print(self,val):
         print('{}: {}'.format(self.print_prefix,val))

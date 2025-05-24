@@ -225,30 +225,40 @@ class JohnsHopkinsTagger:
         """
         import fastjet as fj # NOTE: In practice, fastjet will have been initialized already by JetFinder. Can similarly do this in Softdrop
 
-        # Fetch the jet constituents. This fills obj.constituent_indices
+        # Fetch the jet constituents, just to be safe -- this makes sure that they are up-to-date.
         obj._fetchJetConstituents()
 
-        n = len(obj.jets)
-        self.tags = np.full(n,False)
-        self.w_candidates     = np.full((n,4),0.)
-        self.w_candidates_cyl = np.full((n,4),0.)
-        self.n_constituents = np.full(n,0,dtype=np.dtype('i4'))
-        self.w_constituents = np.full((n,self.n_w_constituents_max, 4),0.)
-        self.w_constituents_cyl = np.full((n,self.n_w_constituents_max, 4),0.)
+        self.tags = {i:False for i in obj.jets_dict.keys()}
+        self.w_candidates = {i:np.zeros(4) for i in obj.jets_dict.keys()}
+        self.w_candidates_cyl = {i:np.zeros(4) for i in obj.jets_dict.keys()}
+        self.n_constituents = {i:0 for i in obj.jets_dict.keys()}
+        self.w_constituents = {i:np.zeros((self.n_w_constituents_max,4)) for i in obj.jets_dict.keys()}
+        self.w_constituents_cyl = {i:np.zeros((self.n_w_constituents_max,4)) for i in obj.jets_dict.keys()}
 
-        for i in range(len(obj.constituent_vectors)):
-            self._tag(obj.constituent_vectors[i]) # fills self.tag_status, self.w_candidate
-            self.tags[i] = self.tag_status
-            self.w_candidates[i] = self.w_candidate
-            if(self.tag_status): # if not tagged, there is no W -- can safely skip
+        for key in obj.jets_dict.keys():
+            self._tag(obj.constituent_vectors[key]) # fills self.tag_status, self.w_candidate
+            self.tags[key] = self.tag_status
+            if(self.tag_status): # if not tagged, there is no W -- so we can safely skip filling
                 self._getWConstituents() # fills self.w_constituent, self.w_constituent_cyl
-                self.n_constituents[i] = len(self.w_constituent)
-                embed_array_inplace(self.w_constituent,self.w_constituents[i])
-                embed_array_inplace(self.w_constituent_cyl,self.w_constituents_cyl[i])
+                self.n_constituents[key] = len(self.w_constituent)
+                embed_array_inplace(self.w_constituent,self.w_constituents[key])
+                embed_array_inplace(self.w_constituent_cyl,self.w_constituents_cyl[key])
+
+        # for i in range(len(obj.constituent_vectors)):
+        #     self._tag(obj.constituent_vectors[i]) # fills self.tag_status, self.w_candidate
+        #     self.tags[i] = self.tag_status
+        #     self.w_candidates[i] = self.w_candidate
+        #     if(self.tag_status): # if not tagged, there is no W -- can safely skip
+        #         self._getWConstituents() # fills self.w_constituent, self.w_constituent_cyl
+        #         self.n_constituents[i] = len(self.w_constituent)
+        #         embed_array_inplace(self.w_constituent,self.w_constituents[i])
+        #         embed_array_inplace(self.w_constituent_cyl,self.w_constituents_cyl[i])
 
         if(self.mode=='filter'):
-            obj.jets            = list(itertools.compress(obj.jets,self.tags           ))
-            obj._jetsToVectors() # refresh the jet vectors, to deal with the filtering
+            obj.jet_ordering = [key for key in obj.jet_ordering if self.tags[key]]
+            obj._updateJetDictionary()
+            # Refresh vectors and constituents -- always need to do this if we filter jets_dict.
+            obj._jetsToVectors()
             obj._fetchJetConstituents()
 
     def ModifyConstituents(self, obj):
@@ -300,7 +310,7 @@ class JohnsHopkinsTagger:
         which will have been filled by obj._ptSort().
         """
 
-        embed_array_inplace(self.tags[obj.pt_sorting],obj.buffer[self.tag_name][obj._i])
+        embed_array_inplace([self.tags[i] for i in obj.jet_ordering],obj.buffer[self.tag_name][obj._i])
 
     def _addWToBuffer(self,obj):
         """
@@ -310,12 +320,12 @@ class JohnsHopkinsTagger:
         """
         #NOTE: The embed is not needed, since we've constructed the inputs and the buffer to already match in size.
         #      The zero-padding is actually being handled within self.ModifyJets(), where the embed function is used.
-        embed_array_inplace(self.w_candidates[obj.pt_sorting],obj.buffer[self.w_name][obj._i])
-        embed_array_inplace(self.w_candidates_cyl[obj.pt_sorting],obj.buffer[self.w_name + '_cyl'][obj._i])
+        embed_array_inplace([self.w_candidates[i] for i in obj.jet_ordering],obj.buffer[self.w_name][obj._i])
+        embed_array_inplace([self.w_candidates_cyl[i] for i in obj.jet_ordering],obj.buffer[self.w_name + '_cyl'][obj._i])
 
-        embed_array_inplace(self.n_constituents[obj.pt_sorting],obj.buffer[self.w_nconst_name][obj._i])
-        embed_array_inplace(self.w_constituents[obj.pt_sorting],obj.buffer[self.w_constituents_name][obj._i])
-        embed_array_inplace(self.w_constituents_cyl[obj.pt_sorting],obj.buffer[self.w_constituents_name + '_cyl'][obj._i])
+        embed_array_inplace([self.n_constituents[i] for i in obj.jet_ordering],obj.buffer[self.w_nconst_name][obj._i])
+        embed_array_inplace([self.w_constituents[i] for i in obj.jet_ordering],obj.buffer[self.w_constituents_name][obj._i])
+        embed_array_inplace([self.w_constituents_cyl[i] for i in obj.jet_ordering],obj.buffer[self.w_constituents_name + '_cyl'][obj._i])
 
     def _print(self,val):
         print('{}: {}'.format(self.print_prefix,val))

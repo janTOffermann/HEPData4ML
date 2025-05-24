@@ -105,6 +105,20 @@ class FastJetSetup:
         self.SetPythonDirectory()
         return
 
+# class JetCollection:
+#     """
+#     Since JetFinderBase deals with a collection of jets,
+#     that a bunch of different functions/classes act on,
+#     and which we might (re)sort multiple times, this is
+#     a helper class that makes an object that behaves much
+#     like a dictionary or list, and keeps track of the historical
+#     ordering of the jets.
+#     """
+#     def __init__(self,jet_list):
+#         self.jet_dict = {i:jet for i,jet in enumerate(jet_list)}
+
+
+
 
 class JetFinderBase:
     """
@@ -119,8 +133,6 @@ class JetFinderBase:
         self.jet_algorithm_name = ''
         self.jet_name = ''
         self.radius = 0.4
-        self.min_pt = 0.
-        self.max_eta = 10.
 
         self.fastjet_dir = fastjet_dir
         self.fastjet_init_flag = False
@@ -129,7 +141,8 @@ class JetFinderBase:
         self.jet_algorithm = None
         self.jetdef = None
         self.cluster_sequence = None
-        self.jets = None
+        # self.jets = None
+        self.jets_dict = None
         self.jet_vectors = None
         self.jet_vectors_cyl = None
         self.constituent_vectors = None
@@ -137,9 +150,13 @@ class JetFinderBase:
         self.constituent_indices = None
         self.user_info = None
         self.pt_sorting = None # allows access to the sorting array
+        self.n_jets_max = None
+        self.n_constituents_max = None
 
         self.input_vecs = None
         self.configurator = None
+
+        self.jet_ordering = None
 
     def _initialize_fastjet(self):
 
@@ -159,12 +176,6 @@ class JetFinderBase:
             import fastjet as fj # This is where fastjet is really imported & cached by Python, but there may be other import statements peppered throughout since this has limited scope.
             self.fastjet_init_flag = True
         return
-
-    def SetMaxEta(self,eta):
-        self.max_eta = np.abs(eta)
-
-    def SetMinPt(self,pt):
-        self.min_pt = pt # GeV
 
     def SetNConstituentsMax(self,n):
         self.n_constituents_max = n
@@ -241,62 +252,94 @@ class JetFinderBase:
         # selector = fj.SelectorPtMin(jet_config['jet_min_pt']) & fj.SelectorAbsEtaMax(jet_config['jet_max_eta'])
         # Note: Switched from the old method, this is more verbose but seems to do the same thing anyway.
         self.cluster_sequence = fj.ClusterSequence(pj, self.jetdef) # member of class, otherwise goes out-of-scope when ref'd later
-        self.jets = self.cluster_sequence.inclusive_jets()
-
-        # Now we will apply our (optional) pt and eta cuts to the jets.
-        # TODO: Make this a post-processor of the jets.
-        jet_eta = np.array([jet.eta() for jet in self.jets])
-        jet_pt  = np.array([jet.pt()  for jet in self.jets])
-
-        selected_eta = np.where(np.abs(jet_eta) <= np.abs(self.max_eta))[0]
-        selected_pt  = np.where(jet_pt          >= self.min_pt )[0]
-        selected = np.sort(np.intersect1d(selected_eta, selected_pt)) # TODO: Is the sort needed?
-        self.jets = [self.jets[x] for x in selected]
+        # self.jets = self.cluster_sequence.inclusive_jets()
+        self.jets_dict = {i:jet for i,jet in enumerate(self.cluster_sequence.inclusive_jets())}
+        self.jet_ordering = np.arange(len(self.jets_dict))
         self._jetsToVectors()
 
     def _jetsToVectors(self):
-        self.jet_vectors = np.array([[x.e(), x.px(), x.py(),x.pz()] for x in self.jets])
-        self.jet_vectors_cyl = np.array([[x.pt(), x.eta(), x.phi(),x.m()] for x in self.jets])
+        """
+        This function fills self.jet_vectors and self.jet_vectors_cyl, to contain the four-momenta
+        of whatever jets are currently in self.jets.
+        """
+        # self.jet_vectors = np.array([[x.e(), x.px(), x.py(),x.pz()] for x in self.jets])
+        # self.jet_vectors_cyl = np.array([[x.pt(), x.eta(), x.phi(),x.m()] for x in self.jets])
 
-    def _ptSort(self):
+        self.jet_vectors = {i:np.array([jet.e(), jet.px(), jet.py(),jet.pz()]) for i,jet in self.jets_dict.items()}
+        self.jet_vectors_cyl = {i:np.array([jet.pt(), jet.eta(), jet.phi(),jet.m()]) for i,jet in self.jets_dict.items()}
+
+    def _ptSort(self, truncate=True):
         """
         Sorts jets by decreasing pT, and truncates to
         take only the first self.n_jets_max jets.
+
+        This is accomplished by modifying self.jet_ordering.
         """
 
         # TODO: Here, or in another dedicated function, we also need to sort any other branches
         #       associated with these jets. For example, tags from the JHTagger processor.
 
-        if(len(self.jets) < 1):
+        if(len(self.jets_dict) < 1): # no jets -> nothing to do
             return
 
-        jet_pt  = np.array([jet.pt() for jet in self.jets])
+        jet_pt = np.array([self.jets_dict[i].pt() for i in self.jet_ordering])
         self.pt_sorting = np.argsort(-jet_pt)
-        if(len(self.pt_sorting) > self.n_jets_max):
-            self.pt_sorting = self.pt_sorting[:self.n_jets_max]
 
-        # If sorting is unchanged -- i.e. the jets were already sorted -- return now,
-        # avoiding extra calls to self._jetsToVectors() and self._fetchJetConstituents()
-        if(len(self.pt_sorting) == len(jet_pt)):
-            if(np.sum(self.pt_sorting == np.arange(len(jet_pt))) == len(jet_pt)): # TODO: Too contrived? Effectively an element-wise comparison of bool arrays.
-                return
+        if(self.n_jets_max is not None):
+            if((len(self.pt_sorting) > self.n_jets_max) and truncate):
+                self.pt_sorting = self.pt_sorting[:self.n_jets_max]
 
-        if(len(self.jets) == 1): #TODO: Weird behaviour otherwise
-            self.jets = [self.jets[self.pt_sorting[0]]]
+        # # If sorting is unchanged -- i.e. the jets were already sorted -- return now,
+        # # avoiding extra calls to self._jetsToVectors() and self._fetchJetConstituents()
+        # if(len(self.pt_sorting) == len(jet_pt)):
+        #     if(np.sum(self.pt_sorting == np.arange(len(jet_pt))) == len(jet_pt)): # TODO: Too contrived? Effectively an element-wise comparison of bool arrays.
+        #         return
+
+        # print('Lengths: self.pt_sorting = {}, self.jet_ordering = {}'.format(len(self.pt_sorting),len(self.jet_ordering)))
+
+        if(len(self.pt_sorting) == 1):
+            self.jet_ordering = [self.jet_ordering[self.pt_sorting[0]]]
         else:
-            self.jets = list(operator.itemgetter(*self.pt_sorting)(self.jets)) #NOTE: Possibly a little obscure, but maybe more efficient than list comprehension? -Jan
-        self._jetsToVectors()
+            self.jet_ordering = list(operator.itemgetter(*self.pt_sorting)(self.jet_ordering))
+
+        if(len(self.jet_ordering) != len(self.jets_dict)):
+            # remove entries from jets_dict, that correspond with entries in jet_ordering that have been dropped
+            self._updateJetDictionary()
+
+            # We will also recompute the jet vectors, to account for any that have been dropped.
+            # Note that due to the dictionary-based approach, we don't have to recompute this if
+            # the jet ordering has simply changed.
+            self._jetsToVectors()
+
+            # Also refresh constituents.
+            self._fetchJetConstituents()
+
+
+        # if(len(self.jets) == 1): #TODO: Weird behaviour otherwise
+        #     self.jets = [self.jets[self.pt_sorting[0]]]
+        # else:
+        #     self.jets = list(operator.itemgetter(*self.pt_sorting)(self.jets)) #NOTE: Possibly a little obscure, but maybe more efficient than list comprehension? -Jan
+        # self._jetsToVectors()
 
         # As an extra precaution, we will refresh the constituent vectors,
         # at the risk of doing it unnecessarily.
         # TODO: Is this OK? Could add unnecessary computation time if this function is called a lot.
         self._fetchJetConstituents()
 
+    def _updateJetDictionary(self):
+        """
+        To be used when self.jet_ordering is updated.
+        """
+        for key in list(self.jets_dict.keys()):
+            if(key not in self.jet_ordering):
+                del self.jets_dict[key]
+        return
+
     def _fetchJetConstituents(self):
-        results = [self._fetchJetConstituentsSingle(jet, self.n_constituents_max) for jet in self.jets]
-        self.constituent_vectors = [x[0] for x in results]
-        self.constituent_vectors_cyl = [x[1] for x in results]
-        self.constituent_indices = [x[2] for x in results]
+        results = {i:self._fetchJetConstituentsSingle(jet, self.n_constituents_max) for i,jet in self.jets_dict.items()}
+        self.constituent_vectors = {i:x[0] for i,x in results.items()}
+        self.constituent_vectors_cyl = {i:x[1] for i,x in results.items()}
+        self.constituent_indices = {i:x[2] for i,x in results.items()}
 
     def _fetchJetConstituentsSingle(self,jet,n_constituents=-1):
 
@@ -313,7 +356,7 @@ class JetFinderBase:
         # Sort by decreasing pt, and only keep leading constituents.
         sorting = np.argsort(-pt.flatten())
         l = len(pt)
-        if(n_constituents > 0):
+        if((n_constituents is not None) and n_constituents > 0):
             l = int(np.minimum(n_constituents,l))
         vecs = np.vstack([x.flatten() for x in [e,px,py,pz]]).T[sorting][:l]
         vecs_cyl = np.vstack([x.flatten() for x in [pt,eta,phi,m]]).T[sorting][:l]

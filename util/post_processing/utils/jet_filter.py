@@ -22,17 +22,18 @@ class PtFilter:
         """
         This function apply the pt filter.
         """
-        # self.old_jets = [] # prevent the pre-softdrop jets from immediately going out-of-scope
-        new_jets = []
+        tags = {i:False for i in obj.jets_dict.keys()}
 
-        for jet in obj.jets:
+        for i,jet in obj.jets_dict.items():
             if(jet.pt() > self.pt_min):
-                new_jets.append(jet)
+                tags[i] = True
 
-        obj.jets = new_jets
+        obj.jet_ordering = [key for key in obj.jet_ordering if tags[key]]
+        obj._updateJetDictionary()
+        # Refresh vectors and constituents -- always need to do this if we filter jets_dict.
         obj._ptSort()
-        # obj._jetsToVectors()
-
+        obj._jetsToVectors()
+        obj._fetchJetConstituents()
         return
 
     def ModifyWrite(self,obj):
@@ -67,17 +68,18 @@ class EtaFilter:
         """
         This function apply the eta filter.
         """
-        # self.old_jets = [] # prevent the pre-softdrop jets from immediately going out-of-scope
-        new_jets = []
+        tags = {i:False for i in obj.jets_dict.keys()}
 
-        for jet in obj.jets:
+        for i,jet in obj.jets_dict.items():
             if(np.abs(jet.eta()) < self.eta_max):
-                new_jets.append(jet)
+                tags[i] = True
 
-        obj.jets = new_jets
+        obj.jet_ordering = [key for key in obj.jet_ordering if tags[key]]
+        obj._updateJetDictionary()
+        # Refresh vectors and constituents -- always need to do this if we filter jets_dict.
         obj._ptSort()
-        # obj._jetsToVectors()
-
+        obj._jetsToVectors()
+        obj._fetchJetConstituents()
         return
 
     def ModifyWrite(self,obj):
