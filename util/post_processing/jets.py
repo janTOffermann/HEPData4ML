@@ -3,14 +3,17 @@
 import subprocess as sub
 import numpy as np
 import h5py as h5
+from typing import Dict, Any, Tuple, Optional # experimenting with typing
 from util.fastjet import JetFinderBase
 from util.qol_utils.progress_bar import printProgressBarColor
 from util.calcs import embed_array_inplace
+from util.buffer import Buffer
 
 import util.post_processing.utils.ghost_association as ghost_assoc
 import util.post_processing.utils.softdrop as softdrop
 import util.post_processing.utils.jhtagger as jhtagger
 import util.post_processing.utils.jet_filter as jet_filter
+
 
 class JetFinder(JetFinderBase):
     """
@@ -33,7 +36,7 @@ class JetFinder(JetFinderBase):
         self.fastjet_dir = fastjet_dir
         self.fastjet_init_flag = False
 
-        self.buffer = {}
+        self.buffer = Buffer(100)
 
         self.input_collection_arrays = None
         self.input_vecs = None
@@ -180,8 +183,8 @@ class JetFinder(JetFinderBase):
             # Optional modification of jets. May be harnessed by some special configurations.
             self._modifyJets()
 
-            # Pt-sort the jets, and truncate to some fixed length
-            self._ptSort()
+            # Pt-sort the jets, and truncate to fixed length given by self.n_jets_max
+            self._ptSort(truncate=True)
 
             # optionally extract information on jet constituents
             if(self.constituents_flag):
@@ -201,12 +204,6 @@ class JetFinder(JetFinderBase):
             if(self.verbose):
                 printProgressBarColor(self._i+1,self.nevents,prefix=self.progress_bar_prefix,suffix=self.progress_bar_suffix,length=self.progress_bar_length)
         return
-
-    # def _ptSort(self):
-    #     super()._ptSort()
-
-    #     # Now, we also have to apply the new sorting to entries in any branches of our buffer
-    #     # that are "related" to the jets. For example, if we have a
 
     def _modifyInitialization(self):
         for processor in self.processors:
@@ -288,7 +285,8 @@ class JetFinder(JetFinderBase):
         if(self.constituents_flag):
             embed_array_inplace([len(self.constituent_vectors[i]) for i in self.jet_ordering], self.buffer['{}.Constituents.N'.format(self.jet_name)][event_index])
 
-            # Now we loop, as we're embedding what is really jagged information
+            # Now we loop, as we're embedding what is really jagged information.
+            # TODO: Is there another way? I suspect this slows down things a bit.
             for i,j in enumerate(self.jet_ordering):
                 embed_array_inplace(self.constituent_vectors[j],self.buffer['{}.Constituents.Pmu'.format(self.jet_name)][event_index,i])
                 embed_array_inplace(self.constituent_vectors_cyl[j],self.buffer['{}.Constituents.Pmu_cyl'.format(self.jet_name)][event_index,i])
