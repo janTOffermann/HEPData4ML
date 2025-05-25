@@ -268,7 +268,7 @@ class JetFinderBase:
         self.jet_vectors = {i:np.array([jet.e(), jet.px(), jet.py(),jet.pz()]) for i,jet in self.jets_dict.items()}
         self.jet_vectors_cyl = {i:np.array([jet.pt(), jet.eta(), jet.phi(),jet.m()]) for i,jet in self.jets_dict.items()}
 
-    def _ptSort(self, truncate=True):
+    def _ptSort(self, truncate=False):
         """
         Sorts jets by decreasing pT, and truncates to
         take only the first self.n_jets_max jets.
