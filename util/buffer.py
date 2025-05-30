@@ -1,29 +1,17 @@
-import pathlib
+import sys,pathlib
 import numpy as np
 import h5py as h5
 from typing import Dict, Any, Tuple, Optional
 from abc import ABC, abstractmethod
+# # Needed for the test function
+# import os
+# this_dir = os.path.dirname(os.path.abspath(__file__))
+# sys.path.append(str(pathlib.Path('{}/../'.format(this_dir)).absolute()))
+from util.calcs import embed_array
 
-def embed_array_inplace(array, target, padding_value=0):
-    """
-    A generic function for embedding an input array into some target array.
-    The array will be truncated or padded as needed.
-    Modifies target in-place.
-    """
-    array_np = np.array(array)
-
-    # Calculate the effective shape (minimum dimensions)
-    effective_shape = tuple(min(s, t) for s, t in zip(array_np.shape, target.shape))
-
-    # Create slices for both arrays
-    slices = tuple(slice(0, dim) for dim in effective_shape)
-
-    # Reset target to padding value
-    target.fill(padding_value)
-
-    # Copy data from array to target
-    target[slices] = array_np[slices]
-    return
+# Classes for data buffers, to be used by the post-processors (such as JetFinder).
+# NOTE: Our HepMC -> HDF5 conversion in conversion.py also uses some buffering logic,
+#       but it doesn't implement this class. Maybe it can eventually be updated? - Jan
 
 class BufferFlushHandler(ABC):
     """Abstract base class for handling buffer flush operations."""
@@ -39,6 +27,12 @@ class BufferFlushHandler(ABC):
             end_event: Ending event index (exclusive)
         """
         pass
+
+    def SetFilename(self, filename: str):
+        self.fiename = filename
+
+    def SetVerbosity(self, verbose: bool):
+        self.verbose = verbose
 
 class DummyFlushHandler(BufferFlushHandler):
     """Example flush handler that prints what would be written to file."""
@@ -59,30 +53,40 @@ class HDF5FlushHandler(BufferFlushHandler):
         self.filename = filename
         self.status = 'w'
         self.copts = 9
+        self.verbose = False
+        self.f = None
 
     def _set_status(self):
+        """
+        Automatically determines if we need to write the file,
+        or if it already exists and we're appending.
+        """
         if(pathlib.Path(self.filename).exists()):
             self.status = 'a'
 
     def flush(self, data: Dict[str, np.ndarray], start_event: int, end_event: int, nevents: int):
         self._set_status()
-        print(f"Flushing events {start_event}-{end_event-1} to {self.filename}")
-        f = h5.File(self.filename,self.status)
+        if(self.verbose):
+            print("Flushing events {}-{} to {}".format(start_event,end_event-1,self.filename))
+        self.f = h5.File(self.filename,self.status)
         for key, array in data.items():
 
-            if(self.status == 'w'):
-                # Need to initialize the dataset in the HDF5 file, which requires
-                # getting the right shape (namely the 1st dimension!).
-                dset_shape = (nevents) + array.shape[1:]
-                dset = f.create_dataset(key, np.zeros(dset_shape), array.dtype,compression='gzip',compression_opts=self.copts)
+            if((self.status == 'w') or (key not in self.f.keys())):
+                dset = self._create_dataset(key,array,nevents)
             else:
-                dset = f[key]
-                dset[start_event:end_event] = array
+                dset = self.f[key]
 
-            print(f"  {key}: shape {array.shape}, dtype {array.dtype}")
-        f.close()
-        # Here you would implement actual file writing (HDF5, ROOT, etc.)
+            dset[start_event:end_event] = array
+            # print(f"  {key}: shape {array.shape}, dtype {array.dtype}")
+        self.f.close()
+        self.f = None
 
+    def _create_dataset(self,key,array,nevents):
+        # Need to initialize the dataset in the HDF5 file, which requires
+        # getting the right shape (namely the 1st dimension!).
+        dset_shape = tuple((nevents,) + array.shape[1:])
+        dset = self.f.create_dataset(key, data=np.zeros(dset_shape,dtype=array.dtype),compression='gzip',compression_opts=self.copts)
+        return dset
 
 class BufferArray:
     """
@@ -95,15 +99,9 @@ class BufferArray:
 
     def __getitem__(self, key):
         """Get data, automatically handling circular buffer indexing for the first dimension."""
-        # NOTE: A little hacky, but we adjust self._buffer._number_written, even here in __getitem__.
-        #       This is to deal with cases where values are adjusted in-place, with the side-effect that
-        #       there will be unwanted behavior if one ever accesses BufferArray without writing to it.
         if isinstance(key, int):
             # Single event index - handle circular buffer logic
-            # self._buffer._check_and_flush_if_needed(key)
             buffer_position = key % self._buffer.buffer_size
-            self._buffer._number_written[self._buffer._key] += 1
-            self._buffer._check_and_flush_if_needed(key)
             return self._array[buffer_position]
 
         elif isinstance(key, tuple):
@@ -113,15 +111,11 @@ class BufferArray:
 
             if isinstance(first_idx, int):
                 # First dimension is an event index - apply circular buffer logic
-                self._buffer._check_and_flush_if_needed(first_idx)
                 buffer_position = first_idx % self._buffer.buffer_size
-                self._buffer._number_written[self._buffer._key] += 1
                 return self._array[(buffer_position,) + rest_idx]
             else:
                 # First dimension is a slice/fancy index - pass through directly
                 # This handles cases like buffer['jets.Pmu'][:10, i, j]
-                self._buffer._number_written[self._buffer._key] += len(key[0]) # TODO: Not sure if this works
-
                 return self._array[key]
 
         else:
@@ -138,7 +132,9 @@ class BufferArray:
             self._array[buffer_position] = value
             self._buffer._number_written[self._buffer._key] += 1
             self._buffer._total_events_processed = max(self._buffer._total_events_processed, key + 1)
+
             # Track that this event position has been written to
+            # NOTE: This buffer code is currently too contrived
             self._buffer._current_event_positions.add(buffer_position)
             self._buffer._current_size = len(self._buffer._current_event_positions)
             self._buffer._check_and_flush_if_needed(key)
@@ -155,7 +151,9 @@ class BufferArray:
                 self._array[(buffer_position,) + rest_idx] = value
                 self._buffer._number_written[self._buffer._key] += 1
                 self._buffer._total_events_processed = max(self._buffer._total_events_processed, first_idx + 1)
+
                 # Track that this event position has been written to
+                # NOTE: This buffer code is currently too contrived
                 self._buffer._current_event_positions.add(buffer_position)
                 self._buffer._current_size = len(self._buffer._current_event_positions)
                 self._buffer._check_and_flush_if_needed(first_idx)
@@ -216,6 +214,12 @@ class Buffer:
         self._number_written: Dict[str, int] = {}
         self._key = None
 
+    def SetFilename(self, filename: str):
+        self.flush_handler.SetFilename(filename)
+
+    def SetNEvents(self,nevents: int):
+        self.nevents = nevents
+
     def _initialize_array(self, key: str, shape: Tuple, dtype: np.dtype):
         """Initialize a new array in the buffer with the given specifications."""
         full_shape = (self.buffer_size,) + shape[1:]  # Replace first dim with buffer_size
@@ -231,7 +235,7 @@ class Buffer:
         #     assert self.nevents == shape[0]
 
     def _check_and_flush_if_needed(self, event_index: int):
-        """Check if we need to flush before processing this event index."""
+        """Check if we need to flush before processing this event."""
         # buffer_position = event_index % self.buffer_size
 
         do_flush = True
@@ -295,6 +299,18 @@ class Buffer:
         self._current_size = max(self._current_size, copy_size)
         self._number_written[key] += copy_size
 
+    def set(self,key: str, index: int, value: Any):
+        """
+        For setting values of entries in the Buffer. (i.e. particular BufferArrays).
+        Handles embedding/zero-padding as needed.
+        In general, this is the function one should use for putting data into the buffer.
+        """
+        if(isinstance(value,int) or isinstance(value,float)):
+            self[key][index] = value
+        else:
+            self[key][index] = embed_array(value,self[key][index].shape)
+        return
+
     def __contains__(self, key: str) -> bool:
         """Check if a key exists in the buffer."""
         return key in self._buffer_arrays
@@ -332,42 +348,54 @@ class Buffer:
             self._initialize_array(key, arr_shape, dtype)
         return self._buffer_arrays[key]
 
-# Example usage demonstrating improved flushing behavior
-if __name__ == "__main__":
+# Example usage
+def main(args):
+
     # Create a buffer with file flush handler
-    flush_handler = DummyFlushHandler("physics_data.h5")
+    flush_handler = HDF5FlushHandler("buffer_test.h5")
     buffer = Buffer(buffer_size=3, flush_handler=flush_handler)
 
-    # Pre-create arrays with known maximum dimensions
+    # Create arrays in buffer with some known maximum dimensionss.
     buffer.create_array('jets.N', dtype=np.int32)  # Scalar per event
     buffer.create_array('jets.Pmu', (10, 4), np.float64)  # Up to 10 jets, 4-momentum each
     buffer.create_array('event.weight', dtype=np.float64)  # Event weight
 
-    print("Processing events with improved flushing logic...")
-    print("Buffer will only flush when about to overwrite unflushed data\n")
-
     # Process events
-    for event_index in range(8):
+    nevents = 8
+    buffer.SetNEvents(nevents)
+    for event_index in range(nevents):
         # Simulate jet data for this event
         n_jets = np.random.randint(2, 6)
         jet_vectors = np.random.randn(n_jets, 4)  # (N_jets, 4-momentum)
         jet_ordering = np.arange(n_jets)  # Dummy ordering
         event_weight = np.random.uniform(0.5, 2.0)
 
-        print(f"Processing event {event_index} (buffer pos {event_index % buffer.buffer_size})")
+        print("Processing event {} (buffer position {})".format(event_index, event_index % buffer.buffer_size))
 
         # Fill all branches for this event
-        buffer['jets.N'][event_index] = len(jet_vectors)
 
-        embed_array_inplace(np.vstack([jet_vectors[i] for i in jet_ordering]),
-                           buffer['jets.Pmu'][event_index])
+        buffer.set('jets.N',event_index,len(jet_vectors))
+        buffer.set('jets.Pmu',event_index,np.vstack([jet_vectors[i] for i in jet_ordering]))
+        buffer.set('event.weight',event_index,event_weight)
 
-        buffer['event.weight'][event_index] = event_weight
+        # buffer['jets.N'][event_index] = len(jet_vectors)
 
-        print(f"  -> Jets: {n_jets}, buffer current size: {buffer._current_size}")
+        # # Filling this is a bit verbose -- would be nice to make a function for this,
+        # # to hide some of the details. - Jan
+        # buffer['jets.Pmu'][event_index] = embed_array(np.vstack([jet_vectors[i] for i in jet_ordering]),buffer['jets.Pmu'][event_index].shape)
+
+        # # embed_array_inplace(np.vstack([jet_vectors[i] for i in jet_ordering]),
+        # #                    buffer['jets.Pmu'][event_index])
+
+        # buffer['event.weight'][event_index] = event_weight
+
+        print("  -> Jets: {}, buffer current size: {}".format(n_jets,buffer._current_size))
         print()
 
     # Final flush for remaining data
-    print(f"Final flush of remaining {buffer._current_size} events:")
+    print("Final flush of remaining {} events:".format(buffer._current_size))
     buffer.flush()
     print("\nBuffer info:", buffer.get_buffer_info())
+
+if __name__ == "__main__":
+    main(sys.argv)
