@@ -3,7 +3,7 @@
 import subprocess as sub
 import numpy as np
 import h5py as h5
-from typing import Dict, Any, Tuple, Optional # experimenting with typing
+# from typing import Dict, Any, Tuple, Optional # experimenting with typing
 from util.fastjet import JetFinderBase
 from util.qol_utils.progress_bar import printProgressBarColor
 from util.calcs import embed_array_inplace
@@ -36,7 +36,7 @@ class JetFinder(JetFinderBase):
         self.fastjet_dir = fastjet_dir
         self.fastjet_init_flag = False
 
-        self.buffer = Buffer(100)
+        self.buffer = Buffer(100) # TODO: Make buffer size configurable
 
         self.input_collection_arrays = None
         self.input_vecs = None
@@ -67,6 +67,7 @@ class JetFinder(JetFinderBase):
 
     def SetH5EventFile(self,file):
         self.h5_file = file
+        self.buffer.SetFilename(self.h5_file)
 
     def SetInputCollections(self,collections):
         if(type(collections) != list):
@@ -233,35 +234,45 @@ class JetFinder(JetFinderBase):
             processor.ModifyConstituents(self)
         return
 
-    def Write(self,output_file=None):
-        if(output_file is None):
-            output_file = self.h5_file
-        if(output_file != self.h5_file):
-            sub.check_call(['cp',self.h5_file,output_file])
-        if(self.verbose):
-            self._print('Writing output to {}.'.format(output_file))
-        f = h5.File(output_file,'a')
-        for key,val in self.buffer.items():
-            d = f.create_dataset(key, data=val, compression='gzip',compression_opts=self.copts)
-        f.close()
-        return output_file
+    def Flush(self):
+        """
+        This function simply finishes the writing of our data buffer
+        to the output file, by doing a final flush.
+        """
+        # if(self.verbose):
+        self._print('Finishing flushing data to {}.'.format(self.h5_file))
+        self.buffer.flush()
+        # f = h5.File(self.h5_file,'a')
+        # for key,val in self.buffer.items():
+        #     d = f.create_dataset(key, data=val, compression='gzip',compression_opts=self.copts)
+        # f.close()
+        return
 
     # Using a generic signature -- should consider making the various post-processors inherit from a single parent class!
     def __call__(self,hepmc_file,h5_file,output_file=None,verbose=None, copts=9, key=None):
         if(verbose is not None): self.SetVerbosity(verbose)
         self.SetH5EventFile(h5_file)
         self.Process()
-        output_file = self.Write(output_file)
-        return output_file
+        self.Flush()
+        return self.h5_file
 
     def _initializeBuffer(self):
-        self.buffer['{}.N'.format(self.jet_name)] = np.zeros((self.nevents),dtype=np.dtype('i4'))
-        self.buffer['{}.Pmu'.format(self.jet_name)] = np.zeros((self.nevents,self.n_jets_max,4),dtype=np.dtype('f8'))
-        self.buffer['{}.Pmu_cyl'.format(self.jet_name)] = np.zeros((self.nevents,self.n_jets_max,4),dtype=np.dtype('f8'))
+        self.buffer.SetNEvents(self.nevents)
+        self.buffer.create_array('{}.N'.format(self.jet_name),dtype=np.dtype('i4'))
+        self.buffer.create_array('{}.Pmu'.format(self.jet_name),shape=(self.n_jets_max,4),dtype=np.dtype('f8'))
+        self.buffer.create_array('{}.Pmu_cyl'.format(self.jet_name),shape=(self.n_jets_max,4),dtype=np.dtype('f8'))
         if(self.constituents_flag):
-            self.buffer['{}.Constituents.N'.format(self.jet_name)] = np.zeros((self.nevents,self.n_jets_max),dtype=np.dtype('i4'))
-            self.buffer['{}.Constituents.Pmu'.format(self.jet_name)] = np.zeros((self.nevents,self.n_jets_max,self.n_constituents_max, 4),dtype=np.dtype('f8'))
-            self.buffer['{}.Constituents.Pmu_cyl'.format(self.jet_name)] = np.zeros((self.nevents,self.n_jets_max,self.n_constituents_max,4),dtype=np.dtype('f8'))
+            self.buffer.create_array('{}.Constituents.N'.format(self.jet_name),shape=(self.n_jets_max,),dtype=np.dtype('i4'))
+            self.buffer.create_array('{}.Constituents.Pmu'.format(self.jet_name),shape=(self.n_jets_max,self.n_constituents_max,4),dtype=np.dtype('f8'))
+            self.buffer.create_array('{}.Constituents.Pmu_cyl'.format(self.jet_name),shape=(self.n_jets_max,self.n_constituents_max,4),dtype=np.dtype('f8'))
+
+        # self.buffer['{}.N'.format(self.jet_name)] = np.zeros((self.nevents),dtype=np.dtype('i4'))
+        # self.buffer['{}.Pmu'.format(self.jet_name)] = np.zeros((self.nevents,self.n_jets_max,4),dtype=np.dtype('f8'))
+        # self.buffer['{}.Pmu_cyl'.format(self.jet_name)] = np.zeros((self.nevents,self.n_jets_max,4),dtype=np.dtype('f8'))
+        # if(self.constituents_flag):
+        #     self.buffer['{}.Constituents.N'.format(self.jet_name)] = np.zeros((self.nevents,self.n_jets_max),dtype=np.dtype('i4'))
+        #     self.buffer['{}.Constituents.Pmu'.format(self.jet_name)] = np.zeros((self.nevents,self.n_jets_max,self.n_constituents_max, 4),dtype=np.dtype('f8'))
+        #     self.buffer['{}.Constituents.Pmu_cyl'.format(self.jet_name)] = np.zeros((self.nevents,self.n_jets_max,self.n_constituents_max,4),dtype=np.dtype('f8'))
         return
 
     def _writeToBuffer(self,event_index=None):
@@ -272,24 +283,25 @@ class JetFinder(JetFinderBase):
         if(len(self.jets_dict) == 0):
             return #TODO: Check that this is OK?
 
-        # fill jets
-        self.buffer['{}.N'.format(self.jet_name)][event_index] = len(self.jet_vectors)
-
-        embed_array_inplace(np.vstack([self.jet_vectors[i] for i in self.jet_ordering]),self.buffer['{}.Pmu'.format(self.jet_name)][event_index])
-        embed_array_inplace(np.vstack([self.jet_vectors_cyl[i] for i in self.jet_ordering]),self.buffer['{}.Pmu_cyl'.format(self.jet_name)][event_index])
-
-        # embed_array_inplace(self.jet_vectors,self.buffer['{}.Pmu'.format(self.jet_name)][event_index])
-        # embed_array_inplace(self.jet_vectors_cyl,self.buffer['{}.Pmu_cyl'.format(self.jet_name)][event_index])
+        # Fill jet information in the buffer.
+        self.buffer.set('{}.N'.format(self.jet_name),event_index,len(self.jet_vectors))
+        self.buffer.set('{}.Pmu'.format(self.jet_name),event_index,np.vstack([self.jet_vectors[i] for i in self.jet_ordering]))
+        self.buffer.set('{}.Pmu_cyl'.format(self.jet_name),event_index,np.vstack([self.jet_vectors_cyl[i] for i in self.jet_ordering]))
 
         # fill jet constituents
         if(self.constituents_flag):
-            embed_array_inplace([len(self.constituent_vectors[i]) for i in self.jet_ordering], self.buffer['{}.Constituents.N'.format(self.jet_name)][event_index])
+
+            self.buffer.set('{}.Constituents.N'.format(self.jet_name),event_index,[len(self.constituent_vectors[i]) for i in self.jet_ordering])
+            # embed_array_inplace([len(self.constituent_vectors[i]) for i in self.jet_ordering], self.buffer['{}.Constituents.N'.format(self.jet_name)][event_index])
 
             # Now we loop, as we're embedding what is really jagged information.
             # TODO: Is there another way? I suspect this slows down things a bit.
             for i,j in enumerate(self.jet_ordering):
-                embed_array_inplace(self.constituent_vectors[j],self.buffer['{}.Constituents.Pmu'.format(self.jet_name)][event_index,i])
-                embed_array_inplace(self.constituent_vectors_cyl[j],self.buffer['{}.Constituents.Pmu_cyl'.format(self.jet_name)][event_index,i])
+                self.buffer.set('{}.Constituents.Pmu'.format(self.jet_name),(event_index,i),self.constituent_vectors[j])
+                self.buffer.set('{}.Constituents.Pmu_cyl'.format(self.jet_name),(event_index,i),self.constituent_vectors_cyl[j])
+
+                # embed_array_inplace(self.constituent_vectors[j],self.buffer['{}.Constituents.Pmu'.format(self.jet_name)][event_index,i])
+                # embed_array_inplace(self.constituent_vectors_cyl[j],self.buffer['{}.Constituents.Pmu_cyl'.format(self.jet_name)][event_index,i])
         return
 
     # NOTE: Will define various functions for performing some modifications to clustering or post-processing of results.
