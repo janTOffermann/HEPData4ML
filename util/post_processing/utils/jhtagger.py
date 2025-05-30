@@ -1,8 +1,12 @@
-import os,glob,pathlib,itertools
+import os,glob,pathlib
 import subprocess as sub
 import numpy as np
 import ROOT as rt
 from util.calcs import embed_array_inplace
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING: # Only imported during type checking -- avoids circular imports we'd otherwise get, since jets imports this file
+    from util.post_processing.jets import JetFinder
 
 class JHTaggerSetup:
     """
@@ -208,7 +212,7 @@ class JohnsHopkinsTagger:
         self.w_constituent     = np.vstack([self.tagger.GetWCandidateConstituentsProperty(x) for x in ["E","px","py","pz"]]  ).T[ordering]
         self.w_constituent_cyl = np.vstack([self.tagger.GetWCandidateConstituentsProperty(x) for x in ["pt","eta","phi","m"]]).T[ordering]
 
-    def ModifyInitialization(self,obj):
+    def ModifyInitialization(self, obj : 'JetFinder'):
         #NOTE: Might want to move this to constructor, which will need to take obj as input.
         self.jh_setup = JHTaggerSetup(obj.configurator)
         # self.jh_setup.SetConfigurator(obj.configurator)
@@ -216,10 +220,10 @@ class JohnsHopkinsTagger:
         self.InitTagger()
         return
 
-    def ModifyInputs(self,obj):
+    def ModifyInputs(self,obj : 'JetFinder'):
         return
 
-    def ModifyJets(self, obj):
+    def ModifyJets(self, obj : 'JetFinder'):
         """
         This function will tag jets with the JH tagger, and fill the corresponding branches.
         """
@@ -261,10 +265,10 @@ class JohnsHopkinsTagger:
             obj._jetsToVectors()
             obj._fetchJetConstituents()
 
-    def ModifyConstituents(self, obj):
+    def ModifyConstituents(self, obj : 'JetFinder'):
         return
 
-    def ModifyWrite(self,obj):
+    def ModifyWrite(self,obj : 'JetFinder'):
         if(self.mode=='filter'):
             return # do nothing
         else:
@@ -272,7 +276,7 @@ class JohnsHopkinsTagger:
             self._addFlagToBuffer(obj)
             self._addWToBuffer(obj)
 
-    def _initializeBuffer(self,obj):
+    def _initializeBuffer(self,obj : 'JetFinder'):
         """
         Used if self.mode=='tag', in which case we're writing all jets,
         and including a new branch to indicate whether or not a jet is
@@ -281,19 +285,19 @@ class JohnsHopkinsTagger:
         self._createBranchNames(obj)
 
         if(self.tag_name not in obj.buffer.keys()):
-            obj.buffer[self.tag_name] = np.full((obj.nevents,obj.n_jets_max),False,dtype=bool)
+            obj.buffer.create_array(self.tag_name,(obj.n_jets_max,),dtype=bool)
 
         if(self.w_name not in obj.buffer.keys()):
-            obj.buffer[self.w_name         ] = np.full((obj.nevents,obj.n_jets_max,4),False,dtype=np.dtype('f8'))
-            obj.buffer[self.w_name + '_cyl'] = np.full((obj.nevents,obj.n_jets_max,4),False,dtype=np.dtype('f8'))
+            obj.buffer.create_array(self.w_name,         (obj.n_jets_max,4),dtype=np.dtype('f8'))
+            obj.buffer.create_array(self.w_name + '_cyl',(obj.n_jets_max,4),dtype=np.dtype('f8'))
 
         if(self.w_constituents_name not in obj.buffer.keys()):
-            obj.buffer[self.w_nconst_name               ] = np.full((obj.nevents,obj.n_jets_max),False,dtype=np.dtype('i4'))
-            obj.buffer[self.w_constituents_name         ] = np.full((obj.nevents,obj.n_jets_max,self.n_w_constituents_max,4),False,dtype=np.dtype('f8'))
-            obj.buffer[self.w_constituents_name + '_cyl'] = np.full((obj.nevents,obj.n_jets_max,self.n_w_constituents_max,4),False,dtype=np.dtype('f8'))
+            obj.buffer.create_array(self.w_nconst_name, (obj.n_jets_max),dtype=np.dtype('i4'))
+            obj.buffer.create_array(self.w_constituents_name,          (obj.n_jets_max,self.n_w_constituents_max,4),dtype=np.dtype('f8'))
+            obj.buffer.create_array(self.w_constituents_name + '_cyl', (obj.n_jets_max,self.n_w_constituents_max,4),dtype=np.dtype('f8'))
         return
 
-    def _createBranchNames(self,obj):
+    def _createBranchNames(self,obj : 'JetFinder'):
         if(self.tag_name is None):
             self.tag_name = '{}.JHTag'.format(obj.jet_name)
 
@@ -303,29 +307,26 @@ class JohnsHopkinsTagger:
         self.w_nconst_name = '{}.WBosonCandidate.Constituents.N'.format(self.tag_name)
         self.w_constituents_name = '{}.WBosonCandidate.Constituents.Pmu'.format(self.tag_name)
 
-    def _addFlagToBuffer(self,obj):
+    def _addFlagToBuffer(self,obj : 'JetFinder'):
         """
         Adds the JH tags to the buffer, for writing.
         Note that the pT sorting of obj is applied,
         which will have been filled by obj._ptSort().
         """
+        obj.buffer.set(self.tag_name,obj._i,[self.tags[i] for i in obj.jet_ordering])
 
-        embed_array_inplace([self.tags[i] for i in obj.jet_ordering],obj.buffer[self.tag_name][obj._i])
-
-    def _addWToBuffer(self,obj):
+    def _addWToBuffer(self,obj : 'JetFinder'):
         """
         Adds the JH W candidate info to the buffer.
         Note that the pT sorting of obj is applied,
         which will have been filled by obj._ptSort().
         """
-        #NOTE: The embed is not needed, since we've constructed the inputs and the buffer to already match in size.
-        #      The zero-padding is actually being handled within self.ModifyJets(), where the embed function is used.
-        embed_array_inplace([self.w_candidates[i] for i in obj.jet_ordering],obj.buffer[self.w_name][obj._i])
-        embed_array_inplace([self.w_candidates_cyl[i] for i in obj.jet_ordering],obj.buffer[self.w_name + '_cyl'][obj._i])
+        obj.buffer.set(self.w_name,obj._i,[self.w_candidates[i] for i in obj.jet_ordering])
+        obj.buffer.set(self.w_name + '_cyl',obj._i,[self.w_candidates_cyl[i] for i in obj.jet_ordering])
 
-        embed_array_inplace([self.n_constituents[i] for i in obj.jet_ordering],obj.buffer[self.w_nconst_name][obj._i])
-        embed_array_inplace([self.w_constituents[i] for i in obj.jet_ordering],obj.buffer[self.w_constituents_name][obj._i])
-        embed_array_inplace([self.w_constituents_cyl[i] for i in obj.jet_ordering],obj.buffer[self.w_constituents_name + '_cyl'][obj._i])
+        obj.buffer.set(self.w_nconst_name,obj._i,[self.n_constituents[i] for i in obj.jet_ordering])
+        obj.buffer.set(self.w_constituents_name,obj._i,[self.w_constituents[i] for i in obj.jet_ordering])
+        obj.buffer.set(self.w_constituents_name + '_cyl',obj._i,[self.w_constituents_cyl[i] for i in obj.jet_ordering])
 
     def _print(self,val):
         print('{}: {}'.format(self.print_prefix,val))

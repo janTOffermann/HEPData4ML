@@ -3,7 +3,7 @@ import numpy as np
 import h5py as h5
 from typing import Dict, Any, Tuple, Optional
 from abc import ABC, abstractmethod
-# # Needed for the test function
+# Needed for the test function
 # import os
 # this_dir = os.path.dirname(os.path.abspath(__file__))
 # sys.path.append(str(pathlib.Path('{}/../'.format(this_dir)).absolute()))
@@ -29,7 +29,7 @@ class BufferFlushHandler(ABC):
         pass
 
     def SetFilename(self, filename: str):
-        self.fiename = filename
+        self.filename = filename
 
     def SetVerbosity(self, verbose: bool):
         self.verbose = verbose
@@ -39,12 +39,13 @@ class DummyFlushHandler(BufferFlushHandler):
 
     def __init__(self, filename: str):
         self.filename = filename
+        self.verbose = True
 
     def flush(self, data: Dict[str, np.ndarray], start_event: int, end_event: int, nevents: int):
-        print(f"Flushing events {start_event}-{end_event-1} to {self.filename}")
-        for key, array in data.items():
-            print(f"  {key}: shape {array.shape}, dtype {array.dtype}")
-        # Here you would implement actual file writing (HDF5, ROOT, etc.)
+        if(self.verbose):
+            print("\tFlushing events {}-{} to {}".format(start_event,end_event-1,self.filename))
+            for key, array in data.items():
+                print("  {}: shape {}, dtype {}".format(key,array.shape,array.dtype))
 
 class HDF5FlushHandler(BufferFlushHandler):
     """Flushes data to an HDF5 file.."""
@@ -66,18 +67,18 @@ class HDF5FlushHandler(BufferFlushHandler):
 
     def flush(self, data: Dict[str, np.ndarray], start_event: int, end_event: int, nevents: int):
         self._set_status()
-        if(self.verbose):
-            print("Flushing events {}-{} to {}".format(start_event,end_event-1,self.filename))
+        if(self.verbose): print("\tFlushing events {}-{} to {}".format(start_event,end_event-1,self.filename))
         self.f = h5.File(self.filename,self.status)
         for key, array in data.items():
 
             if((self.status == 'w') or (key not in self.f.keys())):
+                if(self.verbose): print('\tCreating dset {}'.format(key))
                 dset = self._create_dataset(key,array,nevents)
             else:
+                if(self.verbose): print('\tLoading dset {}'.format(key))
                 dset = self.f[key]
 
             dset[start_event:end_event] = array
-            # print(f"  {key}: shape {array.shape}, dtype {array.dtype}")
         self.f.close()
         self.f = None
 
@@ -127,10 +128,10 @@ class BufferArray:
         """Set data, automatically handling circular buffer indexing for the first dimension."""
         if isinstance(key, int):
             # Single event index - handle circular buffer logic
-            # self._buffer._check_and_flush_if_needed(key)
             buffer_position = key % self._buffer.buffer_size
             self._array[buffer_position] = value
-            self._buffer._number_written[self._buffer._key] += 1
+            self._buffer._written[self._buffer._key][buffer_position] = True
+            self._buffer._number_written[self._buffer._key] = np.sum(self._buffer._written[self._buffer._key])
             self._buffer._total_events_processed = max(self._buffer._total_events_processed, key + 1)
 
             # Track that this event position has been written to
@@ -149,7 +150,8 @@ class BufferArray:
                 # First dimension is an event index - apply circular buffer logic
                 buffer_position = first_idx % self._buffer.buffer_size
                 self._array[(buffer_position,) + rest_idx] = value
-                self._buffer._number_written[self._buffer._key] += 1
+                self._buffer._written[self._buffer._key][buffer_position] = True
+                self._buffer._number_written[self._buffer._key] = np.sum(self._buffer._written[self._buffer._key])
                 self._buffer._total_events_processed = max(self._buffer._total_events_processed, first_idx + 1)
 
                 # Track that this event position has been written to
@@ -189,7 +191,7 @@ class Buffer:
     automatically flushes data when the buffer fills up.
     """
 
-    def __init__(self, buffer_size: int = 1000, flush_handler: Optional[BufferFlushHandler] = None):
+    def __init__(self, buffer_size: int = 100, filename=None, flush_handler: Optional[BufferFlushHandler] = None):
         """
         Initialize the buffer.
 
@@ -197,9 +199,12 @@ class Buffer:
             buffer_size: Maximum number of events to store before flushing
             flush_handler: Handler for flush operations (optional)
         """
+        self.filename = filename
         self.buffer_size = buffer_size
         self.nevents = -1
         self.flush_handler = flush_handler
+        if(self.flush_handler is None):
+            self.flush_handler = HDF5FlushHandler(self.filename)
 
         # Internal storage
         self._buffer_arrays: Dict[str, BufferArray] = {}
@@ -211,11 +216,13 @@ class Buffer:
         self._buffer_start_event = 0
         self._current_event_positions = set()  # Track which event positions have been written to
 
+        self._written : Dict[str, np.ndarray] = {}
         self._number_written: Dict[str, int] = {}
         self._key = None
 
     def SetFilename(self, filename: str):
-        self.flush_handler.SetFilename(filename)
+        self.filename = filename
+        self.flush_handler.SetFilename(self.filename)
 
     def SetNEvents(self,nevents: int):
         self.nevents = nevents
@@ -226,6 +233,7 @@ class Buffer:
         array = np.zeros(full_shape, dtype=dtype)
         self._buffer_arrays[key] = BufferArray(array, self)
         self._array_specs[key] = (shape, dtype)
+        self._written[key] = np.full(self.buffer_size,False)
         self._number_written[key] = 0
 
         # if(self.nevents > -1):
@@ -239,10 +247,12 @@ class Buffer:
         # buffer_position = event_index % self.buffer_size
 
         do_flush = True
+        # print('Check flush')
         for key,val in self._number_written.items():
             # print('\t-> {}, {}'.format(key,val))
             if(val != self.buffer_size):
                 do_flush = False
+                # print('\t\t->False')
                 break
 
         if(do_flush):
@@ -268,6 +278,7 @@ class Buffer:
         self._buffer_start_event += len(self._current_event_positions)
         self._current_event_positions.clear()
         self._current_size = 0
+        self._written = {key:np.full(self.buffer_size,False) for key in self._written.keys()}
         self._number_written = {key:0 for key in self._number_written.keys()}
 
     @property
@@ -297,7 +308,9 @@ class Buffer:
         copy_size = min(value.shape[0], self.buffer_size)
         self._buffer_arrays[key]._array[:copy_size] = value[:copy_size]
         self._current_size = max(self._current_size, copy_size)
-        self._number_written[key] += copy_size
+        for i in range(copy_size):
+            self._written[key][i] = True
+        self._number_written[key] = np.sum(self._written[key])
 
     def set(self,key: str, index: int, value: Any):
         """
@@ -308,6 +321,8 @@ class Buffer:
         if(isinstance(value,int) or isinstance(value,float)):
             self[key][index] = value
         else:
+            if(not isinstance(value,np.ndarray)):
+                value = np.array(value)
             self[key][index] = embed_array(value,self[key][index].shape)
         return
 
@@ -343,6 +358,8 @@ class Buffer:
             shape: Shape including event dimension (e.g., (max_events, n_jets, 4))
             dtype: Data type for the array
         """
+        if(isinstance(shape,int)):
+            shape = (shape,)
         if key not in self._buffer_arrays:
             arr_shape = (1,) + shape
             self._initialize_array(key, arr_shape, dtype)

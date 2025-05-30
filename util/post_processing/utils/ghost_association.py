@@ -2,7 +2,10 @@ import itertools
 import ROOT as rt
 import h5py as h5
 import numpy as np
-from util.calcs import embed_array_inplace
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING: # Only imported during type checking -- avoids circular imports we'd otherwise get, since jets imports this file
+    from util.post_processing.jets import JetFinder
 
 class GhostAssociator():
     """
@@ -33,7 +36,7 @@ class GhostAssociator():
             result[i] = np.array([v.E(),v.Px(),v.Py(),v.Pz()])
         return result
 
-    def ModifyInitialization(self,obj):
+    def ModifyInitialization(self,obj : 'JetFinder'):
         """
         This function will modify the initialization so that
         the ghost vectors are generated and loaded into memory.
@@ -62,7 +65,7 @@ class GhostAssociator():
         # if(self.mode=='tag'):
         #     self._initializeBuffer(obj)
 
-    def ModifyInputs(self,obj):
+    def ModifyInputs(self,obj : 'JetFinder'):
         """
         Puts the ghost vectors corresponding with `key`
         on the top of obj.input_vecs.
@@ -75,7 +78,7 @@ class GhostAssociator():
             obj.AddUserInfo(i,ghost_dict) # TODO: Fetch existing UserInfo first, and add this instead? Don't want to accidentally overwrite something else.
         return
 
-    def ModifyJets(self, obj):
+    def ModifyJets(self, obj : 'JetFinder'):
         """
         This function will do one of two things, depending on self.mode:
         - self.mode == 'filter': Drop jets that aren't ghost-associated.
@@ -114,14 +117,14 @@ class GhostAssociator():
 
         return
 
-    def ModifyWrite(self,obj):
+    def ModifyWrite(self,obj : 'JetFinder'):
         if(self.mode=='filter'):
             return # do nothing
         else:
             self._initializeBuffer(obj) # will initialize buffer if it doesn't already exist
             self._addFlagToBuffer(obj)
 
-    def _initializeBuffer(self,obj):
+    def _initializeBuffer(self,obj : 'JetFinder'):
         """
         Used if self.mode=='tag', in which case we're writing all jets,
         and including a new branch to indicate whether or not a jet is
@@ -133,17 +136,18 @@ class GhostAssociator():
         if(self.tag_name is None):
             self.tag_name = '{}.{}.GhostAssociated'.format(obj.jet_name,self.key)
         if(self.tag_name not in obj.buffer.keys()):
-            obj.buffer[self.tag_name] = np.full((obj.nevents,obj.n_jets_max),False,dtype=bool)
+            obj.buffer.create_array(self.tag_name,(obj.n_jets_max,),dtype=bool)
+            # obj.buffer[self.tag_name] = np.full((obj.nevents,obj.n_jets_max),False,dtype=bool)
         return
 
-    def _addFlagToBuffer(self,obj):
+    def _addFlagToBuffer(self,obj : 'JetFinder'):
         """
         Adds the ghost association tags to the buffer, for writing.
         """
+        obj.buffer.set(self.tag_name,obj._i,[self.tags[i] for i in obj.jet_ordering])
+        # embed_array_inplace([self.tags[i] for i in obj.jet_ordering],obj.buffer[self.tag_name][obj._i])
 
-        embed_array_inplace([self.tags[i] for i in obj.jet_ordering],obj.buffer[self.tag_name][obj._i])
-
-    def ModifyConstituents(self, obj):
+    def ModifyConstituents(self, obj : 'JetFinder'):
         return
 
     def _print(self,val):

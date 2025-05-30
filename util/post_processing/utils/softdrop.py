@@ -2,6 +2,12 @@ import sys
 import numpy as np
 from util.fastjet import JetFinderBase
 from util.calcs import embed_array_inplace
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING: # Only imported during type checking -- avoids circular imports we'd otherwise get, since jets imports this file
+    from util.post_processing.jets import JetFinder
+
+
 
 class Softdrop:
     """
@@ -53,10 +59,10 @@ class Softdrop:
 
         return
 
-    def ModifyInputs(self,obj):
+    def ModifyInputs(self,obj : 'JetFinder'):
         return
 
-    def ModifyJets(self, obj):
+    def ModifyJets(self, obj : 'JetFinder'):
         """
         This function will perform softdrop.
         This involves re-clustering jets with the C/A algorithm.
@@ -85,7 +91,7 @@ class Softdrop:
 
         return
 
-    def ModifyWrite(self,obj):
+    def ModifyWrite(self,obj : 'JetFinder'):
         return # does nothing
 
     def _recluster(self,jet):
@@ -142,7 +148,7 @@ class Softdrop:
 
         return groomed_jet
 
-    def ModifyConstituents(self, obj):
+    def ModifyConstituents(self, obj : 'JetFinder'):
         return
 
     def _print(self,val):
@@ -179,7 +185,7 @@ class IteratedSoftdrop:
 
         self.print_prefix = '\n\t\tIterated Softdrop'
 
-    def ModifyInitialization(self,obj):
+    def ModifyInitialization(self,obj : 'JetFinder'):
         # Take the opportunity to set up FastJet.
         # In practice, this shouldn't be needed
         # based on how this is called, I think?
@@ -196,10 +202,10 @@ class IteratedSoftdrop:
 
         return
 
-    def ModifyInputs(self,obj):
+    def ModifyInputs(self,obj : 'JetFinder'):
         return
 
-    def ModifyJets(self, obj):
+    def ModifyJets(self, obj : 'JetFinder'):
         """
         This function will perform softdrop.
         This involves re-clustering jets with the C/A algorithm.
@@ -232,7 +238,7 @@ class IteratedSoftdrop:
             obj._ptSort() # re-sort obj.jet_sorting
         return
 
-    def ModifyWrite(self,obj):
+    def ModifyWrite(self,obj : 'JetFinder'):
         # always runs
         self._initializeBuffer(obj) # will initialize buffer if it doesn't already exist
         self._addToBuffer(obj)
@@ -302,10 +308,10 @@ class IteratedSoftdrop:
 
         return groomed_jet
 
-    def ModifyConstituents(self, obj):
+    def ModifyConstituents(self, obj : 'JetFinder'):
         return
 
-    def _initializeBuffer(self,obj):
+    def _initializeBuffer(self,obj : 'JetFinder'):
         """
         Adds branches to the buffer corresponding with the Zi and dRi variables
         from the ISD algorithm.
@@ -313,13 +319,13 @@ class IteratedSoftdrop:
         self._createBranchNames(obj)
 
         if(self.zi_name not in obj.buffer.keys()):
-            obj.buffer[self.zi_name] = np.zeros((obj.nevents,obj.n_jets_max,self.max_depth),dtype=np.dtype('f8'))
+            obj.buffer.create_array(self.zi_name,(obj.n_jets_max,self.max_depth),dtype=np.dtype('f8'))
 
         if(self.dRi_name not in obj.buffer.keys()):
-            obj.buffer[self.dRi_name] = np.zeros((obj.nevents,obj.n_jets_max,self.max_depth),dtype=np.dtype('f8'))
+            obj.buffer.create_array(self.dRi_name,(obj.n_jets_max,self.max_depth),dtype=np.dtype('f8'))
         return
 
-    def _createBranchNames(self,obj):
+    def _createBranchNames(self,obj : 'JetFinder'):
         if(self.name is None):
             self.name = 'IteratedSoftdrop'
         self.branch_name_prefixname = '{}.{}'.format(obj.jet_name,self.name)
@@ -328,7 +334,7 @@ class IteratedSoftdrop:
         self.dRi_name = '{}.dR'.format(self.branch_name_prefixname)
         return
 
-    def _addToBuffer(self,obj):
+    def _addToBuffer(self,obj : 'JetFinder'):
         """
         Adds the Zi and dRi info to the buffer.
         Note that the pT sorting of obj is applied,
@@ -337,8 +343,8 @@ class IteratedSoftdrop:
         #NOTE: The embed is not needed, since we've constructed the inputs and the buffer to already match in size.
         #      The zero-padding is actually being handled within self.ModifyJets(), where the embed function is used.
 
-        embed_array_inplace(np.vstack([self.zi[i] for i in obj.jet_ordering]),obj.buffer[self.zi_name][obj._i])
-        embed_array_inplace(np.vstack([self.dRi[i] for i in obj.jet_ordering]),obj.buffer[self.dRi_name][obj._i])
+        obj.buffer.set(self.zi_name,obj._i,np.vstack([self.zi[i] for i in obj.jet_ordering]))
+        obj.buffer.set(self.dRi_name,obj._i,np.vstack([self.dRi[i] for i in obj.jet_ordering]))
 
     def _print(self,val):
         print('{}: {}'.format(self.print_prefix,val))
