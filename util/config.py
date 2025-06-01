@@ -45,7 +45,10 @@ class Configurator:
         for key,val in self.config.items():
             status = True
             if(key in path_keys):
-                status = pathlib.Path(val).exists()
+                if(val is None):
+                    status = True # for some keys, it is OK to be "None"
+                else:
+                    status = pathlib.Path(val).exists()
             if(not status):
                 self.status = False
                 print('Warning: Configuration entry [{}] = "{}", which doesn\'t appear to be a valid filepath.'.format(key,val))
