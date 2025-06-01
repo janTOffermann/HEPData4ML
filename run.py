@@ -39,7 +39,6 @@ def main(args):
     parser.add_argument('-h5',           '--hdf5',              type=int,          default=1,                help='Whether or not to produce final HDF5 files. If false, stops after HepMC or Delphes/ROOT file production.')
     parser.add_argument('-f',            '--force',             type=int,          default=0,                help='Whether or not to force generation -- if true, will possibly overwrite existing HepMC files in output directory.')
     parser.add_argument('-c',            '--compress',          type=int,          default=0,                help='Whether or not to compress HepMC files.')
-    parser.add_argument('-del_hepmc',    '--del_hepmc',         type=int,          default=0,                help='Whether or not to delete HepMC3 files.')
     parser.add_argument('-rng',          '--rng',               type=int,          default=None,             help='Pythia RNG seed. Will override the one provided in the config file.')
     parser.add_argument('-npc',          '--nentries_per_chunk',type=int,          default=int(1e4),         help='Number of entries to process per chunk, for jet clustering & conversion to HDF5.')
     parser.add_argument('-pb',           '--progress_bar',      type=int,          default=1,                help='Whether or not to print progress bar during event generation')
@@ -75,7 +74,6 @@ def main(args):
     verbose = args['verbose'] > 0
     do_h5 = args['hdf5']
     compress_hepmc = args['compress']
-    delete_hepmc = args['del_hepmc']
     force = args['force']
     pythia_rng = args['rng']
     nentries_per_chunk = args['nentries_per_chunk']
@@ -161,7 +159,6 @@ def main(args):
     # Keep track of some files we create.
     hepmc_files = []
     delphes_files = []
-    truth_files = []
     stat_files = []
     filter_flag_files = [] # only used in certain cases, these files hold a boolean flag given by the "event_filter_flag"
 
@@ -355,10 +352,7 @@ def main(args):
 
     else:
         #Cleanup: Compress the HepMC files.
-        if(delete_hepmc):
-            for file in hepmc_files:
-                sub.check_call(['rm','{}/{}'.format(outdir,file)])
-        elif(compress_hepmc): CompressHepMC(hepmc_files,True,cwd=outdir)
+        if(compress_hepmc): CompressHepMC(hepmc_files,True,cwd=outdir)
 
     # Combine the stats files.
     # TODO: Can we handle some of the stats file stuff under-the-hood? Or just access all the files
@@ -370,12 +364,6 @@ def main(args):
 
     try: MergeH5(h5_file,stats_filename,cwd=outdir,delete_stats_file=delete_full_stats, copts=9)
     except: print('Warning: Stats information not found!')
-
-    # Now also delete or compress the truth files.
-    if(delete_hepmc):
-        for file in truth_files:
-            sub.check_call(['rm','{}/{}'.format(outdir,file)])
-    elif(compress_hepmc): CompressHepMC(truth_files,True,cwd=outdir)
 
     # Add some event indices to our dataset.
     if(index_offset < 0): index_offset = 0

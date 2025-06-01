@@ -5,7 +5,7 @@ from util.qol_utils.misc import stdout_redirected
 class DelphesWrapper:
     def __init__(self,delphes_dir=None):
         self.SetDirectory(delphes_dir)
-        self.delphes_download = 'https://github.com/delphes/delphes/archive/refs/tags/3.5.1pre01.tar.gz'
+        self.delphes_download = 'https://github.com/delphes/delphes/archive/refs/tags/3.5.1pre12.tar.gz' # LCG_105 - LCG_107 have 3.5.1pre09
         self.delphes_file = 'delphes-{}'.format(self.delphes_download.split('/')[-1]) # TODO: A bit hacky
         self.executable = None
         self.default_card = "delphes_card_ATLAS.tcl" # Default to the ATLAS card. Will search for this within the Delphes directory.
