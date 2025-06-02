@@ -136,17 +136,6 @@ def CreateFullHepMCEvent(pythia_wrapper, event_number):
             vertices[vertex_idx].add_particle_out(particles[i])
 
         hepev.add_vertex(vertex)
-
-    # print('Wrote {} vertices'.format(len(vertices)))
-    # print('\nChecking vertices.')
-    # print('{} vertices in hepev.'.format(len(hepev.vertices)))
-    # for i,vertex in enumerate(hepev.vertices):
-    #     print('[{}]: {}\tid = {}'.format(i,vertex,vertex.id))
-    #     for p in vertex.particles_in:
-    #         print('\t-> {}'.format(p))
-    #     for p in vertex.particles_out:
-    #         print('\t<- {}'.format(p))
-
     return hepev
 
 def AddToHepMCEvent(pythia_wrapper, particle_indices, hepev):
