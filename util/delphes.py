@@ -3,6 +3,10 @@ import subprocess as sub
 from util.qol_utils.misc import stdout_redirected
 
 class DelphesWrapper:
+    """
+    A class for running (and downloading/building, if necessary) the Delphes
+    fast detector simulation framework.
+    """
     def __init__(self,delphes_dir=None):
         self.SetDirectory(delphes_dir)
         self.delphes_download = 'https://github.com/delphes/delphes/archive/refs/tags/3.5.1pre12.tar.gz' # LCG_105 - LCG_107 have 3.5.1pre09
