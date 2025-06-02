@@ -154,7 +154,7 @@ def main(args):
         configurator.SetDelphesConfig(False)
     elif(delphes_override == 1):
         configurator.SetDelphesConfig(True)
-    use_delphes = configurator.GetDelphesConfig()
+    simulation_type = configurator.GetSimulationType()
 
     # Keep track of some files we create.
     hepmc_files = []
@@ -270,8 +270,11 @@ def main(args):
     #===============================
     # STEP 2: Simulation (optional)
     #===============================
+
+
+
     # TODO: Make a more generic "Simulator" class, akin to Generator. Ultimately want to support more than just Delphes!
-    if(use_delphes):
+    if(simulation_type == 'delphes'):
         delphes_card = configurator.GetDelphesCard() # will default to the ATLAS card that is shipped with Delphes
         delphes_wrapper = DelphesWrapper(configurator.GetDelphesDirectory())
         if(delphes_dir is not None):
@@ -343,7 +346,7 @@ def main(args):
     print('\n\tConcatenating HDF5 files. Will drop the "event_idx" key, \n\tthis was used internally for any post-processing steps.\n\tIndices will be recomputed and added at the end.')
     ConcatenateH5(h5_files,'/'.join((outdir,h5_file)),copts=compression_opts,delete_inputs=delete_individual_h5,ignore_keys=['event_idx'],verbose=True,silent_drop=True)
 
-    if(use_delphes):
+    if(simulation_type == 'delphes'):
         if(delete_delphes):
             # Cleanup: Delete the jet files -- which are Delphes/ROOT files, since they can always be recreated from the (compressed) HepMC files.
             delphes_files = ['{}/{}'.format(outdir,x) for x in delphes_files]

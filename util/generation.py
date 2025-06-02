@@ -70,7 +70,7 @@ class PythiaGenerator:
 
         # Variables related to handling of pileup.
         # TODO: Might want to eventually reorganize this, or move it into a separate class?
-        self.pileup_handler = self.configurator.GetPileupHandling()
+        # self.pileup_handler = self.configurator.GetPileupHandling()
 
         # self.calculator = Calculator(use_vectorcalcs=self.configurator.GetUseVectorCalcs())
 
@@ -278,10 +278,10 @@ class PythiaGenerator:
 
             self.pythia.Generate() # generate an event!
 
-            # Here, we optionally apply pileup (or more generally, merging in some other event(s)).
-            if(self.pileup_handler is not None):
-                #TODO: This needs to be reworked.
-                self.pileup_handler(self.pythia)
+            # # Here, we optionally apply pileup (or more generally, merging in some other event(s)).
+            # if(self.pileup_handler is not None):
+            #     #TODO: This needs to be reworked.
+            #     self.pileup_handler(self.pythia)
 
             # ==========================================
             # Now we apply an (optional) "event filter". This applies some condition to the set
