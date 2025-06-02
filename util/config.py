@@ -24,7 +24,14 @@ def GetConfigFileContent(config_file):
 
 class Configurator:
     def __init__(self,config_dictionary):
-        self.config=config_dictionary
+        self.generation=config_dictionary['generation']
+        self.simulation=config_dictionary['simulation']
+        self.reconstruction=config_dictionary['reconstruction']
+
+        self.config = {}
+        self.config['generation'] = self.generation
+        self.config['simulation'] = self.simulation
+        self.config['reconstruction'] = self.reconstruction
 
         # Will also use this for some print statement bookkeeping, since it is conveniently passed around.
         self.print_fastjet = True
@@ -42,28 +49,37 @@ class Configurator:
         """
         self.status = True
         path_keys = ['delphes_dir','delphes_card','fastjet_dir']
-        for key,val in self.config.items():
-            status = True
-            if(key in path_keys):
-                if(val is None):
-                    status = True # for some keys, it is OK to be "None"
-                else:
-                    status = pathlib.Path(val).exists()
-            if(not status):
-                self.status = False
-                print('Warning: Configuration entry [{}] = "{}", which doesn\'t appear to be a valid filepath.'.format(key,val))
-                self.bad_filepath_keys.append(key)
-                return
+
+        path_keys = {
+            'simulation':['delphes_dir','delphes_card'],
+            'reconstruction':['fastjet_dir']
+        }
+
+        for key,key_list in path_keys.items():
+            for key2 in key_list:
+                status = True
+                if(key2 in self.config[key].keys()):
+                    val = self.config[key][key2]
+                    if(val is None):
+                        continue # for some keys, it is OK to be "None"
+                    else:
+                        status = pathlib.Path(val).exists()
+                if(not status):
+                    self.status = False
+                    print('Warning: Configuration entry [{}] = "{}", which doesn\'t appear to be a valid filepath.'.format(key2,val))
+                    self.bad_filepath_keys.append('{}:{}'.format(key,key2))
+                    return
 
     def CorrectFilepaths(self,dir):
         """
         Attempt to correct filepaths.
         """
-        for key in self.bad_filepath_keys:
-            old_filepath = self.config[key]
+        for key_pair in self.bad_filepath_keys:
+            key,key2 = key_pair.split(':')
+            old_filepath = self.config[key][key2]
             new_filepath = '{}/{}'.format(dir,old_filepath)
             print('\tAttempting to correct: {} -> {}'.format(old_filepath,new_filepath))
-            self.config[key] = new_filepath
+            self.config[key][key2] = new_filepath
         self.bad_filepath_keys = []
         self._check_paths()
         return
@@ -72,14 +88,23 @@ class Configurator:
         return self.status
 
     def GetPythiaConfigFile(self,filename=None):
+        """
+        Fetch the Pythia configuration file.
+        """
         if(filename is None):
-            path_to_this = os.path.dirname(os.path.realpath(__file__))
-            proc = self.config['proc']
-            template_file = '{}/pythia_templates/{}.txt'.format(path_to_this,proc)
+            proc = self.config['generation']['proc']
+            if('.' not in proc.split('/')[-1]):
+                proc += '.txt'
+            try:
+                template_file = proc
+                assert pathlib.Path(template_file).exists()
+            except:
+                path_to_this = os.path.dirname(os.path.realpath(__file__))
+                template_file = '{}/pythia_templates/{}'.format(path_to_this,proc)
         else: template_file = filename
         if(not pathlib.Path(template_file).exists()):
             print('Error: Template file {} not found.'.format(template_file))
-            assert(False)
+            assert(False) # TODO: Nicer error handling
         return template_file
 
     def GetPythiaConfigFileContents(self,filename=None):
@@ -95,12 +120,12 @@ class Configurator:
     def GetPythiaConfig(self,pt_min, pt_max,quiet=True):
         pythia_config = {}
         # Tack on a few more things to the pythia configuration
-        pythia_config['HadronLevel:all'] = Bool2String(self.config['hadronization'])
-        pythia_config['PartonLevel:MPI'] = Bool2String(self.config['mpi'])
-        pythia_config['PartonLevel:ISR'] = Bool2String(self.config['isr'])
-        pythia_config['PartonLevel:FSR'] = Bool2String(self.config['fsr'])
+        pythia_config['HadronLevel:all'] = Bool2String(self.config['generation']['hadronization'])
+        pythia_config['PartonLevel:MPI'] = Bool2String(self.config['generation']['mpi'])
+        pythia_config['PartonLevel:ISR'] = Bool2String(self.config['generation']['isr'])
+        pythia_config['PartonLevel:FSR'] = Bool2String(self.config['generation']['fsr'])
         pythia_config['Random:setSeed'] = 'on'
-        pythia_config['Random:seed'] = self.config['rng']
+        pythia_config['Random:seed'] = self.config['generation']['rng']
 
         # Add the phase space stuff.
         pythia_config['PhaseSpace:pTHatMin'] = pt_min
@@ -119,18 +144,18 @@ class Configurator:
         return pythia_config
 
     def GetPythiaRNGSeed(self):
-        return self.config['rng']
+        return self.config['generation']['rng']
 
     def GetParticleSelection(self):
-        return self.config['particle_selection']
+        return self.config['reconstruction']['particle_selection']
 
-    def GetJetConfig(self):
-        return_dict = {}
-        for key in ['jet_radius','jet_min_pt','jet_max_eta','jet_n_par','jet_selection']: return_dict[key] = self.config[key]
-        return return_dict
+    # def GetJetConfig(self):
+    #     return_dict = {}
+    #     for key in ['jet_radius','jet_min_pt','jet_max_eta','jet_n_par','jet_selection']: return_dict[key] = self.config['reconstruction'][key]
+    #     return return_dict
 
-    def GetDelphesConfig(self):
-        return self.config['delphes']
+    def GetSimulationType(self):
+        return self.config['simulation']['type'].lower()
 
     def SetDelphesConfig(self,value=True):
         """
@@ -139,54 +164,43 @@ class Configurator:
         if(type(value) != bool):
             print('Configurator.SetDelphesConfig(): Input {} not understood, setting delphes=False.'.format(value))
             value = False
-        self.config['delphes'] = value
+        self.config['simulation']['type'] = value # delphes config
         return
 
     def GetDelphesCard(self):
-        return self.config['delphes_card']
+        return self.config['simulation']['delphes_card']
 
     def GetNPars(self):
-        return_dict = {}
-        for key in ['n_truth','n_stable','n_delphes']: return_dict[key] = self.config[key]
-
         # some fanciness for the number of delphes objects, since it can be a list
-        if(len(np.asarray(self.config['n_delphes'])) == 1):
-            self.config['n_delphes'] = np.full(len(self.config['delphes_output']), np.asarray(self.config['n_delphes'])[0],dtype=int)
-
+        if(len(np.asarray(self.config['reconstruction']['n_delphes'])) == 1):
+            self.config['reconstruction']['n_delphes'] = np.full(len(self.config['simulation']['delphes_output']), np.asarray(self.config['reconstruction']['n_delphes'])[0],dtype=int)
+        return_dict = {}
+        for key in ['n_truth','n_stable','n_delphes']: return_dict[key] = self.config['reconstruction'][key]
         return return_dict
 
-    def GetInvisiblesFlag(self):
-        return self.config['invisibles']
-
-    def GetEventSelection(self):
-        return self.config['event_selection']
-
     def GetSignalFlag(self):
-        return self.config['signal_flag']
+        return self.config['reconstruction']['signal_flag']
 
     def GetSplitSeed(self):
-        return self.config['split_seed']
-
-    def GetRecordIndices(self):
-        return self.config['record_final_state_indices']
+        return self.config['reconstruction']['split_seed']
 
     def GetPostProcessing(self):
-        return self.config['post_processing']
+        return self.config['reconstruction']['post_processing']
 
     def GetEventFilter(self):
-        return self.config['event_filter']
+        return self.config['reconstruction']['event_filter']
 
     def GetEventFilterFlag(self):
-        return self.config['event_filter_flag']
+        return self.config['reconstruction']['event_filter_flag']
 
     def GetDelphesDirectory(self):
-        return self.config['delphes_dir']
+        return self.config['simulation']['delphes_dir']
 
     def SetDelphesDirectory(self,val):
-        self.config['delphes_dir'] = val
+        self.config['simulation']['delphes_dir'] = val
 
     def GetFastjetDirectory(self):
-        return self.config['fastjet_dir']
+        return self.config['reconstruction']['fastjet_dir']
 
     def GetPrintFastjet(self):
         return self.print_fastjet
@@ -205,12 +219,6 @@ class Configurator:
 
     def GetDelphesObjects(self):
         key = 'delphes_output'
-        if(key in self.config.keys()):
-            return self.config[key]
+        if(key in self.config['simulation'].keys()):
+            return self.config['simulation'][key]
         else: return ['Tower'] # some default result, maybe good for backwards compatibility!
-
-    def GetPileupHandling(self):
-        key = 'pileup_handling'
-        if(key in self.config.keys()):
-            return self.config[key]
-        else: return None # some default result, maybe good for backwards compatibility!
