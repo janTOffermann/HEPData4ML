@@ -2,7 +2,7 @@ import sys,os,pathlib,time,datetime,re,shlex,uuid
 import argparse as ap
 import subprocess as sub
 from util.generation import PythiaGenerator
-from util.delphes import DelphesWrapper
+from util.simulation import DelphesSimulator
 from util.conversion import Processor, RemoveFailedFromHDF5, SplitH5, AddEventIndices, ConcatenateH5, MergeH5, AddConstantValue, AddMetaDataWithReference
 from util.hepmc import CompressHepMC
 from util.config import Configurator,GetConfigFileContent, GetConfigDictionary
@@ -247,52 +247,18 @@ def main(args):
         filter_flag_files.append(generator.GetEventFilterFlagFilename())
         hepmc_files.append(hep_file)
 
-        # if(use_delphes): # Case 1: Using Delphes
-        #     # Pass the HepMC file to Delphes. Will output a ROOT file.
-        #     delphes_card = configurator.GetDelphesCard() # will default to the ATLAS card that is shipped with Delphes
-        #     delphes_file = hep_file.replace('.hepmc','.root')
-        #     delphes_wrapper = DelphesWrapper(configurator.GetDelphesDirectory())
-        #     if(delphes_dir is not None):
-        #         configurator.SetDelphesDirectory(delphes_dir)
-        #     delphes_wrapper.PrepDelphes() # will download/build Delphes if necessary
-        #     print('Running DelphesHepMC3: {} -> {}.'.format(hep_file,delphes_file))
-        #     if(i == 0):
-        #         print('\tDelphes executable: {}'.format(delphes_wrapper.GetExecutable()))
-        #         print('\tDelphes card: {}'.format(delphes_card))
-
-        #     delphes_file = delphes_wrapper.HepMC3ToDelphes(hepmc_file=hep_file, output_file=delphes_file, cwd=outdir, delphes_card=delphes_card)
-        #     delphes_files.append(delphes_file)
-
-        #     # We can now delete or compress the HepMC file. If it's compressed, we delete the original file to recover space.
-        #     if(delete_hepmc): sub.check_call(['rm','{}/{}'.format(outdir,hep_file)])
-        #     elif(compress_hepmc): CompressHepMC(['{}/{}'.format(outdir,hep_file)],True)
-
     #===============================
     # STEP 2: Simulation (optional)
     #===============================
 
-
-
-    # TODO: Make a more generic "Simulator" class, akin to Generator. Ultimately want to support more than just Delphes!
+    simulator = None
     if(simulation_type == 'delphes'):
-        delphes_card = configurator.GetDelphesCard() # will default to the ATLAS card that is shipped with Delphes
-        delphes_wrapper = DelphesWrapper(configurator.GetDelphesDirectory())
-        if(delphes_dir is not None):
-            configurator.SetDelphesDirectory(delphes_dir)
-        delphes_wrapper.PrepDelphes() # will download/build Delphes if necessary
-        for i,hep_file in enumerate(hepmc_files):
-            delphes_file = hep_file.replace('.hepmc','.root')
-            print('Running DelphesHepMC3: {} -> {}.'.format(hep_file,delphes_file))
-            if(i == 0):
-                print('\tDelphes executable: {}'.format(delphes_wrapper.GetExecutable()))
-                print('\tDelphes card: {}'.format(delphes_card))
-            delphes_file = delphes_wrapper.HepMC3ToDelphes(hepmc_file=hep_file, output_file=delphes_file, cwd=outdir, delphes_card=delphes_card)
-            delphes_files.append(delphes_file)
+        simulator = DelphesSimulator(configurator,outdir)
 
-        # TODO: Rework file deletion/compression. Too early to get rid of HepMC.
-        # # We can now delete or compress the HepMC file. If it's compressed, we delete the original file to recover space.
-        # if(delete_hepmc): sub.check_call(['rm','{}/{}'.format(outdir,hep_file)])
-        # elif(compress_hepmc): CompressHepMC(['{}/{}'.format(outdir,hep_file)],True)
+    if(simulator is not None):
+        simulator.SetInputs(hepmc_files)
+        simulator.Process()
+        delphes_files = simulator.GetOutputFiles()
 
     # Optionally stop here, if we're not interested in progressing beyond HepMC or Delphes/ROOT.
     if(not do_h5):
@@ -311,10 +277,6 @@ def main(args):
     processor.SetDelphesFiles(delphes_files)
     processor.SetOutputDirectory(outdir)
 
-    # Slightly more complex way of running things -- we first create pT-binned HDF5 files, corresponding with the binning of the
-    # HepMC/Delphes files. These binned files are then concatenatd into a single HDF5 file with all events.
-    # Making the binned files first may allow us to (more easily) run some algorithms where we may want to compare across
-    # the HepMC/Delphes and HDF5 files, since they are all binned it'll be easy to match events across files.
     h5_files = []
     print('\nProducing separate HDF5 files for each pT bin, and then concatenating these.')
     delete_individual_h5 = True

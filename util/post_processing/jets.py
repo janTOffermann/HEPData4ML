@@ -1,12 +1,10 @@
 # The purpose of this code is to apply the Johns Hopkins top tagger (arXiv:0806.0848 [hep-ph])
 # to the jets in the dataset.
-import subprocess as sub
 import numpy as np
 import h5py as h5
 # from typing import Dict, Any, Tuple, Optional # experimenting with typing
 from util.fastjet import JetFinderBase
 from util.qol_utils.progress_bar import printProgressBarColor
-from util.calcs import embed_array_inplace
 from util.buffer import Buffer
 
 import util.post_processing.utils.ghost_association as ghost_assoc
