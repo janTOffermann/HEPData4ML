@@ -24,21 +24,24 @@ def parse_mc_steps(value):
         raise ap.ArgumentTypeError("Invalid steps: {}".format(invalid))
     return steps
 
-def parse_float_list(value):
-    """Parse a list of floats directly, or from a space- or comma-separated string"""
-
-    if isinstance(value, list):
-        floats = value  # Already a list from nargs
-    else:
-        # Handle both comma and space separation
-        if ',' in value:
-            float_strings = [s.strip() for s in value.split(',')]
+class FloatListAction(ap.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        if isinstance(values, list):
+            # Multiple arguments: -p 550 560 570
+            try:
+                result = [float(v) for v in values]
+            except ValueError as e:
+                parser.error("Invalid float value in {}: {}".format(option_string,e))
         else:
-            float_strings = value.split()
+            # Single argument, might be comma/space separated: -p "550,560,570"
+            if ',' in values:
+                float_strings = [s.strip() for s in values.split(',')]
+            else:
+                float_strings = values.split()
 
-    # Convert to floats and validate
-    try:
-        floats = [float(s) for s in float_strings]
-    except ValueError as e:
-        raise ap.ArgumentTypeError("Invalid float value: {}".format(e))
-    return floats
+            try:
+                result = [float(s) for s in float_strings]
+            except ValueError as e:
+                parser.error("Invalid float value in {}: {}".format(option_string,e))
+
+        setattr(namespace, self.dest, result)
