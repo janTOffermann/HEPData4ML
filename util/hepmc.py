@@ -2,14 +2,18 @@ import numpy as np
 import pyhepmc as hep
 import subprocess as sub
 import pathlib
+from typing import Union, Optional, TYPE_CHECKING
 
-def RestructureParticleArray(arr, fields=None):
+if TYPE_CHECKING: # Only imported during type checking -- avoids risk of circular imports
+    from util.pythia.utils import PythiaWrapper
+
+def RestructureParticleArray(arr:np.ndarray, fields:Optional[list]=None):
     if(fields is None):
         fields = ['px','py','pz','E','pdgid','status','eta','phi']
     arr = np.array([[x[y] for y in fields] for x in arr])
     return arr
 
-def HepMCArrayToNumpy(arr, short=False):
+def HepMCArrayToNumpy(arr:np.ndarray, short:bool=False):
     npar = len(arr)
     # Ordering mimics the ordering of numpythia return_hepmc=False. Matching all fields though in practice we don't use them all.
     dtypes = {
@@ -58,7 +62,7 @@ def HepMCArrayToNumpy(arr, short=False):
 
 # Some utility functions -- partly for interfacing with our Pythia8 wrapper.
 
-def _extract_particle_momenta(pythia_wrapper, particle_indices=None):
+def _extract_particle_momenta(pythia_wrapper:'PythiaWrapper', particle_indices:Optional[np.ndarray]=None):
     momentum = pythia_wrapper.GetPxPyPzE(particle_indices)
     pdgid = pythia_wrapper.GetPdgId(particle_indices)
     status = pythia_wrapper.GetStatus(particle_indices, hepmc=True)
@@ -82,7 +86,7 @@ def CreateHepMCEvent(pythia_wrapper, particle_indices, event_number):
         hepev.add_particle(par)
     return hepev
 
-def CreateFullHepMCEvent(pythia_wrapper, event_number):
+def CreateFullHepMCEvent(pythia_wrapper:'PythiaWrapper', event_number:int):
     """
     Together with the Pythia8 wrapper (another part of this package),
     this basically gives a (Pythonic) Pythia8->HepMC3 (ascii) interface.
@@ -138,21 +142,25 @@ def CreateFullHepMCEvent(pythia_wrapper, event_number):
         hepev.add_vertex(vertex)
     return hepev
 
-def AddToHepMCEvent(pythia_wrapper, particle_indices, hepev):
+def AddToHepMCEvent(pythia_wrapper:'PythiaWrapper', particle_indices:np.ndarray, hepev:hep.GenEvent):
     momentum,pdgid,status = _extract_particle_momenta(pythia_wrapper,particle_indices)
     for j, pmu in enumerate(momentum):
         par = hep.GenParticle(momentum=pmu, pid=pdgid[j], status=status[j])
         hepev.add_particle(par)
     return
 
-def Write2HepMCBuffer(buffername,hepev_list):
+def WriteHepMCEvents(filename:str, hepev_list:Union[list,hep.GenEvent]):
     if(type(hepev_list) is not list): hepev_list = [hepev_list]
-    with hep.io.WriterAscii(buffername) as f:
+    with hep.io.WriterAscii(filename) as f:
         for hepev in hepev_list:
             f.write_event(hepev)
     return
 
-def CopyHepMCBuffer2File(buffername,filename,header=False,footer=False):
+def CopyHepMCBufferToFile(buffername:str,filename:str,header:bool=False,footer:bool=False):
+    """
+    This file copies HepMC events from file 'buffername' to file 'filename'.
+    This is a workaround for the lack of an "append" writing mode for pyhepmc.
+    """
     # For speed, we do this using Unix commands (though it seems a bit hacky).
 
     # We need to determine whether or not to include the HepMC header/footer,
@@ -168,12 +176,12 @@ def CopyHepMCBuffer2File(buffername,filename,header=False,footer=False):
     with open(filename,'a') as f:
         f.writelines(line + '\n' for line in proc_out)
 
-def HepMCOutput(hepev_list,buffername,filename,header=False,footer=False):
-    Write2HepMCBuffer(buffername,hepev_list) # write the given event(s) to a buffer f ile
-    CopyHepMCBuffer2File(buffername,filename,header,footer) # copy buffer file into the full file
+def HepMCOutput(hepev_list:Union[list,hep.GenEvent],buffername:str,filename:str,header:bool=False,footer:bool=False):
+    WriteHepMCEvents(buffername,hepev_list) # write the given event(s) to a buffer file
+    CopyHepMCBufferToFile(buffername,filename,header,footer) # copy buffer file into the full file
     return
 
-def CompressHepMC(files, delete=True, cwd=None):
+def CompressHepMC(files:list, delete:bool=True, cwd:Optional[str]=None):
     for file in files:
         compress_file = file.replace('.hepmc','.tar.bz2')
         if(cwd is not None): compress_file = '{}/{}'.format(cwd,compress_file)
@@ -185,7 +193,7 @@ def CompressHepMC(files, delete=True, cwd=None):
             sub.check_call(['rm',file.split('/')[-1]],shell=False,cwd=cwd)
     return
 
-def ExtractHepMCEvents(files,get_nevents=False, silent=False):
+def ExtractHepMCEvents(files:list,get_nevents:bool=False, silent:bool=False):
     events = []
     nevents = 0
     for file in files:

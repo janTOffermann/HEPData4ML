@@ -5,7 +5,7 @@
 ####################
 $BATCH_NAME
 executable              = condor_job.sh
-arguments               = "$(job_arguments) $CONFIG_FILE $OUTDIR $(Process) $DO_DELPHES $N_THREAD $PAYLOAD_MODE $GIT_BRANCH"
+arguments               = "$(job_arguments) $CONFIG_FILE $OUTDIR $(Process) $N_THREAD $PAYLOAD_MODE $GIT_BRANCH"
 initialdir              = job$(Process)
 should_transfer_files   = IF_NEEDED
 when_to_transfer_output = ON_EXIT

@@ -1,6 +1,5 @@
 import os,glob,pathlib,uuid
 import subprocess as sub
-# Use this file to place functions that will otherwise clutter up prep_condor
 
 def PreparePayload(rundir,payload,gitdir='HEPData4ML'):
     """

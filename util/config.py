@@ -113,11 +113,14 @@ class Configurator:
             contents = f.readlines()
         return ''.join(contents)
 
+    def GetPythiaVerbosity(self):
+        return self.config['generation']['verbose']
+
     # Get the Pythia configuration, for a single pT bin, as a dictionary.
     # This dictionary will only control a few settings (MPI, ISR/FSR etc.),
     # while the process settings from the 'proc' entry of config will be
     # passed separately.
-    def GetPythiaConfig(self,pt_min, pt_max,quiet=True):
+    def GetPythiaConfig(self,pt_min, pt_max,verbose=False):
         pythia_config = {}
         # Tack on a few more things to the pythia configuration
         pythia_config['HadronLevel:all'] = Bool2String(self.config['generation']['hadronization'])
@@ -131,12 +134,12 @@ class Configurator:
         pythia_config['PhaseSpace:pTHatMin'] = pt_min
         pythia_config['PhaseSpace:pTHatMax'] = pt_max
 
-        if(quiet):
+        if(not verbose):
             pythia_config['Print:quiet'] = 'on' # avoid printing reams of info
             pythia_config['Stat:showProcessLevel'] = 'off'
             pythia_config['Stat:showErrors'] = 'off'
         else:
-            pythia_config['Print:quiet'] = 'off' # avoid printing reams of info
+            pythia_config['Print:quiet'] = 'off'
             pythia_config['Stat:showProcessLevel'] = 'on'
             pythia_config['Stat:showErrors'] = 'on'
             pythia_config['Next:numberShowProcess'] = '1'
