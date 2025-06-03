@@ -1,36 +1,33 @@
 import os
 import numpy as np
-import ROOT as rt
 import h5py as h5
 import subprocess as sub
 from util.pythia.utils import PythiaWrapper
-from util.qol_utils.pdg import pdg_names, pdg_plotcodes
-from util.calcs import Calculator
 from util.hepmc import CreateFullHepMCEvent, HepMCOutput
-from util.qol_utils.misc import RN
 from util.qol_utils.progress_bar import printProgressBarColor
+from typing import Optional,TYPE_CHECKING
+
+if TYPE_CHECKING: # Only imported during type checking -- avoids risk of circular imports, limits unnecessary imports
+    from util.config import Configurator
+    import pyhepmc as hep
 
 class PythiaGenerator:
     """
     Generates events using Pythia8.
     """
-    def __init__(self, pt_min, pt_max, configurator, pythia_rng=None, pythia_config_file=None, verbose=False):
+    def __init__(self, pt_min:float, pt_max:float, configurator:'Configurator', pythia_rng:Optional[int]=None, pythia_config_file:Optional[str]=None):
         self.configurator = configurator
         self.pt_min = pt_min
         self.pt_max = pt_max
 
         # Create our Pythia wrapper.
-        self.pythia = PythiaWrapper(verbose=verbose)
         self.pythia_rng = pythia_rng
-        self.ConfigPythia(config_file=pythia_config_file,quiet = (not verbose))
+        self.verbose = self.configurator.GetPythiaVerbosity()
+        self.pythia = PythiaWrapper(verbose=self.verbose)
+        self.ConfigPythia(config_file=pythia_config_file,verbose=self.verbose)
 
-        # Particle selectors and event filters.
-        self.event_selection = None
-        self.truth_selection = None
-        self.final_state_selection = None
+        # Event filters. # TODO: May remove
         self.event_filter = None
-        self.jet_config = None
-        self.n_truth = None
 
         # Things for the progress bar.
         self.prefix = 'Generating events for pT bin [{},{}]:'.format(self.pt_min,self.pt_max)
@@ -39,7 +36,6 @@ class PythiaGenerator:
 
         self.SetOutputDirectory()
 
-        self.SetHistFilename('hists.root')
         self.SetFilename('events.hepmc')
         self.stats_filename = 'stats.h5'
         self.SetEventFilterFlagFilename() # will give a default name
@@ -74,19 +70,9 @@ class PythiaGenerator:
 
         # self.calculator = Calculator(use_vectorcalcs=self.configurator.GetUseVectorCalcs())
 
-    def SetVerbose(self,val):
+    def SetVerbose(self,val:bool):
+        self.verbose = val
         self.pythia.SetVerbose(val)
-
-    def SetEventSelection(self,selection):
-        self.event_selection = selection
-        try: self.event_selection.Initialize(self.configurator)
-        except: pass
-
-    def SetTruthSelection(self,selection):
-        self.truth_selection = selection
-
-    def SetFinalStateSelection(self,selection):
-        self.final_state_selection = selection
 
     def SetEventFilter(self,filter):
         self.event_filter = filter
@@ -100,38 +86,25 @@ class PythiaGenerator:
         else:
             self.event_filter_flag_filename = None
 
-    def SetJetConfig(self,config):
-        self.jet_config = config
-
-    def SetNTruth(self,n):
-        self.n_truth = n
-
-    def SetPythiaConfigFile(self,file=None):
+    def SetPythiaConfigFile(self,file:Optional[str]=None):
         self.pythia_config_file = file
         if(file is None):
             self.pythia_config_file = self.configurator.GetPythiaConfigFile() # picked up from dictionary in config/config.py
 
-    def SetDefaultFilenames(self,outdir=None):
+    def SetDefaultFilenames(self):
         self.SetOutputDirectory(dir)
         self.SetFilename('events.hepmc')
-        self.SetHistFilename('hists.root')
         self.stats_filename = 'stats.h5'
         self.SetEventFilterFlagFilename()
 
-    def SetProgressBar(self,flag):
+    def SetProgressBar(self,flag:bool):
         self.progress_bar = flag
 
-    def SetOutputDirectory(self,dir=None):
+    def SetOutputDirectory(self,dir:Optional[str]=None):
         if(dir is None): dir = os.getcwd()
         self.outdir = dir
 
-    # def SetDiagnosticPlots(self,flag):
-    #     self.diagnostic_plots = flag
-
-    def SetHistFilename(self,name):
-        self.hist_filename = name
-
-    def SetFilename(self,name, rename_extra_files=True):
+    def SetFilename(self,name:str, rename_extra_files:bool=True):
         if('.hepmc' not in name):
             name = '{}.hepmc'.format(name)
         self.filename = name
@@ -139,7 +112,7 @@ class PythiaGenerator:
             self.SetEventFilterFlagFilename(None)
         return
 
-    def SetStatsFilename(self,name):
+    def SetStatsFilename(self,name:str):
         if('.h5' not in name):
             name = '{}.h5'.format(name)
         self.stats_filename = name
@@ -154,7 +127,7 @@ class PythiaGenerator:
     def GetHistFilename(self):
         return self.hist_filename
 
-    def SetEventFilterFlagFilename(self,name=None):
+    def SetEventFilterFlagFilename(self,name:Optional[str]=None):
         if(name is None): self.event_filter_flag_filename = self.filename.replace('.hepmc','_event_filter_flag.h5')
         else: self.event_filter_flag_filename = name
         return
@@ -162,12 +135,12 @@ class PythiaGenerator:
     def GetEventFilterFlagFilename(self):
         return self.event_filter_flag_filename
 
-    def ConfigPythia(self, config_file=None, quiet=True):
+    def ConfigPythia(self, config_file:Optional[str]=None, verbose:bool=False):
         """
         Prepare and apply Pythia configuration. This turns our settings (from our config file)
         into a list of strings ready to be input to Pythia8.
         """
-        self.pythia_config = self.configurator.GetPythiaConfig(self.pt_min,self.pt_max, quiet)
+        self.pythia_config = self.configurator.GetPythiaConfig(self.pt_min,self.pt_max, verbose)
         self.SetPythiaConfigFile(file=config_file)
 
         # Optionally set the Pythia RNG seed to something other than what's in the config.
@@ -182,63 +155,7 @@ class PythiaGenerator:
         self.pythia.ReadStringsFromFile(self.pythia_config_file)
         self.pythia.InitializePythia()
 
-    # def InitializeHistograms(self):
-    #     #TODO: DEPRECATED
-    #     self.hists = []
-    #     self.hist_fs_pdgid = rt.TH1D(RN(),'Final-state particles;Particle;Count',47,0.,47)
-    #     self.hists.append(self.hist_fs_pdgid)
-
-    #     # Initialize histograms for sum of energy, E_T and p_T for final-state particles.
-    #     self.kinematic_hists = {}
-    #     hist_binning = (1000,0.,1000.)
-
-    #     for key,key_insert in zip(('all','invisible','visible'),('',' (invisibles)',' (visibles)')):
-    #         d = {}
-    #         d['e'] = rt.TH1D(RN(),'#sum Energy {};E [GeV];Count'.format(key_insert),*hist_binning)
-    #         d['et'] = rt.TH1D(RN(),'#sum ET {};ET [GeV];Count'.format(key_insert).replace('ET','E_{T}'),*hist_binning)
-    #         d['pt'] = rt.TH1D(RN(),'#sum pT {};pT [GeV];Count'.format(key_insert).replace('pT','p_{T}'),*hist_binning)
-    #         self.kinematic_hists[key] = d
-    #         for h in d.values():
-    #             self.hists.append(h)
-
-    # def OutputHistograms(self):
-    #     #TODO: DEPRECATED
-    #     hist_filename = '{}/{}'.format(self.outdir,self.hist_filename)
-    #     f = rt.TFile(hist_filename,'UPDATE')
-    #     for i,h in enumerate(self.hists):
-    #         canvas_name = 'c_{}'.format(i)
-    #         hist_name = 'h_{}'.format(i)
-    #         c = rt.TCanvas(canvas_name,'',800,600)
-
-    #         if(i == 0): # pdg_hist
-    #             pdg_names_inv = {}
-    #             for key,val in pdg_plotcodes.items():
-    #                 code = val
-    #                 name = pdg_names[key]
-    #                 pdg_names_inv[code] = name
-
-    #             n = h.GetNbinsX()
-    #             xaxis = h.GetXaxis()
-    #             for j in range(n):
-    #                 if(j == 0): name = ''
-    #                 else:
-    #                     try: name = pdg_names_inv[j]
-    #                     except: name = ''
-    #                 xaxis.SetBinLabel(j+1,name)
-    #             xaxis.SetLabelSize(2.0e-2)
-    #             rt.gPad.SetGrid(1,0)
-    #         else: rt.gPad.SetGrid()
-
-    #         h.Draw('HIST')
-    #         rt.gPad.SetLogy()
-    #         c.Draw()
-    #         f.cd() # unnecessary
-    #         # c.Write(canvas_name)
-    #         h.Write(hist_name)
-    #     f.Close()
-    #     return
-
-    def SetBufferSize(self,size=100):
+    def SetBufferSize(self,size:int=100):
         self.buffer_size = size
 
     def GetCurrentBufferSize(self):
@@ -247,16 +164,16 @@ class PythiaGenerator:
     def ClearEventBuffer(self):
         self.hepev_buffer.clear()
 
-    def FillEventBuffer(self,hepev_full):
+    def FillEventBuffer(self,hepev_full:'hep.GenEvent'):
         self.hepev_buffer.append(hepev_full)
 
-    def WriteEventBufferToFile(self,header=False,footer=False):
+    def WriteEventBufferToFile(self,header:bool=False,footer:bool=False):
         if(header): self.header_status = True
         if(footer): self.footer_status = True
         HepMCOutput(self.hepev_buffer,self.buffername,self.filename_fullpath,header,footer)
         self.ClearEventBuffer()
 
-    def GenerationLoop(self, nevents,i_real = 1, nevents_disp=None):
+    def GenerationLoop(self, nevents,i_real:int = 1, nevents_disp:Optional[int]=None):
         """
         This is the function where Pythia8 matrix element generation + showering/hadronization happens.
         The results are filtered for the selected "truth" and "final state" particles, which are placed
@@ -362,7 +279,7 @@ class PythiaGenerator:
     # Generate a bunch of events in the given pT range,
     # and save them to a HepMC file.
     # We do perform event selection: Only certain particles are saved to the file to begin with.
-    def Generate(self,nevents):
+    def Generate(self,nevents:int):
         self.nevents = nevents # total number of events we request
 
         if(self.progress_bar): printProgressBarColor(0,nevents, prefix=self.prefix, suffix=self.suffix, length=self.bl)

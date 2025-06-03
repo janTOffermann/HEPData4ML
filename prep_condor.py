@@ -1,19 +1,18 @@
 import sys,os,pathlib
 import argparse as ap
 import subprocess as sub
-import util.utils as utils
+from util.condor import condor_utils
+from util.args import parse_mc_steps
 
 def main(args):
     parser = ap.ArgumentParser()
     parser.add_argument('-n',                '--nevents',         type=int, help='Number of events per pt bin.', required=True)
+    parser.add_argument('-steps',             '--steps',             type = parse_mc_steps, default = 'generation simulation reconstruction', help='Comma- or space-separated list of step. Options are [generation,simulation,reconstruction].')
     parser.add_argument('-p',                '--ptbins',          type=int, help='Transverse momentum bin edges.', nargs='+', default=None)
-    parser.add_argument('-p_s',              '--ptbins_string',   type=str, help='Comma-separated list of pT bin edges as string. Alternative to -p argument.', default=None)
     parser.add_argument('-O',                '--outdir',          type=str, help='Output directory for the jobs', default=None)
     parser.add_argument('-R',                '--rundir',          type=str, help='Run directory -- where the condor jobs will go.', default='run0')
-    parser.add_argument('-d',                '--delphes',         type=int, help='Whether or not to run DELPHES fast detector sim. Always produces truth-level output too.',default=1)
     parser.add_argument('-s',                '--sep_truth',       type=int, help='Whether or not to store truth-level particles in separate arrays.', default=1)
     parser.add_argument('-ns',               '--n_sep_truth',     type=int, help='How many truth particles to save in separate arrays -- will save the first n as given by the truth selection.', default=-1)
-    parser.add_argument('-h5',               '--hdf5',            type=int, help='Whether or not to produce final HDF5 files. If false, stops after HepMC or Delphes/ROOT file production.',default=1)
     parser.add_argument('-rng',              '--rng',             type=int, help='Pythia RNG seed offset -- seed will be offset + job number.',default=1)
     parser.add_argument('-sp',               '--split',           type=int, help='Whether or not to split HDF5 file into training/validation/testing files.',default=1)
     parser.add_argument('-pc',               '--pythia_config',   type=str, help='Path to Pythia configuration template (for setting the process).',default=[None], nargs='+')
@@ -32,15 +31,11 @@ def main(args):
 
     nevents = args['nevents']
     ptbins = args['ptbins']
-    ptbins_str = args['ptbins_string']
+    steps = args['steps']
     outdir = args['outdir']
     if(outdir is None):
         outdir = rundir + '/output'
     rundir = args['rundir']
-    do_delphes = args['delphes'] > 0
-    sep_truth = args['sep_truth']
-    n_sep_truth = args['n_sep_truth']
-    do_h5 = args['hdf5']
     rng_seed = args['rng']
     split = args['split']
     pythia_configs = args['pythia_config']
@@ -58,9 +53,6 @@ def main(args):
 
     rundir = str(pathlib.Path(rundir).absolute())
     outdir = str(pathlib.Path(outdir).absolute())
-    if(ptbins is None and ptbins_str is None):
-        print('Error: Pt bins were not specified with either -p or -p_s options.')
-        return
 
     this_dir = os.path.dirname(os.path.abspath(__file__))
 
@@ -77,21 +69,17 @@ def main(args):
 
     # Prepare a plaintext file with all the different sets of arguments, for the various jobs.
     jobs_filename = '{}/arguments.txt'.format(rundir)
-    if(ptbins is not None):
-        ptbins_str = ','.join([str(x) for x in ptbins])
-    else:
-        ptbins = [int(x) for x in ptbins_str.split(',')]
+    ptbins_str = ','.join([str(x) for x in ptbins])
+    steps_str = ','.join(steps)
 
-    template = '{} {} {} {} {} {} {} {} {}'.format(
+    template = '{} {} {} {} {} {} {}'.format(
         nevents, # $1 Number of events per pT bin.
         ptbins_str, #$2 pT bins (list of bin edges)
-        sep_truth, #$3 whether or not to save separate truth particle keys (0 or 1)
-        n_sep_truth, #$4 number of separate truth particles to save (i.e. save the first n from the list)
-        do_h5, #$5 whether or not to do jet clustering and make HDF5 files (HepMC -> HDF5). If not, stops after making the HepMC files.
-        '{}', #$6 RNG seed for generation. (can be used to overwrite the builtin config file)
-        split, #$7 whether or not to split final HDF5 file into train/validation/test files. Only relevant if making the HDF5 file.
-        '{}', #$8 Pythia config (can be used to overwrite the builtin config file)
-        '{}' #$9 Event index offset.
+        steps_str, #3 steps to run
+        '{}', #$4 RNG seed for generation. (can be used to overwrite the builtin config file)
+        split, #$5 whether or not to split final HDF5 file into train/validation/test files.
+        '{}', #$6 Pythia config (can be used to overwrite the builtin config file)
+        '{}' #$7 Event index offset.
     ) # double-quotes for silly condor argument syntax
     with open(jobs_filename,'w') as f:
         rng_counter = 0
@@ -125,7 +113,7 @@ def main(args):
     # this might be preferrable or necessary.
 
     payload_string = ''
-    if(git_branch is None): git_branch = utils.GetGitBranch()
+    if(git_branch is None): git_branch = condor_utils.GetGitBranch()
 
     if(payload_mode == 1):
         print(63 * '-')
@@ -136,7 +124,7 @@ def main(args):
         # We have to do a local git clone
         payload = 'payload.tar.gz'
         gitdir = 'HEPData4ML'
-        utils.PreparePayloadFromClone(rundir,payload,gitdir,branch=git_branch)
+        condor_utils.PreparePayloadFromClone(rundir,payload,gitdir,branch=git_branch)
         payload_string = ', ../{}'.format(payload)
 
     elif(payload_mode == 3):
@@ -161,7 +149,7 @@ def main(args):
         # We have to ship the local repo.
         payload = 'payload.tar.gz'
         gitdir = 'HEPData4ML'
-        utils.PreparePayload(rundir,payload,gitdir)
+        condor_utils.PreparePayload(rundir,payload,gitdir)
         payload_string = ', ../{}'.format(payload)
 
     # Now we need to make a condor submission file for this set of jobs. It will be based off a template file.
@@ -191,7 +179,6 @@ def main(args):
         condor_submit_lines[i] = condor_submit_lines[i].replace("$PAYLOAD_STRING",payload_string)
         condor_submit_lines[i] = condor_submit_lines[i].replace("$GIT_BRANCH",git_branch)
         condor_submit_lines[i] = condor_submit_lines[i].replace('$CONFIG_FILE',config_filename)
-        condor_submit_lines[i] = condor_submit_lines[i].replace('$DO_DELPHES',str(int(do_delphes)))
         condor_submit_lines[i] = condor_submit_lines[i].replace('$REQUIREMENTS',requirements_string)
 
     condor_submit_file = '{}/condor.sub'.format(rundir)
