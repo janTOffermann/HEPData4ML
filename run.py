@@ -6,7 +6,7 @@ from util.simulation import DelphesSimulator
 from util.conversion import Processor, RemoveFailedFromHDF5, SplitH5, AddEventIndices, ConcatenateH5, MergeH5, AddConstantValue, AddMetaDataWithReference
 from util.hepmc import CompressHepMC
 from util.config import Configurator,GetConfigFileContent, GetConfigDictionary
-from util.args import parse_mc_steps, parse_float_list, none_or_str
+from util.args import parse_mc_steps, FloatListAction, none_or_str
 
 def get_git_revision_short_hash(): # see https://stackoverflow.com/a/21901260
     cwd = os.path.dirname(os.path.abspath(__file__))
@@ -27,7 +27,7 @@ def main(args):
 
     parser.add_argument('-n',            '--nevents',           type=int,          required=True,            help='Number of events per pt bin.')
     parser.add_argument('-steps',        '--steps',             type = parse_mc_steps, default = 'generation simulation reconstruction', help='Comma- or space-separated list of step. Options are [generation,simulation,reconstruction].')
-    parser.add_argument('-p',            '--ptbins',            type = parse_float_list, default=[-1,-1],    help='Transverse momentum bin edges, for outgoing particles of the hard process. Can be a list of floats, or a string of comma- or space-separated floats. In GeV.')
+    parser.add_argument('-p',            '--ptbins',            action = FloatListAction, default=[-1,-1], nargs='*',    help='Transverse momentum bin edges, for outgoing particles of the hard process. Can be a list of floats, or a string of comma- or space-separated floats. In GeV.')
     parser.add_argument('-o',            '--outfile',           type=str,          default='events.h5',      help='Output HDF5 file name.')
     parser.add_argument('-O',            '--outdir',            type=none_or_str,  default=None,             help='Output directory.')
     parser.add_argument('-v',            '--verbose',           type=int,          default=0,                help='Verbosity.')

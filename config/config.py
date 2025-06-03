@@ -4,11 +4,11 @@ import util.particle_selection.selection_algos as algos
 
 config = {
     'generation' : {
-        'proc' : 'SoftQCD', # Filename. Can also correspond to a card name in the util/pythia_templates subdirectory.
+        'proc' : 'bbar', # Filename. Can also correspond to a card name in the util/pythia_templates subdirectory.
         'hadronization' : True, # Pythia8 hadronization flag
-        'mpi' : True, # Pythia8 multi-parton interactions flag
-        'isr' : True, # Pythia8 initial-state radiation flag
-        'fsr' : True, # Pythia8 final-state radiation flag
+        'mpi' : False, # Pythia8 multi-parton interactions flag
+        'isr' : False, # Pythia8 initial-state radiation flag
+        'fsr' : False, # Pythia8 final-state radiation flag
         'rng' : 1, # Pythia8 RNG seed
         'verbose' : True
     },
