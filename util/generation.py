@@ -3,7 +3,7 @@ import numpy as np
 import h5py as h5
 import subprocess as sub
 from util.pythia.utils import PythiaWrapper
-from util.hepmc import CreateFullHepMCEvent, HepMCOutput
+from util.hepmc.hepmc import PythiaWrapperToPyHepMC, PyHepMCOutputAscii, PythiaWrapperToHepMC, HepMCOutputAscii
 from util.qol_utils.progress_bar import printProgressBarColor
 from typing import Optional,TYPE_CHECKING
 
@@ -170,7 +170,10 @@ class PythiaGenerator:
     def WriteEventBufferToFile(self,header:bool=False,footer:bool=False):
         if(header): self.header_status = True
         if(footer): self.footer_status = True
-        HepMCOutput(self.hepev_buffer,self.buffername,self.filename_fullpath,header,footer)
+
+        # PyHepMCOutput(self.hepev_buffer,self.buffername,self.filename_fullpath,header,footer)
+        HepMCOutputAscii(self.hepev_buffer,self.buffername,self.filename_fullpath,header,footer)
+
         self.ClearEventBuffer()
 
     def GenerationLoop(self, nevents,i_real:int = 1, nevents_disp:Optional[int]=None):
@@ -234,7 +237,10 @@ class PythiaGenerator:
             # ==========================================
             # Now lets create the HepMC event.
             # ==========================================
-            hepmc_event = CreateFullHepMCEvent(self.pythia,i_real)
+            # hepmc_event = PythiaWrapperToPyHepMC(self.pythia,i_real)
+
+            # test
+            hepmc_event = PythiaWrapperToHepMC(self.pythia,i_real)
 
             # Fill the memory buffer with this event.
             self.FillEventBuffer(hepmc_event)

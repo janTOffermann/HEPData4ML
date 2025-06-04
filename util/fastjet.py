@@ -105,21 +105,6 @@ class FastJetSetup:
         self.SetPythonDirectory()
         return
 
-# class JetCollection:
-#     """
-#     Since JetFinderBase deals with a collection of jets,
-#     that a bunch of different functions/classes act on,
-#     and which we might (re)sort multiple times, this is
-#     a helper class that makes an object that behaves much
-#     like a dictionary or list, and keeps track of the historical
-#     ordering of the jets.
-#     """
-#     def __init__(self,jet_list):
-#         self.jet_dict = {i:jet for i,jet in enumerate(jet_list)}
-
-
-
-
 class JetFinderBase:
     """
     This is a base class, for using the Fastjet library to perform jet clustering.
@@ -276,9 +261,6 @@ class JetFinderBase:
         This is accomplished by modifying self.jet_ordering.
         """
 
-        # TODO: Here, or in another dedicated function, we also need to sort any other branches
-        #       associated with these jets. For example, tags from the JHTagger processor.
-
         if(len(self.jets_dict) < 1): # no jets -> nothing to do
             return
 
@@ -288,14 +270,6 @@ class JetFinderBase:
         if(self.n_jets_max is not None):
             if((len(self.pt_sorting) > self.n_jets_max) and truncate):
                 self.pt_sorting = self.pt_sorting[:self.n_jets_max]
-
-        # # If sorting is unchanged -- i.e. the jets were already sorted -- return now,
-        # # avoiding extra calls to self._jetsToVectors() and self._fetchJetConstituents()
-        # if(len(self.pt_sorting) == len(jet_pt)):
-        #     if(np.sum(self.pt_sorting == np.arange(len(jet_pt))) == len(jet_pt)): # TODO: Too contrived? Effectively an element-wise comparison of bool arrays.
-        #         return
-
-        # print('Lengths: self.pt_sorting = {}, self.jet_ordering = {}'.format(len(self.pt_sorting),len(self.jet_ordering)))
 
         if(len(self.pt_sorting) == 1):
             self.jet_ordering = [self.jet_ordering[self.pt_sorting[0]]]
@@ -314,16 +288,6 @@ class JetFinderBase:
             # Also refresh constituents.
             self._fetchJetConstituents()
 
-
-        # if(len(self.jets) == 1): #TODO: Weird behaviour otherwise
-        #     self.jets = [self.jets[self.pt_sorting[0]]]
-        # else:
-        #     self.jets = list(operator.itemgetter(*self.pt_sorting)(self.jets)) #NOTE: Possibly a little obscure, but maybe more efficient than list comprehension? -Jan
-        # self._jetsToVectors()
-
-        # As an extra precaution, we will refresh the constituent vectors,
-        # at the risk of doing it unnecessarily.
-        # TODO: Is this OK? Could add unnecessary computation time if this function is called a lot.
         self._fetchJetConstituents()
 
     def _updateJetDictionary(self):

@@ -4,7 +4,7 @@ import subprocess as sub
 from util.generation import PythiaGenerator
 from util.simulation import DelphesSimulator
 from util.conversion import Processor, RemoveFailedFromHDF5, SplitH5, AddEventIndices, ConcatenateH5, MergeH5, AddConstantValue, AddMetaDataWithReference
-from util.hepmc import CompressHepMC
+from util.hepmc.hepmc import CompressHepMC
 from util.config import Configurator,GetConfigFileContent, GetConfigDictionary
 from util.args import parse_mc_steps, FloatListAction, none_or_str
 
