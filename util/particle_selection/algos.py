@@ -4,6 +4,11 @@
 
 import numpy as np
 import itertools
+
+import pyhepmc as hep
+from pyHepMC3 import HepMC3 as hm # the official Pythonic HepMC3 bindings
+from typing import Union
+
 #==========================================
 # Here are a bunch of convenience
 # functions, which may be useful
@@ -17,57 +22,64 @@ import itertools
 # GenParticle > tuple > PythiaWrapper+idx.
 #==========================================
 
-def IsQuark(hepev,idx):
-    pid = np.abs(hepev.particles[idx].pid)
+def IsQuark(hepev:Union[hep.GenEvent,hm.GenEvent],idx):
+    if(isinstance(hepev,hep.GenEvent)):
+        pid = np.abs(hepev.particles[idx].pid)
+    else:
+        pid = np.abs(hepev.particles()[idx].pid())
     return (pid > 0 and pid < 7)
 
-def IsLepton(pythia_wrapper=None, idx=None, p=None, hepmc_particle=None):
-    if(hepmc_particle is not None):
-        pid = np.abs(hepmc_particle.pid)
-    else:
-        if(p is None): p = pythia_wrapper.GetParticle(idx)
-        pid = np.abs(p[-2])
-    return (pid > 10 and pid < 19)
+# def IsLepton(pythia_wrapper=None, idx=None, p=None, hepmc_particle=None):
+#     if(hepmc_particle is not None):
+#         pid = np.abs(hepmc_particle.pid)
+#     else:
+#         if(p is None): p = pythia_wrapper.GetParticle(idx)
+#         pid = np.abs(p[-2])
+#     return (pid > 10 and pid < 19)
 
-def IsGluon(pythia_wrapper=None, idx=None, p=None, hepmc_particle=None):
-    if(hepmc_particle is not None):
-        pid = np.abs(hepmc_particle.pid)
-    else:
-        if(p is None): p = pythia_wrapper.GetParticle(idx)
-        pid = np.abs(p[-2])
-    return (pid in [9,21])
+# def IsGluon(pythia_wrapper=None, idx=None, p=None, hepmc_particle=None):
+#     if(hepmc_particle is not None):
+#         pid = np.abs(hepmc_particle.pid)
+#     else:
+#         if(p is None): p = pythia_wrapper.GetParticle(idx)
+#         pid = np.abs(p[-2])
+#     return (pid in [9,21])
 
-def IsPhoton(pythia_wrapper=None, idx=None, p=None, hepmc_particle=None):
-    if(hepmc_particle is not None):
-        pid = np.abs(hepmc_particle.pid)
-    else:
-        if(p is None): p = pythia_wrapper.GetParticle(idx)
-        pid = np.abs(p[-2])
-    return (pid == 22)
+# def IsPhoton(pythia_wrapper=None, idx=None, p=None, hepmc_particle=None):
+#     if(hepmc_particle is not None):
+#         pid = np.abs(hepmc_particle.pid)
+#     else:
+#         if(p is None): p = pythia_wrapper.GetParticle(idx)
+#         pid = np.abs(p[-2])
+#     return (pid == 22)
 
-def IsNeutrino(pythia_wrapper=None, idx=None, p=None, hepmc_particle=None):
-    if(hepmc_particle is not None):
-        pid = np.abs(hepmc_particle.pid)
-    else:
-        if(p is None): p = pythia_wrapper.GetParticle(idx)
-        pid = np.abs(p[-2])
-    return (pid in [12, 14, 16, 18])
+# def IsNeutrino(pythia_wrapper=None, idx=None, p=None, hepmc_particle=None):
+#     if(hepmc_particle is not None):
+#         pid = np.abs(hepmc_particle.pid)
+#     else:
+#         if(p is None): p = pythia_wrapper.GetParticle(idx)
+#         pid = np.abs(p[-2])
+#     return (pid in [12, 14, 16, 18])
 
-def IsBoson(pythia_wrapper=None, idx=None, p=None, hepmc_particle=None):
-    if(hepmc_particle is not None):
-        pid = np.abs(hepmc_particle.pid)
-    else:
-        if(p is None): p = pythia_wrapper.GetParticle(idx)
-        pid = np.abs(p[-2])
-    return (pid in [23, 24, 25])
+# def IsBoson(pythia_wrapper=None, idx=None, p=None, hepmc_particle=None):
+#     if(hepmc_particle is not None):
+#         pid = np.abs(hepmc_particle.pid)
+#     else:
+#         if(p is None): p = pythia_wrapper.GetParticle(idx)
+#         pid = np.abs(p[-2])
+#     return (pid in [23, 24, 25])
 
-def IsStable(hepev,idx):
-    return hepev.particles[idx].status == 1
+def IsStable(hepev:Union[hep.GenEvent,hm.GenEvent],idx):
+    if(isinstance(hepev,hep.GenEvent)):
+        return hepev.particles[idx].status == 1
+    return hepev.particles()[idx].status() == 1
 
-def GetDaughtersSingle(hepev,idx):
-    return [x.id - 1 for x in hepev.particles[idx].children] # id gives 1-indexing # TODO: double-check this
+def GetDaughtersSingle(hepev:Union[hep.GenEvent,hm.GenEvent],idx):
+    if(isinstance(hepev,hep.GenEvent)):
+        return [x.id - 1 for x in hepev.particles[idx].children] # id gives 1-indexing # TODO: double-check this
+    return [x.id() - 1 for x in hepev.particles()[idx].children()]
 
-def GetDaughtersRecursive(hepev,idx):
+def GetDaughtersRecursive(hepev:Union[hep.GenEvent,hm.GenEvent],idx):
     daughters = GetDaughtersSingle(hepev,idx)
     # get the daughters' daughters
     for daughter in daughters:
@@ -82,7 +94,7 @@ class GatherQuarks:
     def __init__(self):
         self.particle_list = []
 
-    def __run(self,hepev,idx):
+    def __run(self,hepev:Union[hep.GenEvent,hm.GenEvent],idx):
         daughters = GetDaughtersSingle(hepev,idx) # indices of the daughters of particle @ idx
 
         # Determine which daughters are quarks -- these get added to particle_list.
@@ -108,7 +120,7 @@ class GatherStableDaughters:
     def __init__(self):
         self.particle_list = []
 
-    def __run(self,hepev,idx):
+    def __run(self,hepev:Union[hep.GenEvent,hm.GenEvent],idx):
         daughters = GetDaughtersSingle(hepev,idx) # indices of the daughters of particle @ idx
 
         # Determine which daughters are stable.
@@ -126,7 +138,7 @@ class GatherStableDaughters:
         for nd in not_stable_daughters:
             self.__run(hepev,nd)
 
-    def __call__(self,hepev,idx):
+    def __call__(self,hepev:Union[hep.GenEvent,hm.GenEvent],idx):
         self.particle_list.clear()
         self.__run(hepev,idx)
         return np.unique(np.array(self.particle_list,dtype=int))
@@ -139,7 +151,7 @@ class GatherDaughters:
         self.particle_list = []
         self.recursive=recursive
 
-    def __run(self,hepev,idx):
+    def __run(self,hepev:Union[hep.GenEvent,hm.GenEvent],idx):
         daughters = GetDaughtersRecursive(hepev,idx)
 
         # Check for "self" in daughter list (a particle with same PDG code).
@@ -156,7 +168,7 @@ class GatherDaughters:
             if(d not in self.particle_list):
                 self.particle_list.append(d)
 
-    def __call__(self,hepev,idx):
+    def __call__(self,hepev:Union[hep.GenEvent,hm.GenEvent],idx):
         self.particle_list.clear()
         self.__run(hepev,idx)
         return np.array(self.particle_list,dtype=int)

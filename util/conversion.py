@@ -6,7 +6,7 @@ import uproot as ur
 import subprocess as sub
 from util.calcs import embed_array
 from util.qol_utils.progress_bar import printProgressBarColor
-from util.hepmc import ExtractHepMCEvents
+from util.hepmc.hepmc import ExtractPyHepMCEventsAscii, ExtractPyHepMCParticles, ExtractHepMCEventsAscii, ExtractHepMCParticles, ParticleToVector, GetParticleID
 
 class Processor:
     """
@@ -156,7 +156,7 @@ class Processor:
             nentries = len(delphes_arr)
 
         ## Extract final-state truth particle info from the HepMC files.
-        hepmc_events, nentries = ExtractHepMCEvents(hepmc_files,get_nevents=True)
+        hepmc_events, nentries = ExtractHepMCEventsAscii(hepmc_files,get_nevents=True)
 
         # Some indexing preparation for writing in chunks.
         start_idxs,stop_idxs,ranges = self.PrepIndexRanges(nentries,self.nevents_per_chunk)
@@ -175,13 +175,17 @@ class Processor:
 
             # 1) Save the stable truth-level particles from the event.
             # Extract all the particles from the HepMC events, into memory.
-            particles = self.ExtractHepMCParticles(hepmc_events[start_idxs[i]:stop_idxs[i]])
+            particles = ExtractHepMCParticles(hepmc_events[start_idxs[i]:stop_idxs[i]],self.nparticles_max)
 
             for j,event_particles in enumerate(particles): # Loop over events in this chunk
 
                 status = np.array([x.status for x in event_particles])
                 stable_particles = list(itertools.compress(event_particles, status == 1))
-                stable_particle_vecs = [rt.Math.PxPyPzEVector(x.momentum.px, x.momentum.py, x.momentum.pz, x.momentum.e) for x in stable_particles]
+
+                # NOTE: Currently supporting both PyHepMC and HepMC, may want to consider
+                #       dropping PyHepMC since in practice we won't be switching back and forth.
+
+                stable_particle_vecs = [ParticleToVector(x) for x in stable_particles]
 
                 self.WriteToDataBuffer(j,'StableTruthParticles.N',len(stable_particle_vecs))
 
@@ -199,17 +203,18 @@ class Processor:
                                        dimensions={1:self.nparticles_stable}
                 )
 
-                self.WriteToDataBuffer(j,'StableTruthParticles.PdgId',[x.pid for x in stable_particles],
+                self.WriteToDataBuffer(j,'StableTruthParticles.PdgId',[GetParticleID(x) for x in stable_particles],
                                        dimensions={1:self.nparticles_stable}
                 )
 
             # 2) Extract the filtered truth record from the events.
             for key,selection in self.truth_selection.items():
-                truth_selected_event_particles = self.ExtractSelectedHepMCParticles(hepmc_events[start_idxs[i]:stop_idxs[i]],selection)
+
+                truth_selected_event_particles = ExtractHepMCParticles(hepmc_events[start_idxs[i]:stop_idxs[i]],self.nparticles_truth_selected,selection)
                 for j,truth_selected_particles in enumerate(truth_selected_event_particles): # Loop over events in this chunk
 
                     # truth_selected_particles = list(itertools.compress(event_particles, truth_selected_status == 1))
-                    truth_selected_particle_vecs = [rt.Math.PxPyPzEVector(x.momentum.px, x.momentum.py, x.momentum.pz, x.momentum.e) for x in truth_selected_particles]
+                    truth_selected_particle_vecs = [ParticleToVector(x) for x in truth_selected_particles]
 
                     self.WriteToDataBuffer(j,'{}.N'.format(key),len(truth_selected_particle_vecs))
 
@@ -227,7 +232,7 @@ class Processor:
                                             dimensions={1:self.nparticles_truth_selected}
                     )
 
-                    self.WriteToDataBuffer(j,'{}.PdgId'.format(key),[x.pid for x in truth_selected_particles],
+                    self.WriteToDataBuffer(j,'{}.PdgId'.format(key),[GetParticleID(x) for x in truth_selected_particles],
                                             dimensions={1:self.nparticles_truth_selected}
                     )
 
@@ -375,25 +380,6 @@ class Processor:
         for x in g:
             x.close()
         return
-
-    def ExtractHepMCParticles(self,events):
-        particles = [
-            ev.particles[:int(np.minimum(len(ev.particles),self.nparticles_max))]
-            for ev in events
-        ]
-        return particles
-
-
-    def ExtractSelectedHepMCParticles(self,events,selection):
-
-        particles = [
-            [ev.particles[x] for x in np.atleast_1d(selection(ev))] # TODO: use intertools.compress() -- tried before, but it didn't work as expected?
-            for ev in events
-        ]
-
-        # possible truncation
-        particles = [x[:int(np.minimum(len(x),self.nparticles_truth_selected))] for x in particles]
-        return particles
 
     def PrepDelphesArrays(self,):
         # TODO: This uses uproot.lazy, which is part of uproot 4 but has been

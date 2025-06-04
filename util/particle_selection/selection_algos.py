@@ -1,23 +1,38 @@
 import numpy as np
 from util.particle_selection.algos import *
+import pyhepmc as hep
+from pyHepMC3 import HepMC3 as hm # the official Pythonic HepMC3 bindings
+from typing import Union
+
 # ============================================
 # Each algorithm returns a Boolean status,
 # and a list of selected particles' event listing indices.
 # These can be used by AlgoSelection() in particle_selection.py.
 # ============================================
 
-# This function just selects all actual final-state (i.e. stable) particles in an event.
-class SelectFinalState:
+class BaseSelectorAlgorithm:
+    """
+    Base selection algorithm class.
+    Consider moving some stuff here.
+    """
     def __init__(self):
         pass
 
-    def __call__(self,hepev):
-        status = [x.status for x in hepev.particles]
+# This function just selects all actual final-state (i.e. stable) particles in an event.
+class SelectFinalState(BaseSelectorAlgorithm):
+    def __init__(self):
+        pass
+
+    def __call__(self,hepev:Union[hep.GenEvent,hm.GenEvent]):
+        if(isinstance(hepev,hep.GenEvent)):
+            status = [x.status for x in hepev.particles]
+        else:
+            status = [x.status() for x in hepev.particles()]
         stable = np.where(status==1)[0]
         return (len(stable) > 0), stable
 
 # Select the immediate daughters of some particle.
-class SelectDaughters:
+class SelectDaughters(BaseSelectorAlgorithm):
     """
     Select the immediate daughter(s) of some particle, in event listing.
     Does not include radiation like X -> X gamma (here, {X,gamma} are *not*
@@ -27,7 +42,7 @@ class SelectDaughters:
         self.truth_selection = truth_selection
         self.gatherer = GatherDaughters()
 
-    def __call__(self,hepev):
+    def __call__(self,hepev:Union[hep.GenEvent,hm.GenEvent]):
         starting_particles = self.truth_selection(hepev)
         if(type(starting_particles) != list): starting_particles = [starting_particles]
         particles = []
@@ -38,15 +53,15 @@ class SelectDaughters:
         particles = np.array(particles,dtype=int).flatten()
         return True, np.unique(particles)
 
-class SelectSimplestQuarks(SelectDaughters):
-    """
-    Select the "simplest" all-quark final state produced by the particles in truth_selection.
-    This recursively searches the Feynman diagram starting with the particles
-    given by "truth_sel", and selects the earliest quark found along each branch.
-    """
-    def __init__(self,truth_selection):
-        self.truth_selection = truth_selection
-        self.gatherer = GatherQuarks()
+# class SelectSimplestQuarks(SelectDaughters):
+#     """
+#     Select the "simplest" all-quark final state produced by the particles in truth_selection.
+#     This recursively searches the Feynman diagram starting with the particles
+#     given by "truth_sel", and selects the earliest quark found along each branch.
+#     """
+#     def __init__(self,truth_selection):
+#         self.truth_selection = truth_selection
+#         self.gatherer = GatherQuarks()
 
 # # Select the "simplest" all-quark final state produced by the particles in truth_selection.
 # # This recursively searches the Feynman diagram starting with the particles
@@ -67,11 +82,11 @@ class SelectSimplestQuarks(SelectDaughters):
 #         return True, np.unique(particles)
 
 # Select the stable daughters of the particles chosen by truth_selection.
-class SelectFinalStateDaughters:
+class SelectFinalStateDaughters(BaseSelectorAlgorithm):
     def __init__(self,truth_selection):
         self.truth_selection = truth_selection
 
-    def __call__(self,hepev):
+    def __call__(self,hepev:Union[hep.GenEvent,hm.GenEvent]):
         starting_particles = self.truth_selection(hepev)
         if(type(starting_particles) not in [list,np.ndarray]): starting_particles = [starting_particles]
         particles = []
