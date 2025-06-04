@@ -12,6 +12,7 @@ class PythiaInstaller:
     """
 
     def __init__(self):
+        self.SetDirectory()
         self.pythia_download = 'https://pythia.org/download/pythia83/pythia8315.tgz' # LCG_105 - LCG_107 have 3.5.1pre09
         self.pythia_file = 'pythia8315'
 
@@ -36,7 +37,7 @@ class PythiaInstaller:
         # Check if Pythia8 is already built at destination.
         if(not force):
             pass # TODO: Will be a bit involved, need to test Python3 bindings and HepMC3 support
-            # ex = glob.glob('{}/**/DelphesHepMC3'.format(self.delphes_dir),recursive=True)
+            # ex = glob.glob('{}/**/DelphesHepMC3'.format(self.directory),recursive=True)
             # if(len(ex) > 0):
             #     self.executable = ex[0]
             #     if(verbose): print('Found DelphesHepMC3 @ {}'.format(self.executable))
@@ -45,10 +46,16 @@ class PythiaInstaller:
         self.DownloadPythia() # TODO: Could check to see if source code is downloaded, though it's hard to make a perfect check.
         self.ConfigurePythia()
         self.BuildPythia(j=j)
-        # self.executable = ex = glob.glob('{}/**/DelphesHepMC3'.format(self.delphes_dir),recursive=True)[0]
+        # self.executable = ex = glob.glob('{}/**/DelphesHepMC3'.format(self.directory),recursive=True)[0]
         return
 
     def DownloadPythia(self):
+
+        path = '{}/{}'.format(self.directory,self.pythia_file)
+        if(pathlib.Path(path).exists()):
+            print('Found Pythia source code @ {}, skipping download.'.format(path))
+            return
+
         with open(self.logfile,'w') as f, open(self.errfile,'w') as g:
             # Fetch Delphes source.
             print('Downloading Pythia.')
@@ -61,11 +68,10 @@ class PythiaInstaller:
                     pass
 
             if(has_wget):
-                sub.check_call('wget --no-check-certificate --content-disposition {} -O {}'.format(self.pythia_download,self.pythia_file).split(' '), shell=False,cwd=self.delphes_dir, stdout=f, stderr=g)
+                sub.check_call('wget --no-check-certificate --content-disposition {} -O {}'.format(self.pythia_download,self.pythia_file).split(' '), shell=False,cwd=self.directory, stdout=f, stderr=g)
             else:
-                sub.check_call('curl -LJ {} -o {}'.format(self.pythia_download,self.pythia_file).split(' '), shell=False,cwd=self.delphes_dir, stdout=f, stderr=g)
-            sub.check_call(['tar', '-zxf', self.pythia_file], shell=False,cwd=self.delphes_dir, stdout=f, stderr=g)
-            sub.check_call(['rm', self.pythia_file], shell=False,cwd=self.delphes_dir, stdout=f, stderr=g)
+                sub.check_call('curl -LJ {} -o {}'.format(self.pythia_download,self.pythia_file).split(' '), shell=False,cwd=self.directory, stdout=f, stderr=g)
+            sub.check_call(['tar', '-zxf', self.pythia_file], shell=False,cwd=self.directory, stdout=f, stderr=g)
         return
 
     def ConfigurePythia(self):
@@ -77,5 +83,5 @@ class PythiaInstaller:
         # with open(self.logfile,'w') as f, open(self.errfile,'w') as g:
         #     print('Making Delphes.')
         #     sub.check_call(['make', '-j{}'.format(j)],
-        #                 shell=False, cwd = '{}/{}'.format(self.delphes_dir,self.pythia_file.replace('.tar.gz','')), stdout=f, stderr=g)
+        #                 shell=False, cwd = '{}/{}'.format(self.directory,self.pythia_file.replace('.tar.gz','')), stdout=f, stderr=g)
         return
