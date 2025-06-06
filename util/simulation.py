@@ -1,12 +1,11 @@
 
 import numpy as np
 from util.config import Configurator
-from util.delphes import DelphesWrapper
+from util.delphes.delphes import DelphesWrapper
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING: # Only imported during type checking -- limits the risk of circular imports, as the code is further developped
     from util.config import Configurator
-
 
 class DetectorSimulator:
     def __init__(self):
