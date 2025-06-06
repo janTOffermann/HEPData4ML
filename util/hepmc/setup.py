@@ -3,43 +3,9 @@ from util.qol_utils.misc import stdout_redirected
 from util.qol_utils.progress_bar import printProgressBar
 import subprocess as sub
 import sys,os,glob,re
+from typing import Optional,Union
 
-def run_make_with_progress(self,command=['make'],prefix='Building HepMC'):
-    # Pattern to match progress indicators
-    progress_pattern = re.compile(r'\[\s*(\d+)%\]')
-
-    with open(self.logfile, 'w') as f, open(self.errfile, 'w') as g:
-        process = sub.Popen(
-            command,
-            cwd=self.build_dir,
-            stdout=sub.PIPE,
-            stderr=sub.PIPE,
-            universal_newlines=True,
-            bufsize=1  # Line buffered
-        )
-
-        # Read stdout line by line
-        for line in iter(process.stdout.readline, ''):
-            f.write(line)  # Write to log file
-            f.flush()
-
-            # Check for progress indicator
-            match = progress_pattern.search(line)
-            if match:
-                progress = int(match.group(1))
-                printProgressBar(progress, 100, prefix=prefix, suffix='Complete')
-
-        # Read any remaining stderr
-        stderr_output = process.stderr.read()
-        if stderr_output:
-            g.write(stderr_output)
-
-        # Wait for process to complete and check return code
-        return_code = process.wait()
-        if return_code != 0:
-            raise sub.CalledProcessError(return_code, ['make'])
-
-class HepMCInstaller:
+class HepMCSetup:
     """
     The purpose of this class is to install HepMC3 if necessary.
     This is achieved via the PrepHepMC() function, which will
@@ -49,16 +15,17 @@ class HepMCInstaller:
     into the external/hepmc subdirectory.
     """
 
-    def __init__(self,verbose=False):
-        self.version = '3.3.1'
+    def __init__(self,verbose:bool=False):
+        self.version = '3.3.1' # what version we'll try to install, if necessary
         self.SetDirectory()
+        self.SetPythonDirectory()
         self.SetVerbose(verbose)
-        self.prefix = 'HepMCInstaller'
+        self.prefix = self.__class__.__name__
 
     def SetVerbose(self,verbose:bool):
         self.verbose = verbose
 
-    def SetDirectory(self,hepmc_dir=None):
+    def SetDirectory(self,hepmc_dir:Optional[str]=None):
         self.hepmc_dir = hepmc_dir
         if(self.hepmc_dir is None):
                 self.hepmc_dir = os.path.dirname(os.path.abspath(__file__)) + '/../../external/hepmc'
@@ -81,7 +48,11 @@ class HepMCInstaller:
         except:
             self.python_dir = None
 
-    def GetPythonDirectory(self):
+    def GetPythonDirectory(self) -> Union[str,None]:
+        """
+        Returns the 'site-packages' directory, where the pyHepMC library is located.
+        Adding this to the $PYTHONPATH (sys.path) will allow one to import it.
+        """
         return self.python_dir
 
     def DownloadHepMC3(self):
@@ -105,7 +76,7 @@ class HepMCInstaller:
             sub.check_call(['tar', 'xzf', hepmc_file], cwd=self.hepmc_dir, stdout=f, stderr=g)
             sub.check_call(['rm', hepmc_file], cwd=self.hepmc_dir, stdout=f, stderr=g)
 
-    def MakeHepMC3(self,j=4):
+    def MakeHepMC3(self,j:int=4):
         with open(self.logfile,'w') as f, open(self.errfile,'w') as g:
 
             os.makedirs(self.build_dir,exist_ok=True)
@@ -134,15 +105,14 @@ class HepMCInstaller:
             # Now make
             if(self.verbose): self._print('Building HepMC3.')
             command = ['make', '-j{}'.format(j)]
-            run_make_with_progress(command)
+            self.run_make_with_progress(command)
             # sub.check_call(command,cwd=self.build_dir, stdout=f, stderr=g)
 
             if(self.verbose): self._print('Installing HepMC3.')
             command = ['make','install']
             sub.check_call(command,cwd=self.build_dir, stdout=f, stderr=g)
 
-    def PrepHepMC(self, j=4, require_root=True):
-
+    def PrepHepMC(self, j:int=4, require_root:bool=True):
         status = True
 
         # First, we check if HepMC Python bindings are available, and have what we need
@@ -166,6 +136,7 @@ class HepMCInstaller:
 
         self.DownloadHepMC3()
         self.MakeHepMC3(j)
+        self.SetPythonDirectory()
 
     def _basic_check(self):
         try:
@@ -177,11 +148,46 @@ class HepMCInstaller:
 
     def _root_check(self):
         try:
-            from pyHepMC3 import HepMC3 as hm
-            reader = hm.WriterROOTTree()
+            import pyHepMC3.rootIO.pyHepMC3rootIO.HepMC3 as hmroot
+            reader_class = hmroot.ReaderRoot
         except:
             return False
         return True
 
     def _print(self,val:str):
         print('{}: {}'.format(self.prefix,val))
+
+    def run_make_with_progress(self,command=['make'],prefix='Building HepMC'):
+        # Pattern to match progress indicators
+        progress_pattern = re.compile(r'\[\s*(\d+)%\]')
+
+        with open(self.logfile, 'w') as f, open(self.errfile, 'w') as g:
+            process = sub.Popen(
+                command,
+                cwd=self.build_dir,
+                stdout=sub.PIPE,
+                stderr=sub.PIPE,
+                universal_newlines=True,
+                bufsize=1  # Line buffered
+            )
+
+            # Read stdout line by line
+            for line in iter(process.stdout.readline, ''):
+                f.write(line)  # Write to log file
+                f.flush()
+
+                # Check for progress indicator
+                match = progress_pattern.search(line)
+                if match:
+                    progress = int(match.group(1))
+                    printProgressBar(progress, 100, prefix=prefix, suffix='Complete')
+
+            # Read any remaining stderr
+            stderr_output = process.stderr.read()
+            if stderr_output:
+                g.write(stderr_output)
+
+            # Wait for process to complete and check return code
+            return_code = process.wait()
+            if return_code != 0:
+                raise sub.CalledProcessError(return_code, ['make'])

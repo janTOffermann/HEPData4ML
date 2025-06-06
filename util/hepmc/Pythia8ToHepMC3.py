@@ -4,7 +4,8 @@
 # https://gitlab.cern.ch/hepmc/HepMC3
 #=======================================
 
-from pyHepMC3 import HepMC3 as hm
+from util.hepmc.setup import HepMCSetup
+# from pyHepMC3 import HepMC3 as hm
 import sys
 
 class Pythia8ToHepMC3:
@@ -19,12 +20,19 @@ class Pythia8ToHepMC3:
         self.m_store_xsec = True
         self.m_store_weights = True
 
+        self.setup = HepMCSetup(verbose=True)
+        self.setup.PrepHepMC()
+        if(self.setup.GetPythonDirectory() not in sys.path):
+            sys.path = [self.setup.GetPythonDirectory()] + sys.path
+
+
     # The recommended method to convert Pythia events into HepMC ones
     def fill_next_event1(self, pythia, evt, ievnum):
         return self.fill_next_event(pythia.event, evt, ievnum, pythia.infoPython(), pythia.settings)
 
     # Alternative method to convert Pythia events into HepMC ones
     def fill_next_event(self, pyev, evt, ievnum, pyinfo, pyset):
+        from pyHepMC3 import HepMC3 as hm
         # 1. Error if no event passed.
         if evt is None:
             print("Pythia8ToHepMC3::fill_next_event error - passed null event.")
