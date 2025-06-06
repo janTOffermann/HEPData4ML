@@ -35,7 +35,8 @@ class DelphesSimulator(DetectorSimulator):
         self.Initialize()
 
     def Initialize(self):
-        self.delphes_wrapper.PrepDelphes() # this will download/build Delphes if necessary
+        pass
+        # self.delphes_wrapper.PrepDelphes() # this will download/build Delphes if necessary
 
     def Process(self,files=None):
         if(files is not None):
