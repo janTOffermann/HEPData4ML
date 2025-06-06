@@ -7,21 +7,36 @@
 # For the time being, functions supporting the use of either package are available,
 # in particular in case these are useful elsewhere.
 
+import sys
 import numpy as np
 import ROOT as rt
 import pyhepmc as hep # the "unofficial" Pythonic HepMC3 bindings -- useful for some things
-from pyHepMC3 import HepMC3 as hm # the official Pythonic HepMC3 bindings
+# from pyHepMC3 import HepMC3 as hm # the official Pythonic HepMC3 bindings
 import subprocess as sub
 import pathlib
 from typing import Union, Optional, List, TYPE_CHECKING
+from util.hepmc.setup import HepMCSetup
 from util.hepmc.Pythia8ToHepMC3 import Pythia8ToHepMC3
 
 if TYPE_CHECKING: # Only imported during type checking -- avoids risk of circular imports
     from util.pythia.utils import PythiaWrapper
     from util.particle_selection.particle_selection import BaseSelector
 
+    # make sure Python HepMC3 bindings are setup
+    setup = HepMCSetup(verbose=True)
+    setup.PrepHepMC() # will download/install if necessary
+    sys.path = [setup.GetPythonDirectory()] + sys.path # prepend, to make sure we pick this one up first
+    from pyHepMC3 import HepMC3 as hm
+
 class Pythia8HepMC3Writer:
     def __init__(self,filename:Optional[str]=None):
+
+        self.setup = HepMCSetup(verbose=True)
+        self.setup.PrepHepMC()
+        if(self.setup.GetPythonDirectory() not in sys.path):
+            sys.path = [self.setup.GetPythonDirectory()] + sys.path
+        # from pyHepMC3 import HepMC3 as hm
+
 
         self.mode = None
         self.initialized = False
@@ -54,12 +69,13 @@ class Pythia8HepMC3Writer:
 
 
     def _init_ascii(self):
+        from pyHepMC3 import HepMC3 as hm
         self.output = hm.WriterAscii(self.filename)
 
     def _close_ascii(self): # TODO: make more generic? not ASCII only
         self.output.close()
 
-    def _write_ascii(self,hepev_list:Union[list,hm.GenEvent]):
+    def _write_ascii(self,hepev_list:Union[list,'hm.GenEvent']):
         if(type(hepev_list) is not list): hepev_list = [hepev_list]
         for hepev in hepev_list:
             self.output.write_event(hepev)
@@ -217,31 +233,34 @@ def ExtractPyHepMCParticles(events:List[hep.GenEvent], nparticles_max:Optional[i
 # HepMC3 Python bindings.
 #================================
 
-def WriteHepMCEventsAscii(filename:str, hepev_list:Union[list,hm.GenEvent]):
+def WriteHepMCEventsAscii(filename:str, hepev_list:Union[list,'hm.GenEvent']):
     if(type(hepev_list) is not list): hepev_list = [hepev_list]
+    from pyHepMC3 import HepMC3 as hm
     output = hm.WriterAscii(filename)
     for hepev in hepev_list:
         output.write_event(hepev)
     output.close()
     return
 
-def HepMCOutputAscii(hepev_list:Union[list,hm.GenEvent],buffername:str,filename:str,header:bool=False,footer:bool=False):
+def HepMCOutputAscii(hepev_list:Union[list,'hm.GenEvent'],buffername:str,filename:str,header:bool=False,footer:bool=False):
     WriteHepMCEventsAscii(buffername,hepev_list) # write the given event(s) to a buffer file
     CopyHepMCBufferToFile(buffername,filename,header,footer) # copy buffer file into the full file
     return
 
-def PythiaWrapperToHepMC(pythia_wrapper:'PythiaWrapper', event_number:int) -> hm.GenEvent:
+def PythiaWrapperToHepMC(pythia_wrapper:'PythiaWrapper', event_number:int) -> 'hm.GenEvent':
     """
     Convert a Pythia8 event index to a HepMC3 event, using the official HepMC3
     Python bindings. This takes our custom "PythiaWrapper" object as an argument,
     though it really just interfaces with the underlying Pythia8 generator object.
     """
+    from pyHepMC3 import HepMC3 as hm
     hepev = hm.GenEvent()
     converter = Pythia8ToHepMC3()
     converter.fill_next_event1(pythia_wrapper.GetPythia(),hepev,event_number)
     return hepev
 
 def ExtractHepMCEventsAscii(files:list,get_nevents:bool=False, silent:bool=False):
+    from pyHepMC3 import HepMC3 as hm
     events = []
     nevents = 0
     for file in files:
@@ -263,7 +282,7 @@ def ExtractHepMCEventsAscii(files:list,get_nevents:bool=False, silent:bool=False
     if(get_nevents): return events, nevents
     return events
 
-def ExtractHepMCParticles(events:List[hm.GenEvent], nparticles_max:Optional[int]=None,selection:Optional['BaseSelector']=None):
+def ExtractHepMCParticles(events:List['hm.GenEvent'], nparticles_max:Optional[int]=None,selection:Optional['BaseSelector']=None):
     if(selection is not None):
 
         particles = [
@@ -286,12 +305,12 @@ def ExtractHepMCParticles(events:List[hm.GenEvent], nparticles_max:Optional[int]
 # PyHepMC and HepMC
 #=======================
 
-def ParticleToVector(particle:Union[hep.GenParticle,hm.GenParticle]):
+def ParticleToVector(particle:Union[hep.GenParticle,'hm.GenParticle']):
     if(isinstance(particle,hep.GenParticle)):
         return rt.Math.PxPyPzEVector(particle.momentum.px, particle.momentum.py, particle.momentum.pz, particle.momentum.e)
     return rt.Math.PxPyPzEVector(particle.momentum().px(), particle.momentum().py(), particle.momentum().pz(), particle.momentum().e())
 
-def GetParticleID(particle:Union[hep.GenParticle,hm.GenParticle]):
+def GetParticleID(particle:Union[hep.GenParticle,'hm.GenParticle']):
     if(isinstance(particle,hep.GenParticle)):
         return particle.pid
     return particle.pid()
