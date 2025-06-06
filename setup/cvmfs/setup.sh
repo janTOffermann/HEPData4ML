@@ -14,7 +14,7 @@ Help()
 #        Main program
 # ============================
 
-lcg="LCG_107"
+lcg="LCG_105"
 setupOption="EL9"
 build="x86_64-el9-gcc13-opt"
 while getopts ":hl" option; do # getopts is kind of terrible, but this will do for now...
