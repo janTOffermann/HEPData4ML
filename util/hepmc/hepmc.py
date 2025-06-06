@@ -1,3 +1,12 @@
+#
+# This file contains various functions for handling HepMC objects,
+# as well as converting Pythia8 event listings -- as accessed by our
+# custom `PythiaWrapper` class -- into HepMC events.
+# There is currently some redundancy, as we historically used the pyhepmc
+# library, whereas we are now leveraging the official HepMC3 python bindings.
+# For the time being, functions supporting the use of either package are available,
+# in particular in case these are useful elsewhere.
+
 import numpy as np
 import ROOT as rt
 import pyhepmc as hep # the "unofficial" Pythonic HepMC3 bindings -- useful for some things
@@ -11,58 +20,51 @@ if TYPE_CHECKING: # Only imported during type checking -- avoids risk of circula
     from util.pythia.utils import PythiaWrapper
     from util.particle_selection.particle_selection import BaseSelector
 
-def RestructureParticleArray(arr:np.ndarray, fields:Optional[list]=None):
-    if(fields is None):
-        fields = ['px','py','pz','E','pdgid','status','eta','phi']
-    arr = np.array([[x[y] for y in fields] for x in arr])
-    return arr
+class Pythia8HepMC3Writer:
+    def __init__(self,filename:Optional[str]=None):
 
-def HepMCArrayToNumpy(arr:np.ndarray, short:bool=False):
-    npar = len(arr)
-    # Ordering mimics the ordering of numpythia return_hepmc=False. Matching all fields though in practice we don't use them all.
-    dtypes = {
-        'E':'f8',
-        'px':'f8',
-        'py':'f8',
-        'pz':'f8',
-        'pT':'f8',
-        'mass':'f8',
-        'rap':'f8',
-        'eta':'f8',
-        'theta':'f8',
-        'phi':'f8',
-        'prodx':'f8',
-        'prody':'f8',
-        'prodz':'f8',
-        'prodt':'f8',
-        'pdgid':'i4',
-        'status':'i4'
-    }
+        self.mode = None
+        self.initialized = False
+        self.output = None
 
-    if(short): # TODO: Keeping old functionality -- not sure if there is any benefit to this.
-        dtypes = {
-            'E':'f8',
-            'px':'f8',
-            'py':'f8',
-            'pz':'f8',
-            'eta':'f8',
-            'phi':'f8',
-            'pdgid':'i4',
-            'status':'i4'
-        }
-    names = []
-    types = []
-    for key,val in dtypes.items():
-        names.append(key)
-        types.append(val)
-    arr2 = np.zeros((npar,),dtype={'names':names,'formats':types})
-    for i,p in enumerate(arr):
-        v = [p.e,p.px,p.py,p.pz] # E,px,py,pz
-        if(short): arr2[i] = (*v,p.eta,p.phi,p.pid,p.status)
-        else:
-            prod = np.zeros(4) # TODO: Setting prodx,prody,prodz,prodt = 0 (GenParticle doesn't have these attributes?). We currently are not using these anyway, but keep this in mind.
-            arr2[i] = (*v,p.pt,p.mass,p.rap,p.eta,p.theta,p.phi,*prod,p.pid,p.status)
-    return arr2
+        self.SetFilename(filename)
+
+    def SetFilename(self,filename:Optional[str]=None):
+        self.filename = filename
+        if(filename is not None):
+            if('.root' in filename):
+                self.SetMode('root')
+            else:
+                self.SetMode('ascii')
+
+    def GetFilename(self) -> str:
+        return self.filename
+
+    def SetMode(self,mode=str):
+        self.mode = mode
+
+        # currently not supporting root mode, hopefully this changes in the future!
+        if(self.mode=='root'):
+            print('Pythia8HepMCWriter: ROOT I/O mode is currently unsupported. Falling back on ASCII mode.')
+            self.mode = 'ascii'
+            self.filename = self.filename.replace('.root','.hepmc3')
+
+    def InitializeWriter(self):
+        assert self.mode is not None
+
+
+    def _init_ascii(self):
+        self.output = hm.WriterAscii(self.filename)
+
+    def _close_ascii(self): # TODO: make more generic? not ASCII only
+        self.output.close()
+
+    def _write_ascii(self,hepev_list:Union[list,hm.GenEvent]):
+        if(type(hepev_list) is not list): hepev_list = [hepev_list]
+        for hepev in hepev_list:
+            self.output.write_event(hepev)
+        return
+
 
 # Some utility functions -- partly for interfacing with our Pythia8 wrapper.
 
