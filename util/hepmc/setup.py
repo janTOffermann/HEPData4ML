@@ -17,10 +17,9 @@ class HepMCSetup:
 
     def __init__(self,verbose:bool=False):
         self.version = '3.3.1' # what version we'll try to install, if necessary
-        self.SetDirectory()
-        self.SetPythonDirectory()
         self.SetVerbose(verbose)
         self.prefix = self.__class__.__name__
+        self.python_dir = None
 
     def SetVerbose(self,verbose:bool):
         self.verbose = verbose
@@ -132,8 +131,10 @@ class HepMCSetup:
                 status = False
 
         if(status):
+            # NOTE: Would be best to fix this so that self.hepmc_dir points to existing install
             return
 
+        self.SetDirectory()
         self.DownloadHepMC3()
         self.MakeHepMC3(j)
         self.SetPythonDirectory()
@@ -190,4 +191,4 @@ class HepMCSetup:
             # Wait for process to complete and check return code
             return_code = process.wait()
             if return_code != 0:
-                raise sub.CalledProcessError(return_code, ['make'])
+                raise sub.CalledProcessError(return_code, command)
