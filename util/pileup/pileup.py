@@ -2,7 +2,7 @@ import ROOT as rt
 import pyhepmc as hep
 import numpy as np
 import glob,sys,os
-from util.hepmc import HepMCOutput
+from util.hepmc.hepmc import PyHepMCOutputAscii
 from typing import List, Union, Tuple, Optional
 
 class PileupOverlay:
@@ -192,12 +192,12 @@ class PileupOverlay:
 
                 # flush events from memory as needed
                 if(len(events) >= self.event_buffer_size):
-                    HepMCOutput(events,buffername=buffer_file,filename=output_file)
+                    PyHepMCOutputAscii(events,buffername=buffer_file,filename=output_file)
                     events.clear()
 
         # one last flush for any stragglers
         if(len(events) > 0):
-            HepMCOutput(events,buffername=buffer_file,filename=output_file)
+            PyHepMCOutputAscii(events,buffername=buffer_file,filename=output_file)
 
         # delete the buffer file
         os.unlink(buffer_file)

@@ -1,5 +1,6 @@
-import os, glob, re
+import os, glob
 import subprocess as sub
+import numpy as np
 from util.qol_utils.misc import stdout_redirected
 from util.qol_utils.progress_bar import printProgressBar
 from typing import Optional
@@ -11,7 +12,7 @@ class DelphesSetup:
     """
     def __init__(self,delphes_dir:Optional[str]=None):
         self.SetDirectory(delphes_dir)
-        self.delphes_download = 'https://github.com/delphes/delphes/archive/refs/tags/3.5.1pre12.tar.gz' # LCG_105 - LCG_107 have 3.5.1pre09
+        self.delphes_download = 'https://github.com/delphes/delphes/archive/refs/tags/3.5.1pre12.tar.gz' # LCG_105 - LCG_107 has 3.5.1pre09
         self.delphes_file = 'delphes-{}'.format(self.delphes_download.split('/')[-1]) # TODO: A bit hacky
         self.executable = None
         self.prefix = self.__class__.__name__
@@ -56,7 +57,7 @@ class DelphesSetup:
     def DownloadDelphes(self):
         with open(self.logfile,'w') as f, open(self.errfile,'w') as g:
             # Fetch Delphes source.
-            self._print('Downloading Delphes.')
+            self._print('Downloading Delphes from {} .'.format(self.delphes_download))
             # Depending on Linux/macOS, we use wget or curl.
             has_wget = True
             with stdout_redirected():
@@ -74,21 +75,21 @@ class DelphesSetup:
         return
 
     def BuildDelphes(self, j:int=4):
-        # with open(self.logfile,'w') as f, open(self.errfile,'w') as g:
-        self._print('Building Delphes.')
-        command = ['make', '-j{}'.format(j)]
         self.build_dir = '{}/{}'.format(self.delphes_dir,self.delphes_file.replace('.tar.gz','')) # TODO: clean this up
+        self._print('Building Delphes @ {} .'.format(self.build_dir))
+        command = ['make', '-j{}'.format(j)]
         self.run_make_with_progress(command)
-            # sub.check_call(['make', '-j{}'.format(j)],
-            #             shell=False, cwd = '{}/{}'.format(self.delphes_dir,self.delphes_file.replace('.tar.gz','')), stdout=f, stderr=g)
         return
 
     def _print(self,val:str):
         print('{}: {}'.format(self.prefix,val))
 
     def run_make_with_progress(self,command=['make'],prefix='Building Delphes'):
-        # Pattern to match progress indicators
-        progress_pattern = re.compile(r'\[\s*(\d+)%\]')
+        """
+        Runs "make", with a progress bar.
+        NOTE: This is quite hard-coded, due to how the make printouts
+        work for Delphes (they don't have their own progress tracking).
+        """
 
         with open(self.logfile, 'w') as f, open(self.errfile, 'w') as g:
             process = sub.Popen(
@@ -101,15 +102,16 @@ class DelphesSetup:
             )
 
             # Read stdout line by line
+            counter = 0
+            N = 281
             for line in iter(process.stdout.readline, ''):
                 f.write(line)  # Write to log file
                 f.flush()
 
-                # Check for progress indicator
-                match = progress_pattern.search(line)
-                if match:
-                    progress = int(match.group(1))
-                    printProgressBar(progress, 100, prefix=prefix, suffix='Complete')
+                progress = (counter + 1)/N * 100.
+                progress = np.maximum(progress,100) # just in case -- this is all a little hard-coded
+                printProgressBar(progress, 100, prefix=prefix, suffix='Complete')
+                counter +=1
 
             # Read any remaining stderr
             stderr_output = process.stderr.read()
