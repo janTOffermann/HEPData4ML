@@ -37,7 +37,6 @@ class Pythia8HepMC3Writer:
             sys.path = [self.setup.GetPythonDirectory()] + sys.path
         # from pyHepMC3 import HepMC3 as hm
 
-
         self.mode = None
         self.initialized = False
         self.output = None
@@ -58,29 +57,35 @@ class Pythia8HepMC3Writer:
     def SetMode(self,mode=str):
         self.mode = mode
 
-        # currently not supporting root mode, hopefully this changes in the future!
-        if(self.mode=='root'):
-            print('Pythia8HepMCWriter: ROOT I/O mode is currently unsupported. Falling back on ASCII mode.')
-            self.mode = 'ascii'
-            self.filename = self.filename.replace('.root','.hepmc3')
+    def GetMode(self)->str:
+        return self.mode
 
     def InitializeWriter(self):
         assert self.mode is not None
 
+        if(self.mode == 'root'):
+            self._init_root()
+        else:
+            self._init_ascii()
+
+        self.initialized = True
+
+    def _init_root(self):
+        from pyHepMC3.rootIO.pyHepMC3rootIO.HepMC3 import WriterRoot
+        self.output = WriterRoot(self.filename)
 
     def _init_ascii(self):
         from pyHepMC3 import HepMC3 as hm
         self.output = hm.WriterAscii(self.filename)
 
-    def _close_ascii(self): # TODO: make more generic? not ASCII only
+    def Close(self):
         self.output.close()
 
-    def _write_ascii(self,hepev_list:Union[list,'hm.GenEvent']):
+    def Write(self,hepev_list:Union[list,'hm.GenEvent']):
         if(type(hepev_list) is not list): hepev_list = [hepev_list]
         for hepev in hepev_list:
             self.output.write_event(hepev)
         return
-
 
 # Some utility functions -- partly for interfacing with our Pythia8 wrapper.
 
@@ -259,10 +264,27 @@ def PythiaWrapperToHepMC(pythia_wrapper:'PythiaWrapper', event_number:int) -> 'h
     converter.fill_next_event1(pythia_wrapper.GetPythia(),hepev,event_number)
     return hepev
 
-def ExtractHepMCEventsAscii(files:list,get_nevents:bool=False, silent:bool=False):
+def ExtractHepMCEvents(files:list,get_nevents:bool=False, silent:bool=False):
+    events = []
+    nevents = 0
+    for file in files:
+        events_tmp = []
+        nevents_tmp = 0
+        if(file.split('.')[-1].lower() == 'root'):
+            events_tmp, nevents_tmp = ExtractHepMCEventsROOT(file,True,silent)
+        else:
+            events_tmp, nevents_tmp = ExtractHepMCEventsAscii(file,True,silent)
+        events += events_tmp
+        nevents += nevents_tmp
+
+    if(get_nevents): return events, nevents
+    return events
+
+def ExtractHepMCEventsAscii(files:Union[list,str],get_nevents:bool=False, silent:bool=False):
     from pyHepMC3 import HepMC3 as hm
     events = []
     nevents = 0
+    if(isinstance(files,str)): files = [files]
     for file in files:
         # Check that the file exists.
         if(not pathlib.Path(file).exists()):
@@ -278,9 +300,47 @@ def ExtractHepMCEventsAscii(files:list,get_nevents:bool=False, silent:bool=False
                 break
             events.append(evt)
             if(get_nevents): nevents += 1
+        input.close()
 
     if(get_nevents): return events, nevents
     return events
+
+def ExtractHepMCEventsROOT(files:Union[list,str],get_nevents:bool=False, silent:bool=False):
+    from pyHepMC3 import HepMC3 as hm
+    from pyHepMC3.rootIO.pyHepMC3rootIO.HepMC3 import ReaderRoot
+    events = []
+    nevents = 0
+    if(isinstance(files,str)): files = [files]
+    for file in files:
+        # Check that the file exists.
+        if(not pathlib.Path(file).exists()):
+            if(not silent):
+                print('Warning: Tried to access file {} but it does not exist!'.format(file))
+            continue
+
+        input = ReaderRoot(file)
+        while(True):
+            evt = hm.GenEvent()
+            input.read_event(evt)
+            if(input.failed()):
+                break
+            events.append(evt)
+            if(get_nevents): nevents += 1
+        input.close()
+
+    if(get_nevents): return events, nevents
+    return events
+
+
+
+
+
+
+
+
+
+
+
 
 def ExtractHepMCParticles(events:List['hm.GenEvent'], nparticles_max:Optional[int]=None,selection:Optional['BaseSelector']=None):
     if(selection is not None):
