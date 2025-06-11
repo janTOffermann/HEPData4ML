@@ -193,7 +193,13 @@ def main(args):
         # TODO: Make the no-generation option more flexible, to pick up any existing HepMC3 files in the cwd.
         pt_min = pt_bin_edges[i]
         pt_max = pt_bin_edges[i+1]
-        hep_file = 'events_{}-{}.hepmc'.format(float_to_str(pt_min),float_to_str(pt_max))
+
+        #TODO: Toggle ROOT vs. ASCII
+        hepmc_extension = 'hepmc'
+        if(configurator.GetHepMCFormat().lower() == 'root'):
+            hepmc_extension = 'root'
+
+        hep_file = 'events_{}-{}.{}'.format(float_to_str(pt_min),float_to_str(pt_max),hepmc_extension)
 
         generator = PythiaGenerator(pt_min,pt_max, configurator, pythia_rng,pythia_config_file=pythia_config)
         # generator.SetEventFilter(configurator.GetEventFilter())
@@ -206,7 +212,7 @@ def main(args):
         # information on any "event filter flags", and on any overlapping listing
         # of particles between our truth- and final-state selections. These can
         # be handled by separate files but combining them will limit clutter.
-        extra_data_file = hep_file.replace('.hepmc','_data.h5')
+        extra_data_file = hep_file.replace('.{}'.format(hepmc_extension),'_data.h5')
         generator.SetStatsFilename(extra_data_file)
         generator.SetEventFilterFlagFilename(extra_data_file)
         # generator.SetDiagnosticPlots(diagnostic_plots)
@@ -233,7 +239,8 @@ def main(args):
     if('simulation' in steps):
         simulator = None
         if(simulation_type == 'delphes'):
-            simulator = DelphesSimulator(configurator,outdir)
+            sim_logfile = '{}/delphes.log'.format(outdir)
+            simulator = DelphesSimulator(configurator,outdir,logfile=sim_logfile)
 
         if(simulator is not None):
             simulator.SetInputs(hepmc_files)

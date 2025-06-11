@@ -6,7 +6,7 @@ import uproot as ur
 import subprocess as sub
 from util.calcs import embed_array
 from util.qol_utils.progress_bar import printProgressBarColor
-from util.hepmc.hepmc import ExtractPyHepMCEventsAscii, ExtractPyHepMCParticles, ExtractHepMCEventsAscii, ExtractHepMCParticles, ParticleToVector, GetParticleID
+from util.hepmc.hepmc import ExtractHepMCEvents, ExtractHepMCParticles, ParticleToVector, GetParticleID
 
 class Processor:
     """
@@ -156,7 +156,7 @@ class Processor:
             nentries = len(delphes_arr)
 
         ## Extract final-state truth particle info from the HepMC files.
-        hepmc_events, nentries = ExtractHepMCEventsAscii(hepmc_files,get_nevents=True)
+        hepmc_events, nentries = ExtractHepMCEvents(hepmc_files,get_nevents=True)
 
         # Some indexing preparation for writing in chunks.
         start_idxs,stop_idxs,ranges = self.PrepIndexRanges(nentries,self.nevents_per_chunk)

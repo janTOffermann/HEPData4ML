@@ -3,7 +3,7 @@ import numpy as np
 import h5py as h5
 import subprocess as sub
 from util.pythia.utils import PythiaWrapper
-from util.hepmc.hepmc import PythiaWrapperToPyHepMC, PyHepMCOutputAscii, PythiaWrapperToHepMC, HepMCOutputAscii
+from util.hepmc.hepmc import PythiaWrapperToHepMC, Pythia8HepMC3Writer
 from util.qol_utils.progress_bar import printProgressBarColor
 from typing import Optional,TYPE_CHECKING
 
@@ -35,6 +35,8 @@ class PythiaGenerator:
         self.bl = 50
 
         self.SetOutputDirectory()
+
+        self.writer = Pythia8HepMC3Writer()
 
         self.SetFilename('events.hepmc')
         self.stats_filename = 'stats.h5'
@@ -105,11 +107,14 @@ class PythiaGenerator:
         self.outdir = dir
 
     def SetFilename(self,name:str, rename_extra_files:bool=True):
-        if('.hepmc' not in name):
-            name = '{}.hepmc'.format(name)
+        # if('.hepmc' not in name):
+        #     name = '{}.hepmc'.format(name)
         self.filename = name
         if(rename_extra_files):
             self.SetEventFilterFlagFilename(None)
+
+        if(self.writer is not None):
+            self.writer.SetFilename('{}/{}'.format(self.outdir,self.filename))
         return
 
     def SetStatsFilename(self,name:str):
@@ -171,8 +176,10 @@ class PythiaGenerator:
         if(header): self.header_status = True
         if(footer): self.footer_status = True
 
+        self.writer.Write(self.hepev_buffer)
+
         # PyHepMCOutput(self.hepev_buffer,self.buffername,self.filename_fullpath,header,footer)
-        HepMCOutputAscii(self.hepev_buffer,self.buffername,self.filename_fullpath,header,footer)
+        # HepMCOutputAscii(self.hepev_buffer,self.buffername,self.filename_fullpath,header,footer)
 
         self.ClearEventBuffer()
 
@@ -192,7 +199,10 @@ class PythiaGenerator:
         # down things, so we ultimately want to find some way to do a write with "append" functionality.
 
         self.filename_fullpath = '{}/{}'.format(self.outdir,self.filename)
-        self.buffername = self.filename_fullpath.replace('.hepmc','_buffer.hepmc')
+
+        # For ASCII mode, create buffer file.
+        if(self.writer.GetMode().lower() == 'ascii'):
+            self.buffername = self.filename_fullpath.replace('.hepmc','_buffer.hepmc')
 
         for i in range(nevents):
 
@@ -250,6 +260,7 @@ class PythiaGenerator:
                 header = (self.loop_number == 0) and (not self.header_status)
                 self.WriteEventBufferToFile(header=header,footer=False)
 
+
             if(self.progress_bar): printProgressBarColor(i_real,nevents_disp, prefix=self.prefix, suffix=self.suffix, length=self.bl)
 
             # Record this event's weight and process code from Pythia.
@@ -266,9 +277,9 @@ class PythiaGenerator:
         footer = n_fail == 0
         self.WriteEventBufferToFile(header=header,footer=footer)
 
-        # Delete the buffer files.
-        for fname in [self.buffername]:
-            comm = ['rm', fname]
+        # Delete the buffer files, if relevant.
+        if(self.buffername is not None):
+            comm = ['rm', self.buffername]
             try: sub.check_call(comm,stderr=sub.DEVNULL)
             except: pass
 
@@ -288,6 +299,8 @@ class PythiaGenerator:
     def Generate(self,nevents:int):
         self.nevents = nevents # total number of events we request
 
+        self.writer.InitializeWriter()
+
         if(self.progress_bar): printProgressBarColor(0,nevents, prefix=self.prefix, suffix=self.suffix, length=self.bl)
 
         # Loop in such a way as to guarantee that we get as many events as requested.
@@ -305,6 +318,8 @@ class PythiaGenerator:
                 nevents_disp = nevents
             )
             self.loop_number += 1
+
+        self.writer.Close()
 
         # Fill out an array with each event's cross section (and the uncertainty on that cross-section).
         self.xsecs = np.zeros((nevents,2))

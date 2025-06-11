@@ -24,35 +24,49 @@ class DetectorSimulator:
     def GetOutputFiles(self):
         return self.output_files
 
+    def SetLogfile(self,file:str):
+        self.logfile = file
+
 class DelphesSimulator(DetectorSimulator):
 
-    def __init__(self,configurator,output_directory):
+    def __init__(self,configurator,output_directory,logfile=None):
         super().__init__()
         self.SetConfigurator(configurator)
         self.delphes_card = self.configurator.GetDelphesCard()
         self.delphes_wrapper = DelphesWrapper(self.configurator.GetDelphesDirectory())
         self.SetOutputDirectory(output_directory)
-        self.Initialize()
+        self.SetLogfile(logfile)
+        self.mode = None
 
-    def Initialize(self):
-        pass
-        # self.delphes_wrapper.PrepDelphes() # this will download/build Delphes if necessary
+    def SetMode(self,mode:str):
+        self.mode = mode
 
     def Process(self,files=None):
         if(files is not None):
             self.SetInputs(files)
 
         for i,hep_file in enumerate(self.input_files):
-            delphes_file = hep_file.replace('.hepmc','.root')
-            print('Running DelphesHepMC3: {} -> {}.'.format(hep_file,delphes_file))
+
+            if(hep_file.split('.')[-1].lower() == 'root'):
+                self.SetMode('root')
+            else:
+                self.SetMode('hepmc') # or 'ascii'?
+
+            delphes_file = '.'.join(hep_file.split('.')[:-1]) + '_delphes.root'
+
+            if(self.mode=='root'):
+                print('Running DelphesROOT: {} -> {}.'.format(hep_file,delphes_file))
+            else:
+                print('Running DelphesHepMC3: {} -> {}.'.format(hep_file,delphes_file))
             if(i == 0):
-                print('\tDelphes executable: {}'.format(self.delphes_wrapper.GetExecutable()))
+                print('\tDelphes executable: {}'.format(self.delphes_wrapper.GetExecutable()[self.mode]))
                 print('\tDelphes card: {}'.format(self.delphes_card))
                 delphes_file = self.delphes_wrapper.HepMC3ToDelphes(
                     hepmc_file=hep_file,
                     output_file=delphes_file,
                     cwd=self.outdir,
-                    delphes_card=self.delphes_card
+                    delphes_card=self.delphes_card,
+                    logfile=self.logfile
                 )
                 self.output_files.append(delphes_file)
         return
