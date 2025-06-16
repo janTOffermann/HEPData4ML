@@ -1,7 +1,7 @@
 import os, glob, pathlib
 import subprocess as sub
 from util.qol_utils.misc import stdout_redirected
-from util.delphes.setup import DelphesSetup
+from util.delphes.setup import DelphesSetup, DelphesROOTHepMC3Setup
 from typing import Union,Optional
 
 class DelphesWrapper:
@@ -9,18 +9,34 @@ class DelphesWrapper:
     A class for running the
     Delphes fast detector simulation framework.
     """
-    def __init__(self,delphes_dir=None):
+    def __init__(self,delphes_dir=None, use_root=False):
 
         self.setup = DelphesSetup(delphes_dir=delphes_dir)
         self.setup.PrepDelphes()
         self.delphes_dir = self.setup.GetDirectory()
-        self.executable = self.setup.GetExecutable()
+        self.executable = {'hepmc': self.setup.GetExecutable()}
         self.default_card = "delphes_card_ATLAS.tcl" # Default to the ATLAS card. Will search for this within the Delphes directory.
+
+        # Also prepare an instance of the setup class for our custom executable,
+        # for handling HepMC3/ROOT input.
+        self.setup_hepmc3root = DelphesROOTHepMC3Setup() # its delphes_dir is fixed
+        if(use_root):
+            self._setup_root()
+
+    def _setup_root(self):
+        self.setup_hepmc3root.PrepDelphesHepMC3ROOT()
+        self.delphes_root_dir = self.setup_hepmc3root.GetDirectory()
+        self.executable['root'] = self.setup_hepmc3root.GetExecutable()
 
     def GetExecutable(self)->str:
         return self.executable
 
     def HepMC3ToDelphes(self,hepmc_file, output_file=None, delphes_card=None, logfile=None, cwd=None, force=False):
+        """
+        This function runs the Delphes executable,
+        to convert HepMC3(ROOT) files to DELPHES ROOT files.
+        (It supports both plaintext and ROOT-based HepMC3).
+        """
         if(cwd is not None):
             hepmc_file = '{}/{}'.format(cwd,hepmc_file)
 
