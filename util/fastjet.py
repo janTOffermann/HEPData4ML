@@ -1,7 +1,8 @@
-import sys, os, glob,pathlib, operator
+import sys, os, glob,pathlib, operator, re
 import numpy as np
 import subprocess as sub
 from util.qol_utils.misc import stdout_redirected
+from util.qol_utils.progress_bar import printProgressBar
 
 class FastJetSetup:
     def __init__(self,fastjet_dir=None, full_setup=False,verbose=True):
@@ -12,7 +13,7 @@ class FastJetSetup:
     def SetDirectory(self,fastjet_dir=None):
         self.fastjet_dir = fastjet_dir
         if(self.fastjet_dir is None):
-                self.fastjet_dir = os.path.dirname(os.path.abspath(__file__)) + '/../fastjet'
+                self.fastjet_dir = os.path.dirname(os.path.abspath(__file__)) + '/../external/fastjet'
         self.fastjet_dir = os.path.normpath(self.fastjet_dir)
         os.makedirs(self.fastjet_dir,exist_ok=True)
 
@@ -96,14 +97,57 @@ class FastJetSetup:
                         shell=False, cwd=self.source_dir, stdout=f, stderr=g)
 
             # Now make and install. Will skip "make check".
-            if(verbose): print('Making fastjet.')
-            sub.check_call(['make', '-j{}'.format(j)],
-                        shell=False, cwd=self.source_dir, stdout=f, stderr=g)
+            if(verbose): print('Building fastjet.')
+
+            self.run_make_with_progress(command=['make', '-j{}'.format(j)])
+
+            # sub.check_call(['make', '-j{}'.format(j)],
+            #             shell=False, cwd=self.source_dir, stdout=f, stderr=g)
+
             if(verbose): print('Installing fastjet.')
             sub.check_call(['make', 'install'],
                         shell=False, cwd=self.source_dir, stdout=f, stderr=g)
         self.SetPythonDirectory()
         return
+
+    def run_make_with_progress(self,command=['make'],prefix='Building Fasatjet'):
+        """
+        Runs "make", with a progress bar.
+        NOTE: This is quite hard-coded, due to how the make printouts
+        work for Fastjet (they don't have their own progress tracking).
+        """
+
+        with open(self.logfile, 'w') as f, open(self.errfile, 'w') as g:
+            process = sub.Popen(
+                command,
+                cwd=self.build_dir,
+                stdout=sub.PIPE,
+                stderr=sub.PIPE,
+                universal_newlines=True,
+                bufsize=1  # Line buffered
+            )
+
+            # Read stdout line by line
+            counter = 0
+            N = 947
+            for line in iter(process.stdout.readline, ''):
+                f.write(line)  # Write to log file
+                f.flush()
+
+                progress = (counter + 1)/N * 100.
+                progress = np.maximum(progress,100) # just in case -- this is all a little hard-coded
+                printProgressBar(progress, 100, prefix=prefix, suffix='Complete')
+                counter +=1
+
+            # Read any remaining stderr
+            stderr_output = process.stderr.read()
+            if stderr_output:
+                g.write(stderr_output)
+
+            # Wait for process to complete and check return code
+            return_code = process.wait()
+            if return_code != 0:
+                raise sub.CalledProcessError(return_code, command)
 
 class JetFinderBase:
     """
@@ -150,16 +194,16 @@ class JetFinderBase:
 
         if(self.fastjet_dir is None):
             if(self.configurator is None):
-                return
+                return # bad
             else: # Fetch fastjet directory from configurator. This is foreseen as the "typical" usage.
                 self.fastjet_dir = self.configurator.GetFastjetDirectory()
 
         # Now, if possible we initialize fastjet
-        if(self.fastjet_dir is not None):
-            self._setupFastJet()
-            sys.path.append(self.fastjet_dir)
-            import fastjet as fj # This is where fastjet is really imported & cached by Python, but there may be other import statements peppered throughout since this has limited scope.
-            self.fastjet_init_flag = True
+        # if(self.fastjet_dir is not None):
+        self._setupFastJet()
+        sys.path.append(self.fastjet_dir)
+        import fastjet as fj # This is where fastjet is really imported & cached by Python, but there may be other import statements peppered throughout since this has limited scope.
+        self.fastjet_init_flag = True
         return
 
     def SetNConstituentsMax(self,n):
