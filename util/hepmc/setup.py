@@ -111,7 +111,7 @@ class HepMCSetup:
             command = ['make','install']
             sub.check_call(command,cwd=self.build_dir, stdout=f, stderr=g)
 
-    def PrepHepMC(self, j:int=4, require_root:bool=True):
+    def PrepHepMC(self, j:int=4, require_root:bool=True, force=False):
         status = True
 
         # First, we check if HepMC Python bindings are available, and have what we need
@@ -130,7 +130,7 @@ class HepMCSetup:
                 if(self.verbose): self._print('pyHepMC3 ROOT interface requested, but not found.')
                 status = False
 
-        if(status):
+        if(status and not force):
             # NOTE: Would be best to fix this so that self.hepmc_dir points to existing install
             return
 
