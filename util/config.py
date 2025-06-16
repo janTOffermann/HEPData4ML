@@ -87,7 +87,7 @@ class Configurator:
     def GetStatus(self):
         return self.status
 
-    def GetHepMCFormat(self):
+    def GetHepMCFormat(self)->str:
         return self.config['generation']['hepmc_format']
 
     def GetPythiaConfigFile(self,filename=None):

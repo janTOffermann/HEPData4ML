@@ -33,13 +33,18 @@ class DelphesSimulator(DetectorSimulator):
         super().__init__()
         self.SetConfigurator(configurator)
         self.delphes_card = self.configurator.GetDelphesCard()
-        self.delphes_wrapper = DelphesWrapper(self.configurator.GetDelphesDirectory())
+
+        use_root = self.configurator.GetHepMCFormat().lower() == 'root'
+        self.delphes_wrapper = DelphesWrapper(self.configurator.GetDelphesDirectory(),use_root=use_root)
         self.SetOutputDirectory(output_directory)
         self.SetLogfile(logfile)
         self.mode = None
 
     def SetMode(self,mode:str):
-        self.mode = mode
+        self.mode = mode.lower()
+
+        # if(mode == 'root'): # this requires special setup TODO: Move upstream to initialization?
+        #     self.delphes_wrapper._setup_root()
 
     def Process(self,files=None):
         if(files is not None):
@@ -55,7 +60,7 @@ class DelphesSimulator(DetectorSimulator):
             delphes_file = '.'.join(hep_file.split('.')[:-1]) + '_delphes.root'
 
             if(self.mode=='root'):
-                print('Running DelphesROOT: {} -> {}.'.format(hep_file,delphes_file))
+                print('Running DelphesHepMC3ROOT: {} -> {}.'.format(hep_file,delphes_file))
             else:
                 print('Running DelphesHepMC3: {} -> {}.'.format(hep_file,delphes_file))
             if(i == 0):

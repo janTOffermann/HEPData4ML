@@ -1,4 +1,4 @@
-import os, glob
+import os, glob, re
 import subprocess as sub
 import numpy as np
 from util.qol_utils.misc import stdout_redirected
@@ -117,6 +117,104 @@ class DelphesSetup:
                 progress = np.maximum(progress,100) # just in case -- this is all a little hard-coded
                 printProgressBar(progress, 100, prefix=prefix, suffix='Complete')
                 counter +=1
+
+            # Read any remaining stderr
+            stderr_output = process.stderr.read()
+            if stderr_output:
+                g.write(stderr_output)
+
+            # Wait for process to complete and check return code
+            return_code = process.wait()
+            if return_code != 0:
+                raise sub.CalledProcessError(return_code, command)
+
+class DelphesROOTHepMC3Setup:
+    """
+    A class for running building the
+    DelphesHepMC3ROOT executable -- our own custom one
+    for handling HepMC3/ROOT files.
+    """
+    def __init__(self):
+        self.SetDirectory()
+        self.executable = None
+        self.prefix = self.__class__.__name__
+
+    def SetDirectory(self,delphes_dir:Optional[str]=None):
+        self.delphes_dir = delphes_dir
+        if(self.delphes_dir is None):
+            self.delphes_dir = os.path.dirname(os.path.abspath(__file__)) + '/../../external/delphes_custom'
+        self.delphes_dir = os.path.normpath(self.delphes_dir)
+
+        # # Make the Delphes dir if it does not exist. # Commented out for now, while delphes_custom is part of this package directly
+        # os.makedirs(self.delphes_dir,exist_ok=True)
+
+        # Files that are used for logging progress with building DelphesHepMC3ROOT.
+        self.logfile = '{}/log.stdout'.format(self.delphes_dir)
+        self.errfile = '{}/log.stderr'.format(self.delphes_dir)
+
+    def GetDirectory(self)->str:
+        return self.delphes_dir
+
+    def GetExecutable(self)->str:
+        return self.executable
+
+    def PrepDelphesHepMC3ROOT(self, j:int=4, force:bool=False, verbose:bool=False):
+        """
+        Checks if DelphesHepMC3ROOT is built. If it's not,
+        it will build it.
+        """
+        # Check if DelphesHepMC3ROOT is already built at destination.
+        if(not force):
+            ex1 = glob.glob('{}/**/DelphesHepMC3ROOT'.format(self.delphes_dir),recursive=True)
+            if(len(ex1) > 0):
+                self.executable = ex1[0]
+                if(verbose): self._print('Found DelphesHepMC3ROOT @ {}'.format(self.executable))
+                return
+
+
+        self.Build(j=j)
+        self.executable = glob.glob('{}/**/DelphesHepMC3ROOT'.format(self.delphes_dir),recursive=True)[0]
+        return
+
+    def Build(self, j:int=4):
+        self.build_dir = '{}/{}'.format(self.delphes_dir,'build')
+        self._print('Building DelphesHepMC3ROOT @ {} .'.format(self.build_dir))
+        command = ['cmake', '../']
+        sub.check_call(command,cwd=self.build_dir)
+        command = ['make', '-j{}'.format(j)]
+        self.run_make_with_progress(command)
+        return
+
+    def _print(self,val:str):
+        print('{}: {}'.format(self.prefix,val))
+
+    def run_make_with_progress(self,command=['make'],prefix='Building DelphesHepMC3ROOT'):
+        """
+        Runs "make", with a progress bar.
+        """
+        # Pattern to match progress indicators
+        progress_pattern = re.compile(r'\[\s*(\d+)%\]')
+
+        with open(self.logfile, 'w') as f, open(self.errfile, 'w') as g:
+            process = sub.Popen(
+                command,
+                cwd=self.build_dir,
+                stdout=sub.PIPE,
+                stderr=sub.PIPE,
+                universal_newlines=True,
+                bufsize=1  # Line buffered
+            )
+
+            # Read stdout line by line
+            for line in iter(process.stdout.readline, ''):
+                f.write(line)  # Write to log file
+                f.flush()
+
+                # Check for progress indicator
+                match = progress_pattern.search(line)
+                if match:
+                    progress = int(match.group(1))
+                    printProgressBar(progress, 100, prefix=prefix, suffix='Complete')
 
             # Read any remaining stderr
             stderr_output = process.stderr.read()
