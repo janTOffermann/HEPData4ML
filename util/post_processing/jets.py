@@ -81,6 +81,7 @@ class JetFinder(JetFinderBase):
         self.radius = radius
 
     def SetConfigurator(self,configurator):
+        print('Setting configurator in JetFinder')
         self.configurator = configurator
 
     def SetUserInfo(self,val):

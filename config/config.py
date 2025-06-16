@@ -10,7 +10,8 @@ config = {
         'isr' : False, # Pythia8 initial-state radiation flag
         'fsr' : False, # Pythia8 final-state radiation flag
         'rng' : 1, # Pythia8 RNG seed
-        'verbose' : True
+        'verbose' : True,
+        'hepmc_format': 'root' # options are 'root' and 'ascii'
     },
 
     'simulation' : {
@@ -23,7 +24,7 @@ config = {
     'reconstruction' : {
         'n_stable' : 200, # max number of stable truth-level particles to save to HDF5 file
         'n_delphes': [200], # max number of Delphes objects to save to HDF5 file -- list corresponding to entries in 'delphes_output'
-        'fastjet_dir' : '/home/jofferma/projects/HEPData4ML/fastjet',
+        'fastjet_dir' : None, #'/home/jofferma/projects/HEPData4ML/fastjet'
         'n_truth' : 1 + 60, # max number of truth particles to save per jet
         'event_filter' : None, # if not using any event filter
         'event_filter_flag': None, # an event_filter algorithm, but instead of filtering out events it will simply add a boolean flag to the dataset
