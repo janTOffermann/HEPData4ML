@@ -1,7 +1,6 @@
 import sys
 import numpy as np
-from util.fastjet import JetFinderBase
-from util.calcs import embed_array_inplace
+from util.fastjet.jetfinderbase import JetFinderBase
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING: # Only imported during type checking -- avoids circular imports we'd otherwise get, since jets imports this file
