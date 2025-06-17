@@ -1,7 +1,4 @@
-import sys
 import numpy as np
-from util.fastjet import JetFinderBase
-from util.calcs import embed_array_inplace
 
 class PtFilter:
     """
