@@ -103,7 +103,7 @@ class Configurator:
                 assert pathlib.Path(template_file).exists()
             except:
                 path_to_this = os.path.dirname(os.path.realpath(__file__))
-                template_file = '{}/pythia_templates/{}'.format(path_to_this,proc)
+                template_file = '{}/pythia/pythia_templates/{}'.format(path_to_this,proc)
         else: template_file = filename
         if(not pathlib.Path(template_file).exists()):
             print('Error: Template file {} not found.'.format(template_file))
