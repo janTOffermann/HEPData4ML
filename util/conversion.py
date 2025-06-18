@@ -24,11 +24,12 @@ class Processor:
 
         self.outdir = ''
 
+        self.stable_truth_particle_name = 'StableTruthParticles' # a "special" name for the stable truth particles collection; this is always present
+
         self.cluster_sequence = None
         self.jets = None
         self.jets_filtered = None
 
-        # self.SetRecordFinalStateIndices(False)
         self.SetPostProcessing()
 
         # Data buffer
@@ -187,23 +188,23 @@ class Processor:
 
                 stable_particle_vecs = [ParticleToVector(x) for x in stable_particles]
 
-                self.WriteToDataBuffer(j,'StableTruthParticles.N',len(stable_particle_vecs))
+                self.WriteToDataBuffer(j,'{}.N'.format(self.stable_truth_particle_name),len(stable_particle_vecs))
 
-                self.WriteToDataBuffer(j, 'StableTruthParticles.Pmu', np.vstack([
+                self.WriteToDataBuffer(j, '{}.Pmu'.format(self.stable_truth_particle_name), np.vstack([
                     [getattr(vec, method)() for vec in stable_particle_vecs]
                     for method in ['E','Px','Py','Pz']
                 ]).T,
                                        dimensions={1:self.nparticles_stable}
                 )
 
-                self.WriteToDataBuffer(j, 'StableTruthParticles.Pmu_cyl', np.vstack([
+                self.WriteToDataBuffer(j, '{}.Pmu_cyl'.format(self.stable_truth_particle_name), np.vstack([
                     [getattr(vec, method)() for vec in stable_particle_vecs]
                     for method in ['Pt','Eta','Phi','M']
                 ]).T,
                                        dimensions={1:self.nparticles_stable}
                 )
 
-                self.WriteToDataBuffer(j,'StableTruthParticles.PdgId',[GetParticleID(x) for x in stable_particles],
+                self.WriteToDataBuffer(j,'{}.PdgId'.format(self.stable_truth_particle_name),[GetParticleID(x) for x in stable_particles],
                                        dimensions={1:self.nparticles_stable}
                 )
 

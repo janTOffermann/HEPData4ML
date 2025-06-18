@@ -14,7 +14,7 @@ class DelphesSetup:
         self.SetDirectory(delphes_dir)
         self.delphes_download = 'https://github.com/delphes/delphes/archive/refs/tags/3.5.1pre12.tar.gz' # LCG_105 - LCG_107 has 3.5.1pre09
         self.delphes_file = 'delphes-{}'.format(self.delphes_download.split('/')[-1]) # TODO: A bit hacky
-        self.executable = {}
+        self.executable = None
         self.prefix = self.__class__.__name__
 
     def SetDirectory(self,delphes_dir:Optional[str]=None):
@@ -45,18 +45,13 @@ class DelphesSetup:
         if(not force):
             ex1 = glob.glob('{}/**/DelphesHepMC3'.format(self.delphes_dir),recursive=True)
             if(len(ex1) > 0):
-                self.executable['hepmc'] = ex1[0]
+                self.executable = ex1[0]
                 if(verbose): self._print('Found DelphesHepMC3 @ {}'.format(self.executable['hepmc']))
-            ex2 = glob.glob('{}/**/DelphesROOT'.format(self.delphes_dir),recursive=True)
-            if(len(ex2) > 0):
-                self.executable['root'] = ex2[0]
-                if(verbose): self._print('Found DelphesROOT @ {}'.format(self.executable['root']))
                 return
 
         self.DownloadDelphes() # TODO: Could check to see if source code is downloaded, though it's hard to make a perfect check.
         self.BuildDelphes(j=j)
-        self.executable['hepmc'] = glob.glob('{}/**/DelphesHepMC3'.format(self.delphes_dir),recursive=True)[0]
-        self.executable['root'] = glob.glob('{}/**/DelphesROOT'.format(self.delphes_dir),recursive=True)[0]
+        self.executable = glob.glob('{}/**/DelphesHepMC3'.format(self.delphes_dir),recursive=True)[0]
         return
 
     def DownloadDelphes(self):
