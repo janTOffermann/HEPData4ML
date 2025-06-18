@@ -71,8 +71,8 @@ class Pythia8HepMC3Writer:
         self.initialized = True
 
     def _init_root(self):
-        from pyHepMC3.rootIO.pyHepMC3rootIO.HepMC3 import WriterRoot
-        self.output = WriterRoot(self.filename)
+        from pyHepMC3.rootIO.pyHepMC3rootIO.HepMC3 import WriterRootTree
+        self.output = WriterRootTree(self.filename)
 
     def _init_ascii(self):
         from pyHepMC3 import HepMC3 as hm
@@ -307,7 +307,7 @@ def ExtractHepMCEventsAscii(files:Union[list,str],get_nevents:bool=False, silent
 
 def ExtractHepMCEventsROOT(files:Union[list,str],get_nevents:bool=False, silent:bool=False):
     from pyHepMC3 import HepMC3 as hm
-    from pyHepMC3.rootIO.pyHepMC3rootIO.HepMC3 import ReaderRoot
+    from pyHepMC3.rootIO.pyHepMC3rootIO.HepMC3 import ReaderRootTree
     events = []
     nevents = 0
     if(isinstance(files,str)): files = [files]
@@ -318,7 +318,7 @@ def ExtractHepMCEventsROOT(files:Union[list,str],get_nevents:bool=False, silent:
                 print('Warning: Tried to access file {} but it does not exist!'.format(file))
             continue
 
-        input = ReaderRoot(file)
+        input = ReaderRootTree(file)
         while(True):
             evt = hm.GenEvent()
             input.read_event(evt)
