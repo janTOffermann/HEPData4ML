@@ -180,7 +180,6 @@ class Processor:
             for j,event_particles in enumerate(particles): # Loop over events in this chunk
 
                 status = np.array([x.status() for x in event_particles])
-                print('status = ', status)
                 stable_particles = list(itertools.compress(event_particles, status == 1))
 
                 # NOTE: Currently supporting both PyHepMC and HepMC, may want to consider
