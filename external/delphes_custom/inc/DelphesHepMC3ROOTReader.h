@@ -43,7 +43,12 @@
 #include "TString.h"
 
 // HepMC3 includes
-#include "HepMC3/ReaderRoot.h"
+
+// swapped in favor of ReaderRootTree -- still ROOT file, slightly different format.
+// In principle, the file type used by ReaderRootTree supports random access, although
+// it is not clear to me that this is directly supported by the HepMC ROOT IO classes. - Jan
+// #include "HepMC3/ReaderRoot.h"
+#include "HepMC3/ReaderRootTree.h"
 #include "HepMC3/GenEvent.h"
 
 // DELPHES includes
@@ -125,7 +130,7 @@ private:
   std::map<int, std::pair<int, int> > fMotherMap;
   std::map<int, std::pair<int, int> > fDaughterMap;
 
-  HepMC3::ReaderRoot* fReader;
+  HepMC3::ReaderRootTree* fReader;
   HepMC3::GenEvent fEvent;
 
 };

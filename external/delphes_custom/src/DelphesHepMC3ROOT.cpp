@@ -137,7 +137,7 @@ int main(int argc, char *argv[])
     stableParticleOutputArray = modularDelphes->ExportArray("stableParticles");
     partonOutputArray = modularDelphes->ExportArray("partons");
 
-    reader = new DelphesHepMC3ROOTReader;
+    reader = new DelphesHepMC3ROOTReader();
 
     modularDelphes->InitTask();
 

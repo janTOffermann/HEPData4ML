@@ -150,7 +150,7 @@ class HepMCSetup:
     def _root_check(self):
         try:
             import pyHepMC3.rootIO.pyHepMC3rootIO.HepMC3 as hmroot
-            reader_class = hmroot.ReaderRoot
+            reader_class = hmroot.ReaderRootTree
         except:
             return False
         return True
