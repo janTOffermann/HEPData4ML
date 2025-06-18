@@ -331,17 +331,6 @@ def ExtractHepMCEventsROOT(files:Union[list,str],get_nevents:bool=False, silent:
     if(get_nevents): return events, nevents
     return events
 
-
-
-
-
-
-
-
-
-
-
-
 def ExtractHepMCParticles(events:List['hm.GenEvent'], nparticles_max:Optional[int]=None,selection:Optional['BaseSelector']=None):
     if(selection is not None):
 

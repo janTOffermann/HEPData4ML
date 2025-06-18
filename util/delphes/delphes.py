@@ -56,6 +56,7 @@ class DelphesWrapper:
             if(cwd is not None): return output_file_nodir
             return output_file
 
+
         delphes_ex = self.executable['hepmc']
         if(hepmc_file.split('.')[-1].lower() == 'root'):
             delphes_ex = self.executable['root']
