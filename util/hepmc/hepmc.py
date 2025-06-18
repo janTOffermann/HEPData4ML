@@ -16,6 +16,7 @@ import subprocess as sub
 import pathlib
 from typing import Union, Optional, List, TYPE_CHECKING
 from util.hepmc.setup import HepMCSetup
+from util.hepmc.readers import ReaderAscii, ReaderRootTree
 from util.hepmc.Pythia8ToHepMC3 import Pythia8ToHepMC3
 
 if TYPE_CHECKING: # Only imported during type checking -- avoids risk of circular imports
@@ -292,7 +293,7 @@ def ExtractHepMCEventsAscii(files:Union[list,str],get_nevents:bool=False, silent
                 print('Warning: Tried to access file {} but it does not exist!'.format(file))
             continue
 
-        input = hm.ReaderAscii(file)
+        input = ReaderAscii(file)
         while(True):
             evt = hm.GenEvent()
             input.read_event(evt)
@@ -307,7 +308,7 @@ def ExtractHepMCEventsAscii(files:Union[list,str],get_nevents:bool=False, silent
 
 def ExtractHepMCEventsROOT(files:Union[list,str],get_nevents:bool=False, silent:bool=False):
     from pyHepMC3 import HepMC3 as hm
-    from pyHepMC3.rootIO.pyHepMC3rootIO.HepMC3 import ReaderRootTree
+    # from pyHepMC3.rootIO.pyHepMC3rootIO.HepMC3 import ReaderRootTree
     events = []
     nevents = 0
     if(isinstance(files,str)): files = [files]
@@ -363,4 +364,3 @@ def GetParticleID(particle:Union[hep.GenParticle,'hm.GenParticle']):
     if(isinstance(particle,hep.GenParticle)):
         return particle.pid
     return particle.pid()
-
