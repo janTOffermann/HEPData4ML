@@ -5,7 +5,6 @@
 #=======================================
 
 from util.hepmc.setup import HepMCSetup
-# from pyHepMC3 import HepMC3 as hm
 import sys
 
 class Pythia8ToHepMC3:
@@ -22,9 +21,9 @@ class Pythia8ToHepMC3:
 
         self.setup = HepMCSetup(verbose=True)
         self.setup.PrepHepMC()
-        if(self.setup.GetPythonDirectory() not in sys.path):
-            sys.path = [self.setup.GetPythonDirectory()] + sys.path
-
+        python_dir = self.setup.GetPythonDirectory()
+        if(python_dir not in sys.path):
+            sys.path = [python_dir] + sys.path
 
     # The recommended method to convert Pythia events into HepMC ones
     def fill_next_event1(self, pythia, evt, ievnum):

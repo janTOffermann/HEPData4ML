@@ -1,9 +1,11 @@
 import ROOT as rt
 import numpy as np
 import glob,sys,os
-from util.hepmc.setup import HepMCSetup
 
-from util.hepmc.hepmc import PyHepMCOutputAscii
+sys.path.append("/home/jofferma/projects/HEPData4ML")
+
+from util.hepmc.setup import HepMCSetup
+from util.hepmc.readers import ReaderAscii, ReaderRootTree
 from typing import List, Union, Tuple, Optional, TYPE_CHECKING
 
 if(TYPE_CHECKING):
@@ -56,6 +58,7 @@ class PileupOverlay:
         self.pileup_events = None # transient storage for pileup events
 
         self.event_buffer_size = 10 # how many combined events to store in memory, before flushing to output file
+        #TODO: Need to fix buffer behavior -- the HepMC writers overwrite the output_file each time they're initialized, as opposed to appending
 
     def _init_hepmc(self):
         setup = HepMCSetup(verbose=True)
@@ -85,7 +88,8 @@ class PileupOverlay:
 
     def _index_root(self,file):
         f = rt.TFile(file,"READ")
-        n = f.GetListOfKeys().GetEntries()
+        t = f.Get("hepmc3_tree")
+        n = t.GetEntries()
         f.Close()
         self.first_idx[file] = self.n_total
         self.n_dict[file] = n
@@ -153,7 +157,7 @@ class PileupOverlay:
         self.selected_indices = self.rng.choice(self.event_indices[self.event_mask],size=self.mu)
         if(update_mask): self._update_mask()
 
-        print(self.selected_indices)
+        print('self.selected_indices = ', self.selected_indices)
 
     def _update_mask(self,indices=None):
         """
@@ -172,7 +176,7 @@ class PileupOverlay:
         #       nicely in Python? - Jan
 
         from pyHepMC3 import HepMC3 as hm
-        from pyHepMC3.rootIO.pyHepMC3rootIO.HepMC3 import ReaderRootTree
+        # from pyHepMC3.rootIO.pyHepMC3rootIO.HepMC3 import ReaderRootTree
 
         if(isinstance(indices,int)):
             indices = np.atleast_1d(int)
@@ -185,7 +189,7 @@ class PileupOverlay:
         if(filename.split('.')[-1].lower() == 'root'):
             reader = ReaderRootTree(filename)
         else:
-            reader = hm.ReaderAscii(filename)
+            reader = ReaderAscii(filename)
 
         while(not reader.failed()):
 
@@ -216,7 +220,7 @@ class PileupOverlay:
         # determine which files we'll have to pull pileup events from
         file_indices = {}
         for idx in indices:
-            file_idx = np.where(idx > np.array(list(self.first_idx.values()),dtype=int))[0][0]
+            file_idx = np.where(idx >= np.array(list(self.first_idx.values()),dtype=int))[0][0]
 
             if(file_idx not in file_indices.keys()):
                 file_indices[file_idx] = []
@@ -230,7 +234,7 @@ class PileupOverlay:
 
     def __call__(self,input_file:str,output_file:Optional[str]=None):
         from pyHepMC3 import HepMC3 as hm
-        from pyHepMC3.rootIO.pyHepMC3rootIO.HepMC3 import ReaderRootTree
+        # from pyHepMC3.rootIO.pyHepMC3rootIO.HepMC3 import ReaderRootTree
 
         input_file_extension = input_file.split('.')[-1]
 
@@ -250,13 +254,15 @@ class PileupOverlay:
         if(input_file_extension.lower() == 'root'):
             reader = ReaderRootTree(input_file)
         else:
-            reader = hm.ReaderAscii(input_file)
+            reader = ReaderAscii(input_file)
 
         i = 0
         while(not reader.failed()):
 
             evt = hm.GenEvent()
             reader.read_event(evt)
+
+            # print('i = {}, with event {}'.format(i,evt))
 
             self._pick_event_indices()
             pileup_events = self._fetch_events(self.selected_indices)
@@ -270,14 +276,16 @@ class PileupOverlay:
 
             # flush events from memory as needed
             if(len(events) >= self.event_buffer_size):
-                PyHepMCOutputAscii(events,buffername=buffer_file,filename=output_file)
-                events.clear()
+
+                # write to output file.
+                # TODO: Is append functionality supported by hepmc writers?
+                self._flush_to_file(events,output_file)
 
             i += 1
 
         # one last flush for any stragglers
         if(len(events) > 0):
-            PyHepMCOutputAscii(events,buffername=buffer_file,filename=output_file)
+            self._flush_to_file(events,output_file)
 
         try:
             # delete the buffer file
@@ -287,19 +295,36 @@ class PileupOverlay:
 
         return output_file
 
+    def _flush_to_file(self,events:List['hm.GenEvent'],output_file:str,buffername:str=None):
+        from pyHepMC3 import HepMC3 as hm
+        from pyHepMC3.rootIO.pyHepMC3rootIO.HepMC3 import WriterRootTree
+
+        if(output_file.split('.')[-1].lower() == 'root'):
+            writer = WriterRootTree(output_file)
+        else:
+            writer = hm.WriterAscii(output_file) # TODO: double-check if there is append functionality, esp. for ascii (may be missing)
+
+        for evt in events:
+            writer.write_event(evt)
+
+        writer.close()
+        events.clear()
+        return
+
+
     def _gaussian(self,x,mu,sig,A=None):
         if(A is None): A = 1. / (np.sqrt(2.0 * np.pi))
         return A * np.exp(-np.square((x - mu) / sig) / 2)
 
     def _combine_event_with_pileup(self,
-        main_event: hm.GenEvent,
-        pileup_events: Union[hm.GenEvent, List[hm.GenEvent]],
+        main_event: 'hm.GenEvent',
+        pileup_events: Union['hm.GenEvent', List['hm.GenEvent']],
         pileup_displacements: Optional[Union[Tuple[float, float, float, float],
                                         List[Tuple[float, float, float, float]]]] = None,
         auto_displace: bool = True,
         beam_spot_sigma: Optional[Tuple[float,float,float,float]] = None,
         in_place: bool = True
-    ) -> hm.GenEvent:
+    ) -> 'hm.GenEvent':
         """
         Combine a main event with pileup events, applying vertex displacements.
 
@@ -326,6 +351,8 @@ class PileupOverlay:
         hm.GenEvent
             Combined event with displaced pileup vertices
         """
+
+        from pyHepMC3 import HepMC3 as hm
 
         # Ensure pileup_events is a list
         if isinstance(pileup_events, hm.GenEvent):
@@ -357,7 +384,7 @@ class PileupOverlay:
 
         return combined_event
 
-    def _copy_event_content(self,source_event: hm.GenEvent, target_event: hm.GenEvent = None):
+    def _copy_event_content(self,source_event: 'hm.GenEvent', target_event: 'hm.GenEvent' = None):
         """Copy all particles and vertices from source to target event."""
         from pyHepMC3 import HepMC3 as hm
 
@@ -411,15 +438,15 @@ class PileupOverlay:
         return target_event
 
     def _add_displaced_event(self,
-                            target_event: hm.GenEvent,
-                            pileup_event: hm.GenEvent,
+                            target_event: 'hm.GenEvent',
+                            pileup_event: 'hm.GenEvent',
                             dt: float, dx: float, dy: float, dz: float):
         """Add a pileup event to the target event with vertex displacement."""
         from pyHepMC3 import HepMC3 as hm
 
         # Create mapping from old vertex objects to new vertex objects using list index
         vertex_map = {}
-        vertices_list = list(pileup_event.vertices)
+        vertices_list = list(pileup_event.vertices())
 
         # Copy vertices with displacement
         for i, vertex in enumerate(vertices_list):
@@ -466,8 +493,8 @@ class PileupOverlay:
                     print(f"Warning: Could not find end vertex for particle {particle.pid}")
 
 def main(args):
-    pileup = PileupOverlay(pileup_files="/home/jofferma/projects/HEPData4ML/tmp/pileup_events.hepmc3")
-    _ = pileup()
+    pileup = PileupOverlay(pileup_files="/home/jofferma/projects/HEPData4ML/test/pileup/pileup.root")
+    _ = pileup(input_file="/home/jofferma/projects/HEPData4ML/test/pileup/events.root",output_file="/home/jofferma/projects/HEPData4ML/test/pileup/output.root")
 
 
 if(__name__=='__main__'):
