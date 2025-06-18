@@ -73,7 +73,7 @@ DelphesHepMC3ROOTReader::~DelphesHepMC3ROOTReader()
 void DelphesHepMC3ROOTReader::SetInputFile(TString inputFile)
 {
   fInputFile = inputFile;
-  fReader = new HepMC3::ReaderRoot(string(fInputFile.Data()));
+  fReader = new HepMC3::ReaderRootTree(string(fInputFile.Data()));
 }
 
 //---------------------------------------------------------------------------
