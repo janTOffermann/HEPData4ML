@@ -6,8 +6,21 @@ import numpy as np
 import itertools
 
 import pyhepmc as hep
-from pyHepMC3 import HepMC3 as hm # the official Pythonic HepMC3 bindings
-from typing import Union
+from typing import Union, TYPE_CHECKING
+
+if TYPE_CHECKING: # Only imported during type checking -- avoids risk of circular imports
+    from util.hepmc.setup import HepMCSetup, uncache_hepmc3, prepend_to_pythonpath
+
+    # make sure Python HepMC3 bindings are setup
+    setup = HepMCSetup(verbose=False)
+    # setup.PrepHepMC() # will download/install if necessary
+    python_dir = setup.GetPythonDirectory()
+
+    uncache_hepmc3()
+    prepend_to_pythonpath(python_dir)
+
+    from pyHepMC3 import HepMC3 as hm
+
 
 #==========================================
 # Here are a bunch of convenience
@@ -22,7 +35,7 @@ from typing import Union
 # GenParticle > tuple > PythiaWrapper+idx.
 #==========================================
 
-def IsQuark(hepev:Union[hep.GenEvent,hm.GenEvent],idx):
+def IsQuark(hepev:Union[hep.GenEvent,'hm.GenEvent'],idx):
     if(isinstance(hepev,hep.GenEvent)):
         pid = np.abs(hepev.particles[idx].pid)
     else:
@@ -69,17 +82,17 @@ def IsQuark(hepev:Union[hep.GenEvent,hm.GenEvent],idx):
 #         pid = np.abs(p[-2])
 #     return (pid in [23, 24, 25])
 
-def IsStable(hepev:Union[hep.GenEvent,hm.GenEvent],idx):
+def IsStable(hepev:Union[hep.GenEvent,'hm.GenEvent'],idx):
     if(isinstance(hepev,hep.GenEvent)):
         return hepev.particles[idx].status == 1
     return hepev.particles()[idx].status() == 1
 
-def GetDaughtersSingle(hepev:Union[hep.GenEvent,hm.GenEvent],idx):
+def GetDaughtersSingle(hepev:Union[hep.GenEvent,'hm.GenEvent'],idx):
     if(isinstance(hepev,hep.GenEvent)):
         return [x.id - 1 for x in hepev.particles[idx].children] # id gives 1-indexing # TODO: double-check this
     return [x.id() - 1 for x in hepev.particles()[idx].children()]
 
-def GetDaughtersRecursive(hepev:Union[hep.GenEvent,hm.GenEvent],idx):
+def GetDaughtersRecursive(hepev:Union[hep.GenEvent,'hm.GenEvent'],idx):
     daughters = GetDaughtersSingle(hepev,idx)
     # get the daughters' daughters
     for daughter in daughters:
@@ -94,7 +107,7 @@ class GatherQuarks:
     def __init__(self):
         self.particle_list = []
 
-    def __run(self,hepev:Union[hep.GenEvent,hm.GenEvent],idx):
+    def __run(self,hepev:Union[hep.GenEvent,'hm.GenEvent'],idx):
         daughters = GetDaughtersSingle(hepev,idx) # indices of the daughters of particle @ idx
 
         # Determine which daughters are quarks -- these get added to particle_list.
@@ -120,7 +133,7 @@ class GatherStableDaughters:
     def __init__(self):
         self.particle_list = []
 
-    def __run(self,hepev:Union[hep.GenEvent,hm.GenEvent],idx):
+    def __run(self,hepev:Union[hep.GenEvent,'hm.GenEvent'],idx):
         daughters = GetDaughtersSingle(hepev,idx) # indices of the daughters of particle @ idx
 
         # Determine which daughters are stable.
@@ -138,7 +151,7 @@ class GatherStableDaughters:
         for nd in not_stable_daughters:
             self.__run(hepev,nd)
 
-    def __call__(self,hepev:Union[hep.GenEvent,hm.GenEvent],idx):
+    def __call__(self,hepev:Union[hep.GenEvent,'hm.GenEvent'],idx):
         self.particle_list.clear()
         self.__run(hepev,idx)
         return np.unique(np.array(self.particle_list,dtype=int))
@@ -151,7 +164,7 @@ class GatherDaughters:
         self.particle_list = []
         self.recursive=recursive
 
-    def __run(self,hepev:Union[hep.GenEvent,hm.GenEvent],idx):
+    def __run(self,hepev:Union[hep.GenEvent,'hm.GenEvent'],idx):
         daughters = GetDaughtersRecursive(hepev,idx)
 
         # Check for "self" in daughter list (a particle with same PDG code).
@@ -168,7 +181,7 @@ class GatherDaughters:
             if(d not in self.particle_list):
                 self.particle_list.append(d)
 
-    def __call__(self,hepev:Union[hep.GenEvent,hm.GenEvent],idx):
+    def __call__(self,hepev:Union[hep.GenEvent,'hm.GenEvent'],idx):
         self.particle_list.clear()
         self.__run(hepev,idx)
         return np.array(self.particle_list,dtype=int)

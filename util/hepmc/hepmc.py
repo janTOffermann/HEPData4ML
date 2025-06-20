@@ -15,7 +15,7 @@ import pyhepmc as hep # the "unofficial" Pythonic HepMC3 bindings -- useful for 
 import subprocess as sub
 import pathlib
 from typing import Union, Optional, List, TYPE_CHECKING
-from util.hepmc.setup import HepMCSetup
+from util.hepmc.setup import HepMCSetup, uncache_hepmc3, prepend_to_pythonpath
 from util.hepmc.readers import ReaderAscii, ReaderRootTree
 from util.hepmc.Pythia8ToHepMC3 import Pythia8ToHepMC3
 
@@ -24,18 +24,23 @@ if TYPE_CHECKING: # Only imported during type checking -- avoids risk of circula
     from util.particle_selection.particle_selection import BaseSelector
 
     # make sure Python HepMC3 bindings are setup
-    setup = HepMCSetup(verbose=True)
-    setup.PrepHepMC() # will download/install if necessary
-    sys.path = [setup.GetPythonDirectory()] + sys.path # prepend, to make sure we pick this one up first
+    setup = HepMCSetup(verbose=False)
+    # setup.PrepHepMC() # will download/install if necessary
+    python_dir = setup.GetPythonDirectory()
+
+    # uncache_hepmc3()
+    prepend_to_pythonpath(python_dir)
+
     from pyHepMC3 import HepMC3 as hm
 
 class Pythia8HepMC3Writer:
-    def __init__(self,filename:Optional[str]=None):
+    def __init__(self,hepmc_dir:Optional[str]=None, filename:Optional[str]=None):
+        self.setup = HepMCSetup(hepmc_dir,verbose=False)
+        # self.setup.PrepHepMC()
+        python_dir = self.setup.GetPythonDirectory()
+        # uncache_hepmc3()
+        prepend_to_pythonpath(python_dir)
 
-        self.setup = HepMCSetup(verbose=True)
-        self.setup.PrepHepMC()
-        if(self.setup.GetPythonDirectory() not in sys.path):
-            sys.path = [self.setup.GetPythonDirectory()] + sys.path
         # from pyHepMC3 import HepMC3 as hm
 
         self.mode = None

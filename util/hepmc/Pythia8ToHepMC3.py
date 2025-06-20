@@ -4,11 +4,11 @@
 # https://gitlab.cern.ch/hepmc/HepMC3
 #=======================================
 
-from util.hepmc.setup import HepMCSetup
+from util.hepmc.setup import HepMCSetup, uncache_hepmc3, prepend_to_pythonpath
 import sys
 
 class Pythia8ToHepMC3:
-    def __init__(self):
+    def __init__(self, hepmc_dir=None):
         self.m_internal_event_number = 0
         self.m_print_inconsistency = True
         self.m_free_parton_warnings = True
@@ -19,11 +19,12 @@ class Pythia8ToHepMC3:
         self.m_store_xsec = True
         self.m_store_weights = True
 
-        self.setup = HepMCSetup(verbose=True)
-        self.setup.PrepHepMC()
+        self.setup = HepMCSetup(hepmc_dir,verbose=False)
+        # self.setup.PrepHepMC()
         python_dir = self.setup.GetPythonDirectory()
-        if(python_dir not in sys.path):
-            sys.path = [python_dir] + sys.path
+
+        # uncache_hepmc3()
+        prepend_to_pythonpath(python_dir)
 
     # The recommended method to convert Pythia events into HepMC ones
     def fill_next_event1(self, pythia, evt, ievnum):

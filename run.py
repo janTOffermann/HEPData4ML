@@ -1,12 +1,30 @@
-import sys,os,pathlib,time,datetime,re,shlex,uuid
+import sys,os,pathlib,time,datetime,re,shlex,uuid,atexit
 import argparse as ap
 import subprocess as sub
 from util.generation import PythiaGenerator
 from util.simulation import DelphesSimulator
 from util.conversion import Processor, RemoveFailedFromHDF5, SplitH5, AddEventIndices, ConcatenateH5, MergeH5, AddConstantValue, AddMetaDataWithReference
 from util.hepmc.hepmc import CompressHepMC
+# from util.hepmc.setup import HepMCSetup
 from util.config import Configurator,GetConfigFileContent, GetConfigDictionary
 from util.args import parse_mc_steps, FloatListAction, none_or_str
+
+
+
+
+def trace_hepmc3_imports():
+    """Add import tracing to see what imports pyHepMC3 first"""
+    original_import = __builtins__.__import__
+
+    def traced_import(name, *args, **kwargs):
+        if 'pyHepMC3' in name or 'HepMC3' in name:
+            import traceback
+            print(f"\n=== IMPORTING {name} ===")
+            traceback.print_stack()
+            print("=" * 40)
+        return original_import(name, *args, **kwargs)
+
+    __builtins__.__import__ = traced_import
 
 def get_git_revision_short_hash(): # see https://stackoverflow.com/a/21901260
     cwd = os.path.dirname(os.path.abspath(__file__))
@@ -23,6 +41,9 @@ def float_to_str(value):
     return re.sub(',0$','',value_str)
 
 def main(args):
+
+    # trace_hepmc3_imports()
+
     parser = ap.ArgumentParser()
 
     parser.add_argument('-n',            '--nevents',           type=int,          required=True,            help='Number of events per pt bin.')
