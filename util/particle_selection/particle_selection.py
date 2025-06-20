@@ -1,8 +1,20 @@
 import numpy as np
 import pyhepmc as hep
-from pyHepMC3 import HepMC3 as hm # the official Pythonic HepMC3 bindings
 
-from typing import Union,List
+from typing import Union,List, TYPE_CHECKING
+
+if TYPE_CHECKING: # Only imported during type checking -- avoids risk of circular imports
+    from util.hepmc.setup import HepMCSetup, uncache_hepmc3, prepend_to_pythonpath
+
+    # make sure Python HepMC3 bindings are setup
+    setup = HepMCSetup(verbose=False)
+    # setup.PrepHepMC() # will download/install if necessary
+    python_dir = setup.GetPythonDirectory()
+
+    # uncache_hepmc3()
+    prepend_to_pythonpath(python_dir)
+
+    from pyHepMC3 import HepMC3 as hm
 
 # ==============================
 # These are particle selectors, that the user should
@@ -55,7 +67,7 @@ class FirstSelector(BaseSelector):
             if np.abs(self.pdgid) in [1,2,3,4,5]:
                 self.status = 1
 
-    def __call__(self,hepev:Union[hep.GenEvent,hm.GenEvent]):
+    def __call__(self,hepev:Union[hep.GenEvent,'hm.GenEvent']):
         """
         Supporting both pyhpemc and official HepMC bindings.
         """
@@ -103,7 +115,7 @@ class BasicSelection:
     def SetHadronization(self,hadronization=True):
         self.hadronization=hadronization
 
-    def __call__(self,hepev:Union[hep.GenEvent,hm.GenEvent]):
+    def __call__(self,hepev:Union[hep.GenEvent,'hm.GenEvent']):
         self.selection_status = True
         particle_list = []
         for x in self.selection_list:
@@ -123,7 +135,7 @@ class AlgoSelection(BaseSelector):
         self.fixed_length = fixed_length # whether or not this selector will always return the exact same number of particles
         self.selection_status = True
 
-    def __call__(self,hepev:Union[hep.GenEvent,hm.GenEvent]):
+    def __call__(self,hepev:Union[hep.GenEvent,'hm.GenEvent']):
         self.selection_status, particle_list = self.particle_selection_algo(hepev)
         if(len(particle_list) > self.n and self.n > 0): particle_list = particle_list[:self.n]
         return particle_list
@@ -143,7 +155,7 @@ class MultiSelection(BaseSelector):
         self.enforce_unique = enforce_unique
         self.selection_status = True
 
-    def __call__(self,hepev:Union[hep.GenEvent,hm.GenEvent]):
+    def __call__(self,hepev:Union[hep.GenEvent,'hm.GenEvent']):
         self.selection_status = True
         particle_lists = []
         # statuses = []

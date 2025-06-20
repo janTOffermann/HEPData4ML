@@ -1,9 +1,12 @@
-import os
+import sys,os
 import numpy as np
 import h5py as h5
 import subprocess as sub
 from util.pythia.utils import PythiaWrapper
-from util.hepmc.hepmc import PythiaWrapperToHepMC, Pythia8HepMC3Writer
+from util.hepmc.hepmc import Pythia8HepMC3Writer
+from util.hepmc.Pythia8ToHepMC3 import Pythia8ToHepMC3
+from util.hepmc.setup import HepMCSetup, uncache_hepmc3, prepend_to_pythonpath
+
 from util.qol_utils.progress_bar import printProgressBarColor
 from typing import Optional,TYPE_CHECKING
 
@@ -25,6 +28,19 @@ class PythiaGenerator:
         self.verbose = self.configurator.GetPythiaVerbosity()
         self.pythia = PythiaWrapper(verbose=self.verbose)
         self.ConfigPythia(config_file=pythia_config_file,verbose=self.verbose)
+
+        # Set up HepMC, and create our HepMC converter
+        self.hepmc_setup = HepMCSetup(self.configurator.GetHepMC3Directory(),verbose=False)
+        # self.hepmc_setup.PrepHepMC()
+        python_dir = self.hepmc_setup.GetPythonDirectory()
+        # uncache_hepmc3()
+        prepend_to_pythonpath(python_dir)
+
+        # Also set the configurator's HepMC directory, so that in case it was "None" we don't end up
+        # downloading HepMC3 multiple times.
+        self.configurator.SetHepMC3Directory(self.hepmc_setup.GetDirectory())
+
+        self.hepmc_converter = Pythia8ToHepMC3(self.configurator.GetHepMC3Directory())
 
         # Event filters. # TODO: May remove
         self.event_filter = None
@@ -190,6 +206,7 @@ class PythiaGenerator:
         into HepMC3 events. These events are periodically written to a buffer file (which is then merged
         into the "master" HepMC3 file).
         """
+        from pyHepMC3 import HepMC3 as hm # the HepMCSetup will have taken care of this -- so the package will be already cached
         n_fail = 0
         if(nevents_disp is None): nevents_disp = nevents # number of events to display in progress bar
 
@@ -249,8 +266,9 @@ class PythiaGenerator:
             # ==========================================
             # hepmc_event = PythiaWrapperToPyHepMC(self.pythia,i_real)
 
-            # test
-            hepmc_event = PythiaWrapperToHepMC(self.pythia,i_real)
+            hepmc_event = hm.GenEvent()
+            self.hepmc_converter.fill_next_event1(self.pythia.GetPythia(),hepmc_event,i_real)
+            # hepmc_event = PythiaWrapperToHepMC(self.pythia,i_real)
 
             # Fill the memory buffer with this event.
             self.FillEventBuffer(hepmc_event)

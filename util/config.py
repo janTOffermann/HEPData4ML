@@ -90,6 +90,12 @@ class Configurator:
     def GetHepMCFormat(self)->str:
         return self.config['generation']['hepmc_format']
 
+    def GetHepMC3Directory(self)->str:
+        return self.config['generation']['hepmc_dir']
+
+    def SetHepMC3Directory(self,dir:str):
+        self.config['generation']['hepmc_dir'] = dir
+
     def GetPythiaConfigFile(self,filename=None):
         """
         Fetch the Pythia configuration file.
