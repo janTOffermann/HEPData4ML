@@ -4,7 +4,7 @@
 # https://gitlab.cern.ch/hepmc/HepMC3
 #=======================================
 
-from util.hepmc.setup import HepMCSetup, uncache_hepmc3, prepend_to_pythonpath
+from util.hepmc.setup import HepMCSetup, prepend_to_pythonpath
 import sys
 
 class Pythia8ToHepMC3:

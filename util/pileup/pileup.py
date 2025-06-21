@@ -2,10 +2,8 @@ import ROOT as rt
 import numpy as np
 import glob,sys,os
 
-sys.path.append("/home/jofferma/projects/HEPData4ML")
-
-from util.hepmc.setup import HepMCSetup
-from util.hepmc.readers import ReaderAscii, ReaderRootTree
+from util.hepmc.setup import HepMCSetup, prepend_to_pythonpath
+from util.hepmc.readers import ReaderAscii, ReaderRootTree # our wrappers for the HepMC3 reader classes
 from typing import List, Union, Tuple, Optional, TYPE_CHECKING
 
 if(TYPE_CHECKING):
@@ -21,6 +19,9 @@ class PileupOverlay:
     This class performs on-the-fly mixing, to mix in events from some pileup HepMC3 file(s)
     into "main events" (from some other HepMC file).
     It creates mixed events, which are output to a new file.
+
+    In practice, you might want to use this to create pileup events for "pre-mixing",
+    like what is done in Monte Carlo sample preparation for the CMS experiment.
     """
 
     def __init__(self, pileup_files:Optional[Union[str,list]]=None,rng_seed:int=1,mu_file:str=None):
@@ -62,10 +63,9 @@ class PileupOverlay:
 
     def _init_hepmc(self):
         setup = HepMCSetup(verbose=True)
-        setup.PrepHepMC() # will download/install if necessary
         python_dir = setup.GetPythonDirectory()
-        if(python_dir not in sys.path):
-            sys.path = [setup.GetPythonDirectory()] + sys.path # prepend, to make sure we pick this one up first
+        prepend_to_pythonpath(python_dir)
+
         # now can do "from pyHepMC3 import HepMC3 as hm"
 
     def SetPileupFiles(self,files:Union[str,list]=None):
@@ -167,16 +167,11 @@ class PileupOverlay:
         if(indices is None): indices = self.selected_indices # use currently selected indices
         self.event_mask[self.selected_indices] = False
 
-    def _fetch_event_single_file(self,filename:str,indices:Union[int,list,np.ndarray]):
-        # NOTE: Will not work nicely with ASCII, since that requires iterating
-        # through the whole file and that will scale quite poorly as these files get large.
-        # NOTE: For HepMC3/ROOT, random file access is in principle supported, but it is not
-        #       clear to me how to actually accomplish this with the existing ReaderRootTree
-        #       methods. Maybe we need to write something custom, and make sure it interfaces
-        #       nicely in Python? - Jan
+    def _fetch_event_single_file_ascii(self,filename:str,indices:Union[int,list,np.ndarray]):
+        # NOTE: With ASCII, we require iterating through the whole file
+        # and that will scale quite poorly as these files get large.
 
         from pyHepMC3 import HepMC3 as hm
-        # from pyHepMC3.rootIO.pyHepMC3rootIO.HepMC3 import ReaderRootTree
 
         if(isinstance(indices,int)):
             indices = np.atleast_1d(int)
@@ -186,10 +181,7 @@ class PileupOverlay:
         counter = 0
         write_counter = 0
 
-        if(filename.split('.')[-1].lower() == 'root'):
-            reader = ReaderRootTree(filename)
-        else:
-            reader = ReaderAscii(filename)
+        reader = ReaderAscii(filename)
 
         while(not reader.failed()):
 
@@ -212,6 +204,55 @@ class PileupOverlay:
             counter += 1
         reader.close()
         return events
+
+    def _fetch_event_single_file_root(self,filename:str,indices:Union[int,list,np.ndarray]):
+        # NOTE: Leverages functions currently only available in our custom fork of HepMC3,
+        #       for accessing non-sequential events from a ROOT file.
+
+        from pyHepMC3 import HepMC3 as hm
+
+        if(isinstance(indices,int)):
+            indices = np.atleast_1d(int)
+        indices = sorted(indices)
+
+        events = [hm.GenEvent()] * len(indices)
+        counter = 0
+        write_counter = 0
+
+        reader = ReaderRootTree(filename)
+
+        for i,idx in enumerate(indices):
+            reader.read_event(events[i],idx) # TODO: Add better check for out-of-bounds indices?
+            if(reader.failed()):
+                assert False
+
+        reader.close()
+        return events
+
+    def _fetch_event_single_file(self,filename:str,indices:Union[int,list,np.ndarray]):
+        # NOTE: Will not work nicely with ASCII, since that requires iterating
+        # through the whole file and that will scale quite poorly as these files get large.
+        # NOTE: For HepMC3/ROOT, random file access is in principle supported, but it is not
+        #       clear to me how to actually accomplish this with the existing ReaderRootTree
+        #       methods. Maybe we need to write something custom, and make sure it interfaces
+        #       nicely in Python? - Jan
+
+        from pyHepMC3 import HepMC3 as hm
+        # from pyHepMC3.rootIO.pyHepMC3rootIO.HepMC3 import ReaderRootTree
+
+        if(isinstance(indices,int)):
+            indices = np.atleast_1d(int)
+        indices = sorted(indices)
+
+        events = [hm.GenEvent()] * len(indices)
+        counter = 0
+        write_counter = 0
+
+        if(filename.split('.')[-1].lower() == 'root'):
+            return self._fetch_event_single_file_root(filename,indices)
+        else:
+            return self._fetch_event_single_file_ascii(filename,indices)
+
 
     def _fetch_events(self,indices:Union[int,list,np.ndarray]):
         if(isinstance(indices,int)):
@@ -262,8 +303,6 @@ class PileupOverlay:
             evt = hm.GenEvent()
             reader.read_event(evt)
 
-            # print('i = {}, with event {}'.format(i,evt))
-
             self._pick_event_indices()
             pileup_events = self._fetch_events(self.selected_indices)
 
@@ -300,9 +339,9 @@ class PileupOverlay:
         from pyHepMC3.rootIO.pyHepMC3rootIO.HepMC3 import WriterRootTree
 
         if(output_file.split('.')[-1].lower() == 'root'):
-            writer = WriterRootTree(output_file)
+            writer = WriterRootTree(output_file, True) # uses our custom HepMC3 functionality for "append mode"
         else:
-            writer = hm.WriterAscii(output_file) # TODO: double-check if there is append functionality, esp. for ascii (may be missing)
+            assert False # for now, we dont't support ASCII output since there isn't (yet) append functionality
 
         for evt in events:
             writer.write_event(evt)
@@ -310,7 +349,6 @@ class PileupOverlay:
         writer.close()
         events.clear()
         return
-
 
     def _gaussian(self,x,mu,sig,A=None):
         if(A is None): A = 1. / (np.sqrt(2.0 * np.pi))
@@ -451,12 +489,12 @@ class PileupOverlay:
         # Copy vertices with displacement
         for i, vertex in enumerate(vertices_list):
             # Apply displacement to vertex position
-            old_pos = vertex.position
+            old_pos = vertex.position()
             new_position = hm.FourVector(
-                old_pos.x + dx,
-                old_pos.y + dy,
-                old_pos.z + dz,
-                old_pos.t + dt
+                old_pos.x() + dx,
+                old_pos.y() + dy,
+                old_pos.z() + dz,
+                old_pos.t() + dt
             )
 
             new_vertex = hm.GenVertex(new_position)
@@ -492,16 +530,15 @@ class PileupOverlay:
                 except ValueError:
                     print(f"Warning: Could not find end vertex for particle {particle.pid}")
 
-def main(args):
-    pileup = PileupOverlay(pileup_files="/home/jofferma/projects/HEPData4ML/test/pileup/pileup.root")
-    _ = pileup(input_file="/home/jofferma/projects/HEPData4ML/test/pileup/events.root",output_file="/home/jofferma/projects/HEPData4ML/test/pileup/output.root")
 
+class PileupOverlaySingle(PileupOverlay):
 
-if(__name__=='__main__'):
-    main(sys.argv)
-
-
-
-
-
-
+    """
+    An extension of the PileupOverlay class, that just picks
+    a single event to overlay. In practice, this can be used
+    for "pre-mixing", where this class is sampling from some
+    pre-formed pileup events. This may be faster than on-the-fly
+    mixing, as it allows one to pre-compute the full pileup.
+    """
+    def _sample_mu_distribution(self):
+        self.mu = 1 # just forces sampling of a single event from the file
