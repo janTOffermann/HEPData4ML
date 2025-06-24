@@ -11,6 +11,7 @@ import util.post_processing.utils.ghost_association as ghost_assoc
 import util.post_processing.utils.softdrop as softdrop
 import util.post_processing.utils.jhtagger as jhtagger
 import util.post_processing.utils.jet_filter as jet_filter
+import util.post_processing.utils.containment as containment
 
 class JetFinder(JetFinderBase):
     """
@@ -380,4 +381,21 @@ class JetFinder(JetFinderBase):
         """
 
         self.processors.append(jhtagger.JohnsHopkinsTagger(delta_p,delta_r,cos_theta_W_max,top_mass_range,W_mass_range,mode,tag_name))
+        return self
+
+    def Containment(self,truth_key,truth_indices,delta_r=None,use_rapidity=True, mode='tag',tag_name=None):
+        """
+        This function performs "containment tagging", by checking
+        the DeltaR between the jet and the particle(s) belonging
+        to the collection "truth_key", at "truth_indices".
+
+        With mode=='filter', it will filter out non-contained jets.
+        With mode=='tag', it will save a containment flag to the output.
+
+        Returns self, so this can be chained with the constructor.
+        """
+        if delta_r is None:
+            delta_r = self.radius
+
+        self.processors.append(containment.ContainmentTagger(truth_key,truth_indices,delta_r,mode,use_rapidity,tag_name))
         return self
