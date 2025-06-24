@@ -55,7 +55,6 @@ class PythiaGenerator:
         self.writer = Pythia8HepMC3Writer()
 
         self.SetFilename('events.hepmc')
-        self.stats_filename = 'stats.h5'
         self.SetEventFilterFlagFilename() # will give a default name
         self.filename_fullpath = None
 
@@ -112,7 +111,6 @@ class PythiaGenerator:
     def SetDefaultFilenames(self):
         self.SetOutputDirectory(dir)
         self.SetFilename('events.hepmc')
-        self.stats_filename = 'stats.h5'
         self.SetEventFilterFlagFilename()
 
     def SetProgressBar(self,flag:bool):
@@ -133,17 +131,8 @@ class PythiaGenerator:
             self.writer.SetFilename('{}/{}'.format(self.outdir,self.filename))
         return
 
-    def SetStatsFilename(self,name:str):
-        if('.h5' not in name):
-            name = '{}.h5'.format(name)
-        self.stats_filename = name
-        return
-
     def GetFilename(self):
         return self.filename
-
-    def GetStatsFilename(self):
-        return self.stats_filename
 
     def GetHistFilename(self):
         return self.hist_filename
@@ -339,22 +328,22 @@ class PythiaGenerator:
 
         self.writer.Close()
 
-        # Fill out an array with each event's cross section (and the uncertainty on that cross-section).
-        self.xsecs = np.zeros((nevents,2))
-        xsec_dictionary = self.GetSigmaDictionary()
-        for i,pcode in enumerate(self.process_codes):
-            self.xsecs[i,:] = xsec_dictionary[pcode]
+        # # Fill out an array with each event's cross section (and the uncertainty on that cross-section).
+        # self.xsecs = np.zeros((nevents,2))
+        # xsec_dictionary = self.GetSigmaDictionary()
+        # for i,pcode in enumerate(self.process_codes):
+        #     self.xsecs[i,:] = xsec_dictionary[pcode]
 
-        # Create/append a stats file, and put in information on event weights & cross-sections.
-        #TODO: Will want to rework this.
-        f = h5.File('{}/{}'.format(self.outdir,self.stats_filename),'a')
-        compression = 'gzip'
-        copts = 9
-        f.create_dataset('mc_weight',data=self.weights,compression=compression,compression_opts=copts)
-        f.create_dataset('process_code',data=self.process_codes,compression=compression,compression_opts=copts)
-        f.create_dataset('cross_section',data=self.xsecs[:,0],compression=compression,compression_opts=copts)
-        f.create_dataset('cross_section_uncertainty',data=self.xsecs[:,1],compression=compression,compression_opts=copts)
-        f.close()
+        # # Create/append a stats file, and put in information on event weights & cross-sections.
+        # #TODO: Will want to rework this.
+        # f = h5.File('{}/{}'.format(self.outdir,self.stats_filename),'a')
+        # compression = 'gzip'
+        # copts = 9
+        # f.create_dataset('mc_weight',data=self.weights,compression=compression,compression_opts=copts)
+        # f.create_dataset('process_code',data=self.process_codes,compression=compression,compression_opts=copts)
+        # f.create_dataset('cross_section',data=self.xsecs[:,0],compression=compression,compression_opts=copts)
+        # f.create_dataset('cross_section_uncertainty',data=self.xsecs[:,1],compression=compression,compression_opts=copts)
+        # f.close()
 
         return
 

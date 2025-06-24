@@ -530,7 +530,6 @@ class PileupOverlay:
                 except ValueError:
                     print(f"Warning: Could not find end vertex for particle {particle.pid}")
 
-
 class PileupOverlaySingle(PileupOverlay):
 
     """

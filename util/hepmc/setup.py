@@ -1,9 +1,8 @@
 from util.qol_utils.misc import stdout_redirected
-from util.qol_utils.progress_bar import printProgressBar
+from util.qol_utils.progress_bar import printProgressBar, printProgressWithOutput
 import subprocess as sub
-import sys, os, glob, re, pathlib, importlib
-import threading
-import atexit
+import sys, os, glob, re, pathlib, importlib, threading, atexit, queue
+from collections import deque
 from typing import Optional, Union
 
 # Module-level state for ensuring setup only runs once
@@ -79,7 +78,6 @@ def ensure_hepmc_setup(hepmc_dir=None, verbose=False, j=4, require_root=True,
         _setup_completed = True
         return _hepmc_available, _hepmc_instance
 
-
 class _HepMCSetupInternal:
     """
     Internal implementation of HepMC setup functionality.
@@ -142,14 +140,19 @@ class _HepMCSetupInternal:
         a (public) fork of the project from CERN GitLab.
         """
         if pathlib.Path(self.source_dir).exists():
+            self._vprint('Found existing HepMC3 source directory: {}'.format(self.source_dir))
+            self._vprint('... Skipping download.')
             return  # if source exists, don't download again
 
-        with open(self.logfile, 'w') as f, open(self.errfile, 'w') as g:
+        with open(self.logfile, 'a') as f, open(self.errfile, 'a') as g:
+            # add an empty space -- nice to separate outputs from different commands
+            f.write('\n')
+            g.write('\n')
+
             # Fetch the HepMC3 source
-            hepmc_download = 'https://gitlab.cern.ch/jaofferm/HepMC3/-/archive/jaofferm_writer_append/HepMC3-jaofferm_writer_append.tar.gz'
+            hepmc_download = 'https://gitlab.cern.ch/jaofferm/HepMC3/-/archive/jaofferm_devel/HepMC3-jaofferm_devel.tar.gz'
             hepmc_file = hepmc_download.split('/')[-1]
-            if self.verbose:
-                self._print('Downloading HepMC3 from {}.'.format(hepmc_download))
+            self._vprint('Downloading HepMC3 from {}.'.format(hepmc_download))
 
             # Depending on Linux/macOS, we use wget or curl.
             has_wget = True
@@ -167,7 +170,8 @@ class _HepMCSetupInternal:
             sub.check_call(['tar', 'xzf', hepmc_file], cwd=self.hepmc_dir, stdout=f, stderr=g)
             sub.check_call(['rm', hepmc_file], cwd=self.hepmc_dir, stdout=f, stderr=g)
 
-            # Rename the source dir to match the one of the official release
+            # Rename the source dir to match the one of the official release.
+            # A little hacky but it will work for now.
             source_dir = '/'.join(self.source_dir.split('/')[:-1]) + '/' + hepmc_file.split('.')[0]
             try:
                 sub.check_call(['mv', source_dir, self.source_dir])
@@ -176,7 +180,10 @@ class _HepMCSetupInternal:
                 pass
 
     def Make(self, j: int = 4):
-        with open(self.logfile, 'w') as f, open(self.errfile, 'w') as g:
+        with open(self.logfile, 'a') as f, open(self.errfile, 'a') as g:
+            # add an empty space -- nice to separate outputs from different commands
+            f.write('\n')
+            g.write('\n')
 
             os.makedirs(self.build_dir, exist_ok=True)
 
@@ -198,16 +205,17 @@ class _HepMCSetupInternal:
                     a=sys.version_info.major, b=sys.version_info.minor, c=self.install_dir),
                 self.source_dir
             ]
-            for entry in command:
-                if entry[0] == '-':
-                    self._print('\t{}'.format(entry))
-            sub.check_call(command, cwd=self.build_dir, stdout=f, stderr=g)
+            # for entry in command:
+            #     if entry[0] == '-':
+            #         self._print('\t{}'.format(entry))
+
+            self.run_command_with_progress(command,cwd=self.build_dir,output_length=70,prefix='Configuring HepMC:') # note the fixed expected output length; used for progress bar
 
             # Now make
             if self.verbose:
                 self._print('Building HepMC3.')
             command = ['make', '-j{}'.format(j)]
-            self.run_make_with_progress(command)
+            self.run_command_with_progress(command,cwd=self.build_dir,prefix='Building HepMC:')
 
             if self.verbose:
                 self._print('Installing HepMC3.')
@@ -272,40 +280,141 @@ class _HepMCSetupInternal:
         if self.verbose:
             print(val)
 
-    def run_make_with_progress(self, command=['make'], prefix='Building HepMC'):
-        # Pattern to match progress indicators
-        progress_pattern = re.compile(r'\[\s*(\d+)%\]')
+    def run_command_with_progress(self, command, prefix, cwd=None,
+                                show_output_lines=10, output_width=80, output_length=None):
+            """
+            Run command with progress bar and scrolling output display
 
-        with open(self.logfile, 'w') as f, open(self.errfile, 'w') as g:
-            process = sub.Popen(
-                command,
-                cwd=self.build_dir,
-                stdout=sub.PIPE,
-                stderr=sub.PIPE,
-                universal_newlines=True,
-                bufsize=1  # Line buffered
-            )
+            Args:
+                command: Command to run
+                cwd: Current working directory for command
+                prefix: Progress bar prefix
+                show_output_lines: Number of recent output lines to show (0 to disable)
+                output_width: Width of output display area
+                output_length: Optional expected length of output; to use if output has no progress tracking (e.g. "[1%] ...")
+            """
+            # Pattern to match progress indicators
+            progress_pattern = re.compile(r'\[\s*(\d+)%\]')
 
-            # Read stdout line by line
-            for line in iter(process.stdout.readline, ''):
-                f.write(line)  # Write to log file
-                f.flush()
+            # Buffer to store recent output lines
+            recent_lines = deque(maxlen=show_output_lines * 2)  # Store more than we show for better filtering
 
-                # Check for progress indicator
-                match = progress_pattern.search(line)
-                if match:
-                    progress = int(match.group(1))
-                    printProgressBar(progress, 100, prefix=prefix, suffix='Complete')
+            # Track current progress
+            current_progress = 0
 
-            # Read any remaining stderr
-            stderr_output = process.stderr.read()
-            if stderr_output:
-                g.write(stderr_output)
+            def read_stream(stream, file_handle, line_queue, stream_name):
+                """Helper function to read from stdout/stderr in separate threads"""
+                try:
+                    for line in iter(stream.readline, ''):
+                        if line:
+                            file_handle.write(line)
+                            file_handle.flush()
+                            line_queue.put((stream_name, line))
+                except Exception as e:
+                    line_queue.put(('error', f"Error reading {stream_name}: {str(e)}\n"))
+                finally:
+                    stream.close()
 
-            # Wait for process to complete and check return code
-            return_code = process.wait()
-            if return_code != 0:
-                raise sub.CalledProcessError(return_code, command)
+            with open(self.logfile, 'a') as f, open(self.errfile, 'a') as g:
+                # add an empty space -- nice to separate outputs from different commands
+                f.write('\n')
+                g.write('\n')
+
+                process = sub.Popen(
+                    command,
+                    cwd=cwd,
+                    stdout=sub.PIPE,
+                    stderr=sub.PIPE,
+                    universal_newlines=True,
+                    bufsize=1  # Line buffered
+                )
+
+                # Create queues for inter-thread communication
+                line_queue = queue.Queue()
+
+                # Start threads to read stdout and stderr
+                stdout_thread = threading.Thread(
+                    target=read_stream,
+                    args=(process.stdout, f, line_queue, 'stdout')
+                )
+                stderr_thread = threading.Thread(
+                    target=read_stream,
+                    args=(process.stderr, g, line_queue, 'stderr')
+                )
+
+                stdout_thread.daemon = True
+                stderr_thread.daemon = True
+                stdout_thread.start()
+                stderr_thread.start()
+
+                # Initialize display area
+                if show_output_lines > 0:
+                    # Reserve space for progress bar + output lines
+                    for i in range(3 + show_output_lines):
+                        print()
+                    # Initial display
+                    printProgressWithOutput(current_progress, 100, recent_lines,
+                                        prefix=prefix, suffix='Complete',
+                                        max_lines=show_output_lines, width=output_width)
+                else:
+                    # Just show progress bar
+                    printProgressBar(current_progress, 100, prefix=prefix, suffix='Complete')
+
+                counter = 0
+                try:
+                    while process.poll() is None or not line_queue.empty():
+                        try:
+                            # Get line with timeout to check process status
+                            stream_name, line = line_queue.get(timeout=0.1)
+
+                            # Add to recent lines buffer
+                            recent_lines.append(line)
+
+                            # Update progress -- either checking for progress indicator,
+                            # or expecting some fixed length of output.
+                            if(output_length is not None):
+                                current_progress = (counter / output_length) * 100.
+
+                            # Check for progress indicator in stdout
+                            elif stream_name == 'stdout':
+                                match = progress_pattern.search(line)
+                                if match:
+                                    current_progress = int(match.group(1))
+
+                            # Update display (both progress and output)
+                            if show_output_lines > 0:
+                                printProgressWithOutput(current_progress, 100, recent_lines,
+                                                    prefix=prefix, suffix='Complete',
+                                                    max_lines=show_output_lines, width=output_width)
+                            else:
+                                printProgressBar(current_progress, 100, prefix=prefix, suffix='Complete')
+
+                            counter += 1
+                        except queue.Empty:
+                            continue  # Continue checking if process is still running
+
+                except KeyboardInterrupt:
+                    process.terminate()
+                    raise
+
+                # Wait for threads to complete
+                stdout_thread.join(timeout=1.0)
+                stderr_thread.join(timeout=1.0)
+
+                # Final progress update
+                if show_output_lines > 0:
+                    printProgressWithOutput(100, 100, recent_lines,
+                                        prefix=prefix, suffix='Complete',
+                                        max_lines=show_output_lines, width=output_width)
+                    print()  # Move cursor to next line after final display
+                else:
+                    printProgressBar(100, 100, prefix=prefix, suffix='Complete')
+                    print()  # Move to next line
+
+                # Wait for process to complete and check return code
+                return_code = process.wait()
+                if return_code != 0:
+                    raise sub.CalledProcessError(return_code, command)
 
     def _basic_check(self):
         """
