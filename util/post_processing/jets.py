@@ -37,6 +37,7 @@ class JetFinder(JetFinderBase):
 
         self.input_collection_arrays = None
         self.input_vecs = None
+        self.constituent_indices_dict = None
 
         self.SetVerbosity(verbose)
         self.configurator = None
@@ -256,6 +257,35 @@ class JetFinder(JetFinderBase):
             self.buffer.create_array('{}.Constituents.N'.format(self.jet_name),shape=(self.n_jets_max,),dtype=np.dtype('i4'))
             self.buffer.create_array('{}.Constituents.Pmu'.format(self.jet_name),shape=(self.n_jets_max,self.n_constituents_max,4),dtype=np.dtype('f8'))
             self.buffer.create_array('{}.Constituents.Pmu_cyl'.format(self.jet_name),shape=(self.n_jets_max,self.n_constituents_max,4),dtype=np.dtype('f8'))
+
+            # Also create buffers corresponding to jet constituents' indices w.r.t. the collections they were pulled from.
+            # Note that a jet may have used multiple collections -- so we'll keep track of the index of the collection that a constituent came from,
+            # as well as its index *within* that collection.
+            self.buffer.create_array('{}.Constituents.Collection'.format(self.jet_name),shape=(self.n_jets_max,self.n_constituents_max),dtype=np.dtype('i4'))
+            self.buffer.create_array('{}.Constituents.Collection.Index'.format(self.jet_name),shape=(self.n_jets_max,self.n_constituents_max),dtype=np.dtype('i4'))
+
+        return
+
+    def _computeConstituentIndices(self):
+        # Precompute collection boundaries once
+        n_per_collection = [len(self.input_collection_arrays[key][self._i]) for key in self.input_collections]
+        cumulative_lengths = np.cumsum([0] + n_per_collection)
+
+        self.constituent_indices_dict = {}
+
+        for i, jet in self.jets_dict.items():
+            raw_indices = [pj.user_index() for pj in jet.constituents()]
+
+            # Vectorized conversion for all indices at once
+            raw_indices_array = np.array(raw_indices)
+            collection_indices = np.searchsorted(cumulative_lengths[1:], raw_indices_array, side='right')
+            local_indices = raw_indices_array - cumulative_lengths[collection_indices]
+
+            # Combine into pairs
+            constituent_indices = np.array(list(zip(collection_indices, local_indices)))
+
+            # Store the results
+            self.constituent_indices_dict[i] = constituent_indices
         return
 
     def _writeToBuffer(self,event_index=None):
@@ -275,13 +305,20 @@ class JetFinder(JetFinderBase):
         if(self.constituents_flag):
 
             self.buffer.set('{}.Constituents.N'.format(self.jet_name),event_index,[len(self.constituent_vectors[i]) for i in self.jet_ordering])
-            # embed_array_inplace([len(self.constituent_vectors[i]) for i in self.jet_ordering], self.buffer['{}.Constituents.N'.format(self.jet_name)][event_index])
+
+            # Figure out the collections and indices of the constituents
+            self._computeConstituentIndices()
+
+            # for key,val in self.constituent_indices_dict.items():
+            #     print(key,val)
 
             # Now we loop, as we're embedding what is really jagged information.
             # TODO: Is there another way? I suspect this slows down things a bit.
             for i,j in enumerate(self.jet_ordering):
                 self.buffer.set('{}.Constituents.Pmu'.format(self.jet_name),(event_index,i),self.constituent_vectors[j])
                 self.buffer.set('{}.Constituents.Pmu_cyl'.format(self.jet_name),(event_index,i),self.constituent_vectors_cyl[j])
+                self.buffer.set('{}.Constituents.Collection'.format(self.jet_name),(event_index,i),self.constituent_indices_dict[j][:,0])
+                self.buffer.set('{}.Constituents.Collection.Index'.format(self.jet_name),(event_index,i),self.constituent_indices_dict[j][:,1])
         return
 
     # NOTE: Will define various functions for performing some modifications to clustering or post-processing of results.
