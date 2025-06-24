@@ -248,16 +248,6 @@ class JohnsHopkinsTagger:
                 embed_array_inplace(self.w_constituent,self.w_constituents[key])
                 embed_array_inplace(self.w_constituent_cyl,self.w_constituents_cyl[key])
 
-        # for i in range(len(obj.constituent_vectors)):
-        #     self._tag(obj.constituent_vectors[i]) # fills self.tag_status, self.w_candidate
-        #     self.tags[i] = self.tag_status
-        #     self.w_candidates[i] = self.w_candidate
-        #     if(self.tag_status): # if not tagged, there is no W -- can safely skip
-        #         self._getWConstituents() # fills self.w_constituent, self.w_constituent_cyl
-        #         self.n_constituents[i] = len(self.w_constituent)
-        #         embed_array_inplace(self.w_constituent,self.w_constituents[i])
-        #         embed_array_inplace(self.w_constituent_cyl,self.w_constituents_cyl[i])
-
         if(self.mode=='filter'):
             obj.jet_ordering = [key for key in obj.jet_ordering if self.tags[key]]
             obj._updateJetDictionary()
