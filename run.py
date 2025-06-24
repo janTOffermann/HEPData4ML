@@ -159,7 +159,6 @@ def main(args):
     # Keep track of some files we create.
     hepmc_files = []
     delphes_files = []
-    stat_files = []
     filter_flag_files = [] # only used in certain cases, these files hold a boolean flag given by the "event_filter_flag"
 
     # Prepare the output directory.
@@ -228,15 +227,6 @@ def main(args):
 
         generator.SetOutputDirectory(outdir)
         generator.SetFilename(hep_file, rename_extra_files=False)
-
-        # We will use one file to hold additional event data -- cross-sections,
-        # information on any "event filter flags", and on any overlapping listing
-        # of particles between our truth- and final-state selections. These can
-        # be handled by separate files but combining them will limit clutter.
-        extra_data_file = hep_file.replace('.{}'.format(hepmc_extension),'_data.h5')
-        generator.SetStatsFilename(extra_data_file)
-        generator.SetEventFilterFlagFilename(extra_data_file)
-        # generator.SetDiagnosticPlots(diagnostic_plots)
         generator.SetProgressBar(progress_bar)
 
         hepfile_exists = pathlib.Path('{}/{}'.format(outdir,hep_file)).exists()
@@ -249,7 +239,6 @@ def main(args):
 
         if(generate): generator.Generate(nevents_per_bin)
 
-        stat_files.append(generator.GetStatsFilename())
         filter_flag_files.append(generator.GetEventFilterFlagFilename())
         hepmc_files.append(hep_file)
 
@@ -322,17 +311,6 @@ def main(args):
         else:
             #Cleanup: Compress the HepMC files.
             if(compress_hepmc): CompressHepMC(hepmc_files,True,cwd=outdir)
-
-        # Combine the stats files.
-        # TODO: Can we handle some of the stats file stuff under-the-hood? Or just access all the files
-        # without making the aggregate stats file.
-        stats_filename = 'stats.h5'
-        delete_individual_stats = True
-        try: ConcatenateH5(stat_files,stats_filename,cwd=outdir,delete_inputs=delete_individual_stats, copts=9)
-        except: pass # as long as the full stats file exists, it's okay if the individual ones were deleted already
-
-        try: MergeH5(h5_file,stats_filename,cwd=outdir,delete_stats_file=delete_full_stats, copts=9)
-        except: print('Warning: Stats information not found!')
 
         # Add some event indices to our dataset.
         if(index_offset < 0): index_offset = 0

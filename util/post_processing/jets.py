@@ -2,7 +2,7 @@
 # to the jets in the dataset.
 import numpy as np
 import h5py as h5
-# from typing import Dict, Any, Tuple, Optional # experimenting with typing
+from typing import Dict, Any, Tuple, Optional, List # experimenting with typing
 from util.fastjet.jetfinderbase import JetFinderBase
 from util.qol_utils.progress_bar import printProgressBarColor
 from util.buffer import Buffer
@@ -12,14 +12,13 @@ import util.post_processing.utils.softdrop as softdrop
 import util.post_processing.utils.jhtagger as jhtagger
 import util.post_processing.utils.jet_filter as jet_filter
 
-
 class JetFinder(JetFinderBase):
     """
     This class uses the Fastjet library to perform jet clustering, on some
     (arbitrary) set of inputs representing four-momenta of some objects.
     """
 
-    def __init__(self, input_collections=['StableTruthParticles'], jet_algorithm='anti_kt',radius=0.4, jet_name='AK04Jets', n_jets_max=10,save_constituents=True, fastjet_dir=None,verbose=False):
+    def __init__(self, input_collections:List[str]=['StableTruthParticles'], jet_algorithm:str='anti_kt',radius:float=0.4, jet_name:str='AK04Jets', n_jets_max:int=10,save_constituents:bool=True, fastjet_dir:Optional[str]=None,verbose:bool=False):
 
         self.status = False
 
@@ -56,32 +55,31 @@ class JetFinder(JetFinderBase):
         self._i = 0
         self.processors = [] # supposedly this is an example of an "observer pattern"
 
-    def _print(self,val):
+    def _print(self,val:Any):
         print('{}: {}'.format(self.print_prefix,val))
         return
 
-    def SetVerbosity(self,flag):
+    def SetVerbosity(self,flag:bool):
         self.verbose = flag
 
-    def SetH5EventFile(self,file):
+    def SetH5EventFile(self,file:str):
         self.h5_file = file
         self.buffer.SetFilename(self.h5_file)
 
-    def SetInputCollections(self,collections):
+    def SetInputCollections(self,collections:List[str]):
         if(type(collections) != list):
             collections = [collections]
         collections = ['{}.Pmu'.format(collection) for collection in collections]
 
         self.input_collections = collections
 
-    def SetNConstituentsMax(self,n):
+    def SetNConstituentsMax(self,n:int):
         self.n_constituents_max = n
 
-    def SetRadius(self,radius):
+    def SetRadius(self,radius:float):
         self.radius = radius
 
     def SetConfigurator(self,configurator):
-        print('Setting configurator in JetFinder')
         self.configurator = configurator
 
     def SetUserInfo(self,val):
@@ -238,13 +236,7 @@ class JetFinder(JetFinderBase):
         This function simply finishes the writing of our data buffer
         to the output file, by doing a final flush.
         """
-        # if(self.verbose):
-        self._print('Finishing flushing data to {}.'.format(self.h5_file))
         self.buffer.flush()
-        # f = h5.File(self.h5_file,'a')
-        # for key,val in self.buffer.items():
-        #     d = f.create_dataset(key, data=val, compression='gzip',compression_opts=self.copts)
-        # f.close()
         return
 
     # Using a generic signature -- should consider making the various post-processors inherit from a single parent class!
@@ -264,14 +256,6 @@ class JetFinder(JetFinderBase):
             self.buffer.create_array('{}.Constituents.N'.format(self.jet_name),shape=(self.n_jets_max,),dtype=np.dtype('i4'))
             self.buffer.create_array('{}.Constituents.Pmu'.format(self.jet_name),shape=(self.n_jets_max,self.n_constituents_max,4),dtype=np.dtype('f8'))
             self.buffer.create_array('{}.Constituents.Pmu_cyl'.format(self.jet_name),shape=(self.n_jets_max,self.n_constituents_max,4),dtype=np.dtype('f8'))
-
-        # self.buffer['{}.N'.format(self.jet_name)] = np.zeros((self.nevents),dtype=np.dtype('i4'))
-        # self.buffer['{}.Pmu'.format(self.jet_name)] = np.zeros((self.nevents,self.n_jets_max,4),dtype=np.dtype('f8'))
-        # self.buffer['{}.Pmu_cyl'.format(self.jet_name)] = np.zeros((self.nevents,self.n_jets_max,4),dtype=np.dtype('f8'))
-        # if(self.constituents_flag):
-        #     self.buffer['{}.Constituents.N'.format(self.jet_name)] = np.zeros((self.nevents,self.n_jets_max),dtype=np.dtype('i4'))
-        #     self.buffer['{}.Constituents.Pmu'.format(self.jet_name)] = np.zeros((self.nevents,self.n_jets_max,self.n_constituents_max, 4),dtype=np.dtype('f8'))
-        #     self.buffer['{}.Constituents.Pmu_cyl'.format(self.jet_name)] = np.zeros((self.nevents,self.n_jets_max,self.n_constituents_max,4),dtype=np.dtype('f8'))
         return
 
     def _writeToBuffer(self,event_index=None):
@@ -298,9 +282,6 @@ class JetFinder(JetFinderBase):
             for i,j in enumerate(self.jet_ordering):
                 self.buffer.set('{}.Constituents.Pmu'.format(self.jet_name),(event_index,i),self.constituent_vectors[j])
                 self.buffer.set('{}.Constituents.Pmu_cyl'.format(self.jet_name),(event_index,i),self.constituent_vectors_cyl[j])
-
-                # embed_array_inplace(self.constituent_vectors[j],self.buffer['{}.Constituents.Pmu'.format(self.jet_name)][event_index,i])
-                # embed_array_inplace(self.constituent_vectors_cyl[j],self.buffer['{}.Constituents.Pmu_cyl'.format(self.jet_name)][event_index,i])
         return
 
     # NOTE: Will define various functions for performing some modifications to clustering or post-processing of results.
