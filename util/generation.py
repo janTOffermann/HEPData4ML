@@ -1,6 +1,5 @@
-import sys,os
+import os
 import numpy as np
-import h5py as h5
 import subprocess as sub
 from util.pythia.utils import PythiaWrapper
 from util.hepmc.hepmc import Pythia8HepMC3Writer
@@ -12,7 +11,6 @@ from typing import Optional,TYPE_CHECKING
 
 if TYPE_CHECKING: # Only imported during type checking -- avoids risk of circular imports, limits unnecessary imports
     from util.config import Configurator
-    import pyhepmc as hep
 
 class PythiaGenerator:
     """
@@ -174,7 +172,7 @@ class PythiaGenerator:
     def ClearEventBuffer(self):
         self.hepev_buffer.clear()
 
-    def FillEventBuffer(self,hepev_full:'hep.GenEvent'):
+    def FillEventBuffer(self,hepev_full):
         self.hepev_buffer.append(hepev_full)
 
     def WriteEventBufferToFile(self,header:bool=False,footer:bool=False):

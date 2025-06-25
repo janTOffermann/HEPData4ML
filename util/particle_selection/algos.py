@@ -5,7 +5,6 @@
 import numpy as np
 import itertools
 
-import pyhepmc as hep
 from typing import Union, TYPE_CHECKING
 
 if TYPE_CHECKING: # Only imported during type checking -- avoids risk of circular imports
@@ -35,11 +34,8 @@ if TYPE_CHECKING: # Only imported during type checking -- avoids risk of circula
 # GenParticle > tuple > PythiaWrapper+idx.
 #==========================================
 
-def IsQuark(hepev:Union[hep.GenEvent,'hm.GenEvent'],idx):
-    if(isinstance(hepev,hep.GenEvent)):
-        pid = np.abs(hepev.particles[idx].pid)
-    else:
-        pid = np.abs(hepev.particles()[idx].pid())
+def IsQuark(hepev:'hm.GenEvent',idx):
+    pid = np.abs(hepev.particles()[idx].pid())
     return (pid > 0 and pid < 7)
 
 # def IsLepton(pythia_wrapper=None, idx=None, p=None, hepmc_particle=None):
@@ -82,17 +78,13 @@ def IsQuark(hepev:Union[hep.GenEvent,'hm.GenEvent'],idx):
 #         pid = np.abs(p[-2])
 #     return (pid in [23, 24, 25])
 
-def IsStable(hepev:Union[hep.GenEvent,'hm.GenEvent'],idx):
-    if(isinstance(hepev,hep.GenEvent)):
-        return hepev.particles[idx].status == 1
+def IsStable(hepev:'hm.GenEvent',idx):
     return hepev.particles()[idx].status() == 1
 
-def GetDaughtersSingle(hepev:Union[hep.GenEvent,'hm.GenEvent'],idx):
-    if(isinstance(hepev,hep.GenEvent)):
-        return [x.id - 1 for x in hepev.particles[idx].children] # id gives 1-indexing # TODO: double-check this
+def GetDaughtersSingle(hepev:'hm.GenEvent',idx):
     return [x.id() - 1 for x in hepev.particles()[idx].children()]
 
-def GetDaughtersRecursive(hepev:Union[hep.GenEvent,'hm.GenEvent'],idx):
+def GetDaughtersRecursive(hepev:'hm.GenEvent',idx):
     daughters = GetDaughtersSingle(hepev,idx)
     # get the daughters' daughters
     for daughter in daughters:
@@ -107,7 +99,7 @@ class GatherQuarks:
     def __init__(self):
         self.particle_list = []
 
-    def __run(self,hepev:Union[hep.GenEvent,'hm.GenEvent'],idx):
+    def __run(self,hepev:'hm.GenEvent',idx):
         daughters = GetDaughtersSingle(hepev,idx) # indices of the daughters of particle @ idx
 
         # Determine which daughters are quarks -- these get added to particle_list.
@@ -133,7 +125,7 @@ class GatherStableDaughters:
     def __init__(self):
         self.particle_list = []
 
-    def __run(self,hepev:Union[hep.GenEvent,'hm.GenEvent'],idx):
+    def __run(self,hepev:'hm.GenEvent',idx):
         daughters = GetDaughtersSingle(hepev,idx) # indices of the daughters of particle @ idx
 
         # Determine which daughters are stable.
@@ -151,7 +143,7 @@ class GatherStableDaughters:
         for nd in not_stable_daughters:
             self.__run(hepev,nd)
 
-    def __call__(self,hepev:Union[hep.GenEvent,'hm.GenEvent'],idx):
+    def __call__(self,hepev:'hm.GenEvent',idx):
         self.particle_list.clear()
         self.__run(hepev,idx)
         return np.unique(np.array(self.particle_list,dtype=int))
@@ -164,7 +156,7 @@ class GatherDaughters:
         self.particle_list = []
         self.recursive=recursive
 
-    def __run(self,hepev:Union[hep.GenEvent,'hm.GenEvent'],idx):
+    def __run(self,hepev:'hm.GenEvent',idx):
         daughters = GetDaughtersRecursive(hepev,idx)
 
         # Check for "self" in daughter list (a particle with same PDG code).
@@ -181,7 +173,7 @@ class GatherDaughters:
             if(d not in self.particle_list):
                 self.particle_list.append(d)
 
-    def __call__(self,hepev:Union[hep.GenEvent,'hm.GenEvent'],idx):
+    def __call__(self,hepev:'hm.GenEvent',idx):
         self.particle_list.clear()
         self.__run(hepev,idx)
         return np.array(self.particle_list,dtype=int)

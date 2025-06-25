@@ -7,10 +7,8 @@
 # For the time being, functions supporting the use of either package are available,
 # in particular in case these are useful elsewhere.
 
-import sys
 import numpy as np
 import ROOT as rt
-import pyhepmc as hep # the "unofficial" Pythonic HepMC3 bindings -- useful for some things
 # from pyHepMC3 import HepMC3 as hm # the official Pythonic HepMC3 bindings
 import subprocess as sub
 import pathlib
@@ -101,13 +99,6 @@ def _extract_particle_momenta(pythia_wrapper:'PythiaWrapper', particle_indices:O
     status = pythia_wrapper.GetStatus(particle_indices, hepmc=True)
     return momentum, pdgid, status
 
-def WritePyHepMCEventsAscii(filename:str, hepev_list:Union[list,hep.GenEvent]):
-    if(type(hepev_list) is not list): hepev_list = [hepev_list]
-    with hep.io.WriterAscii(filename) as f:
-        for hepev in hepev_list:
-            f.write_event(hepev)
-    return
-
 def CopyHepMCBufferToFile(buffername:str,filename:str,header:bool=False,footer:bool=False):
     """
     This file copies HepMC events from file 'buffername' to file 'filename'.
@@ -132,11 +123,6 @@ def CopyHepMCBufferToFile(buffername:str,filename:str,header:bool=False,footer:b
     with open(filename,'a') as f:
         f.writelines(line + '\n' for line in proc_out)
 
-def PyHepMCOutputAscii(hepev_list:Union[list,hep.GenEvent],buffername:str,filename:str,header:bool=False,footer:bool=False):
-    WritePyHepMCEventsAscii(buffername,hepev_list) # write the given event(s) to a buffer file
-    CopyHepMCBufferToFile(buffername,filename,header,footer) # copy buffer file into the full file
-    return
-
 def CompressHepMC(files:list, delete:bool=True, cwd:Optional[str]=None):
     for file in files:
         compress_file = file.replace('.hepmc','.tar.bz2')
@@ -149,95 +135,6 @@ def CompressHepMC(files:list, delete:bool=True, cwd:Optional[str]=None):
             sub.check_call(['rm',file.split('/')[-1]],shell=False,cwd=cwd)
     return
 
-def ExtractPyHepMCEventsAscii(files:list,get_nevents:bool=False, silent:bool=False):
-    events = []
-    nevents = 0
-    for file in files:
-        # Check that the file exists.
-        if(not pathlib.Path(file).exists()):
-            if(not silent):
-                print('Warning: Tried to access file {} but it does not exist!'.format(file))
-            continue
-
-        with hep.io.ReaderAscii(file) as f:
-            for i,evt in enumerate(f):
-                events.append(evt)
-                if(get_nevents): nevents += 1
-
-    if(get_nevents): return events, nevents
-    return events
-
-def PythiaWrapperToPyHepMC(pythia_wrapper:'PythiaWrapper', event_number:int) -> hep.GenEvent:
-    """
-    Together with the Pythia8 wrapper (another part of this package),
-    this basically gives a (Pythonic) Pythia8->HepMC3 (ascii) interface.
-
-    NOTE: This seems to break when ISR/FSR is turned on, so instead one
-    should use the included Pythia8TOHepMC3 class, which is from the official
-    HepMC3 repository.
-    """
-    hepev = hep.GenEvent()
-    hepev.event_number = event_number
-    momentum,pdgid,status = _extract_particle_momenta(pythia_wrapper) # fetch all the momenta
-    mother_indices = pythia_wrapper.GetMothers()
-    prod = pythia_wrapper.GetProd() # production vertices' positions (t,x,y,z)
-
-    # Fetch the particles.
-    particles = [hep.GenParticle(momentum=momentum[i], pid=pdgid[i], status=status[i]) for i in range(len(momentum))]
-
-    # Now add the vertices, based on mother/daughter information.
-    # Note that we do not want to create duplicate vertices, which will
-    # happen if we naively loop over all particles' production vertices.
-    vertices = []
-    used_mothers = None # will store tuples of (vertex index, mother index)
-    for i in range(len(momentum)):
-
-        mother_idxs = mother_indices[i]
-        nmothers = len(mother_idxs)
-        if(nmothers == 0): continue
-
-        new_vertex = True
-        used_mother_idx = None
-        if(used_mothers is not None):
-            for j in range(nmothers):
-                if(mother_idxs[j] in used_mothers[:,-1]):
-                    new_vertex = False
-                    used_mother_idx = mother_idxs[j]
-                    break
-
-        if(new_vertex):
-            vertex = hep.GenVertex(np.roll(prod[i],-1)) # converting from (t,x,y,z) to (x,y,z,t) for constructor
-            # add stuff
-            vertex.add_particle_out(particles[i])
-            for idx in mother_idxs:
-                vertex.add_particle_in(particles[idx])
-                mother_tuple = np.array([len(vertices),idx],dtype=int)
-                if(used_mothers is None): used_mothers = np.array([mother_tuple])
-                else: used_mothers = np.append(used_mothers,[mother_tuple],axis=0)
-            vertices.append(vertex)
-        else:
-            # find the existing vertex
-            vertex_idx = used_mothers[np.where(used_mothers[:,-1] == used_mother_idx)[0][0],0]
-            vertices[vertex_idx].add_particle_out(particles[i])
-
-        hepev.add_vertex(vertex)
-    return hepev
-
-def ExtractPyHepMCParticles(events:List[hep.GenEvent], nparticles_max:Optional[int]=None,selection:Optional['BaseSelector']=None):
-    if(selection is not None):
-        particles = [
-            [ev.particles[x] for x in np.atleast_1d(selection(ev))] # TODO: use intertools.compress() -- tried before, but it didn't work as expected?
-            for ev in events
-        ]
-        if(nparticles_max is not None):
-            particles = [x[:int(np.minimum(len(x),nparticles_max))] for x in particles]
-
-    else:
-        particles = [
-            ev.particles[:int(np.minimum(len(ev.particles),nparticles_max))]
-            for ev in events
-        ]
-    return particles
 
 #================================
 # Functions below using real
@@ -356,16 +253,12 @@ def ExtractHepMCParticles(events:List['hm.GenEvent'], nparticles_max:Optional[in
 
 # ======================
 # Some utility functions,
-# Currently supporting both
-# PyHepMC and HepMC
+# Originally had pyhepmc support,
+# these have become a little redundant.
 #=======================
 
-def ParticleToVector(particle:Union[hep.GenParticle,'hm.GenParticle']):
-    if(isinstance(particle,hep.GenParticle)):
-        return rt.Math.PxPyPzEVector(particle.momentum.px, particle.momentum.py, particle.momentum.pz, particle.momentum.e)
+def ParticleToVector(particle:'hm.GenParticle'):
     return rt.Math.PxPyPzEVector(particle.momentum().px(), particle.momentum().py(), particle.momentum().pz(), particle.momentum().e())
 
-def GetParticleID(particle:Union[hep.GenParticle,'hm.GenParticle']):
-    if(isinstance(particle,hep.GenParticle)):
-        return particle.pid
+def GetParticleID(particle:'hm.GenParticle'):
     return particle.pid()

@@ -85,27 +85,3 @@ source /cvmfs/sft.cern.ch/lcg/views/${lcg}/${build}/setup.sh
 #echo "Here is a potentially useful option for the configuration file in config/config.py:"
 #echo "'delphes_dir' : '/cvmfs/sft.cern.ch/lcg/releases/delphes/3.5.1pre09-60e9b/x86_64-el9-gcc13-opt'"
 #echo "For fastjet, you will need Python bindings and thus a local build -- preferably done interactively, so that you can later point condor jobs to that and they don't all have to build fastjet again."
-
-# We need pyhepmc, which isn't part of the software package from CVMFS
-if ! python -c "import pyhepmc" &>/dev/null; then
-
-  # To install pyhepmc, we will use pip.
-  # By default, this will go to
-  # $HOME/.local/lib/python*/site-packages/ .
-  # For some condor workers, $HOME might not be
-  # defined, which can lead to some odd behaviour.
-
-  test_file="${HOME}/.home_test_$$"
-      if touch "$test_file" 2>/dev/null; then
-          # HOME is properly set and writable.
-          rm -f "$test_file"
-          echo "HOME directory ($HOME) is valid, using pip with --user installation."
-          pip install pyhepmc --user
-      else
-          target="${pwd}/python_packages"
-          echo "HOME directory ($HOME) is not valid, installing pyhepmc at $target ."
-          pip install pyhepmc --target=$target
-          export PYTHONPATH=$target:$PYTHONPATH
-      fi
-fi
-

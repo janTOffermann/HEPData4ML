@@ -1,6 +1,5 @@
 import numpy as np
 from util.particle_selection.algos import *
-import pyhepmc as hep
 from typing import Union, TYPE_CHECKING
 
 if TYPE_CHECKING: # Only imported during type checking -- avoids risk of circular imports
@@ -35,11 +34,8 @@ class SelectFinalState(BaseSelectorAlgorithm):
     def __init__(self):
         pass
 
-    def __call__(self,hepev:Union[hep.GenEvent,'hm.GenEvent']):
-        if(isinstance(hepev,hep.GenEvent)):
-            status = [x.status for x in hepev.particles]
-        else:
-            status = [x.status() for x in hepev.particles()]
+    def __call__(self,hepev:'hm.GenEvent'):
+        status = [x.status() for x in hepev.particles()]
         stable = np.where(status==1)[0]
         return (len(stable) > 0), stable
 
@@ -54,7 +50,7 @@ class SelectDaughters(BaseSelectorAlgorithm):
         self.truth_selection = truth_selection
         self.gatherer = GatherDaughters()
 
-    def __call__(self,hepev:Union[hep.GenEvent,'hm.GenEvent']):
+    def __call__(self,hepev:'hm.GenEvent'):
         starting_particles = self.truth_selection(hepev)
         if(type(starting_particles) != list): starting_particles = [starting_particles]
         particles = []
@@ -98,7 +94,7 @@ class SelectFinalStateDaughters(BaseSelectorAlgorithm):
     def __init__(self,truth_selection):
         self.truth_selection = truth_selection
 
-    def __call__(self,hepev:Union[hep.GenEvent,'hm.GenEvent']):
+    def __call__(self,hepev:'hm.GenEvent'):
         starting_particles = self.truth_selection(hepev)
         if(type(starting_particles) not in [list,np.ndarray]): starting_particles = [starting_particles]
         particles = []
