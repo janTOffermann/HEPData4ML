@@ -26,22 +26,30 @@ def parse_mc_steps(value):
 
 class FloatListAction(ap.Action):
     def __call__(self, parser, namespace, values, option_string=None):
-        if isinstance(values, list):
-            # Multiple arguments: -p 550 560 570
-            try:
-                result = [float(v) for v in values]
-            except ValueError as e:
-                parser.error("Invalid float value in {}: {}".format(option_string,e))
-        else:
-            # Single argument, might be comma/space separated: -p "550,560,570"
-            if ',' in values:
-                float_strings = [s.strip() for s in values.split(',')]
-            else:
-                float_strings = values.split()
+        if not isinstance(values, list):
+            # This shouldn't happen with nargs='*', but handle it just in case
+            values = [values]
 
-            try:
-                result = [float(s) for s in float_strings]
-            except ValueError as e:
-                parser.error("Invalid float value in {}: {}".format(option_string,e))
+        result = []
+        for value in values:
+            if isinstance(value, (int, float)):
+                # Already a number
+                result.append(float(value))
+            elif isinstance(value, str):
+                # String that might contain delimiters
+                if ',' in value:
+                    # Comma-separated
+                    float_strings = [s.strip() for s in value.split(',')]
+                else:
+                    # Space-separated
+                    float_strings = value.split()
+
+                try:
+                    result.extend([float(s) for s in float_strings if s.strip()])
+                except ValueError as e:
+                    parser.error("Invalid float value in {}: {}".format(option_string, e))
+            else:
+                parser.error("Unexpected value type in {}: {}".format(option_string, type(value)))
 
         setattr(namespace, self.dest, result)
+
