@@ -48,7 +48,6 @@ class Configurator:
         inside the running directory.
         """
         self.status = True
-        path_keys = ['delphes_dir','delphes_card','fastjet_dir']
 
         path_keys = {
             'simulation':['delphes_dir','delphes_card'],
@@ -167,6 +166,8 @@ class Configurator:
     #     return return_dict
 
     def GetSimulationType(self):
+        for key, val in self.config['simulation'].items():
+            print(key,val)
         return self.config['simulation']['type'].lower()
 
     def SetDelphesConfig(self,value=True):
@@ -176,7 +177,10 @@ class Configurator:
         if(type(value) != bool):
             print('Configurator.SetDelphesConfig(): Input {} not understood, setting delphes=False.'.format(value))
             value = False
-        self.config['simulation']['type'] = value # delphes config
+        if(value):
+            self.config['simulation']['type'] = 'delphes' # delphes config
+        else:
+            self.config['simulation']['type'] = None
         return
 
     def GetDelphesCard(self):

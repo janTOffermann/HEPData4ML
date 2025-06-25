@@ -68,7 +68,6 @@ def main(args):
     parser.add_argument('-config',       '--config',            type=str,          default=None,             help='Path to configuration Python file. Default will use config/config.py .')
 
     # DELPHES-related arguments
-    parser.add_argument('-delphes',      '--delphes',           type=int,          default=-1,               help='Optional Delphes flag -- will override the \'delphes\' option in the config file. 0 == False, 1 == True, otherwise ignored.')
     parser.add_argument('-del_delphes',  '--del_delphes',       type=int,          default=0,                help='Whether or not to delete DELPHES/ROOT files.')
 
     args = vars(parser.parse_args())
@@ -96,7 +95,6 @@ def main(args):
     delete_full_stats = args['delete_stats'] > 0
     config_file = args['config']
 
-    delphes_override = args['delphes']
     delete_delphes = args['del_delphes']
 
     nbins = len(pt_bin_edges) - 1
@@ -150,10 +148,6 @@ def main(args):
     if(nevents_per_bin >= 100): h5_conversion_verbosity = 1
     elif(nevents_per_bin >= 10000): h5_conversion_verbosity = 2
 
-    if(delphes_override == 0):
-        configurator.SetDelphesConfig(False)
-    elif(delphes_override == 1):
-        configurator.SetDelphesConfig(True)
     simulation_type = configurator.GetSimulationType()
 
     # Keep track of some files we create.

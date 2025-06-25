@@ -86,7 +86,6 @@ python ${gitdir}/run.py \
   -pc ${pythia_config} \
   -df 1 \
   --index_offset ${event_idx_offset} \
-  --delphes 0 \
   --config ${config_file}
 
 copy_script=${gitdir}/util/condor/copy_output.py
@@ -125,7 +124,7 @@ rm ${outname}
 
 if [[ "${local_mode}" == "0" ]]; then
   rm -rf $gitdir
-  if [ -d fastjet ]; then rm -r fastjet; fi
-  if [ -d delphes ]; then rm -r delphes; fi
+  if [ -d external/fastjet ]; then rm -r external/fastjet; fi
+  if [ -d external/delphes ]; then rm -r external/delphes; fi
   rm *.py
 fi
