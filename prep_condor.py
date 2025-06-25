@@ -11,8 +11,6 @@ def main(args):
     parser.add_argument('-p',                '--ptbins',          type=int, help='Transverse momentum bin edges.', nargs='+', default=None)
     parser.add_argument('-O',                '--outdir',          type=str, help='Output directory for the jobs', default=None)
     parser.add_argument('-R',                '--rundir',          type=str, help='Run directory -- where the condor jobs will go.', default='run0')
-    parser.add_argument('-s',                '--sep_truth',       type=int, help='Whether or not to store truth-level particles in separate arrays.', default=1)
-    parser.add_argument('-ns',               '--n_sep_truth',     type=int, help='How many truth particles to save in separate arrays -- will save the first n as given by the truth selection.', default=-1)
     parser.add_argument('-rng',              '--rng',             type=int, help='Pythia RNG seed offset -- seed will be offset + job number.',default=1)
     parser.add_argument('-sp',               '--split',           type=int, help='Whether or not to split HDF5 file into training/validation/testing files.',default=1)
     parser.add_argument('-pc',               '--pythia_config',   type=str, help='Path to Pythia configuration template (for setting the process).',default=[None], nargs='+')
@@ -58,7 +56,7 @@ def main(args):
 
     # check that the template submission file exists
     if(condor_template is None):
-        condor_template = '{}/util/condor_templates/condor_template.sub'.format(this_dir)
+        condor_template = '{}/util/condor/condor_templates/condor_template.sub'.format(this_dir)
     if(not pathlib.Path(condor_template).exists()):
         print('Error: Condor submission file template not found: {}'.format(condor_template))
         return
@@ -131,7 +129,7 @@ def main(args):
         # The "local" run mode -- a bit special, originally designed for Brown University BRUX system.
         # We will point the workers at this repo.
         this_dir = os.path.dirname(os.path.abspath(__file__))
-        gitdir = str(pathlib.Path('{}/../'.format(this_dir)).absolute())
+        gitdir = str(pathlib.Path('{}/'.format(this_dir)).absolute())
         payload_mode = gitdir
         git_branch = ''
 
@@ -187,7 +185,7 @@ def main(args):
             f.write(line)
 
     # Copy the condor executable to the job folder.
-    executable = '{}/util/condor_job.sh'.format(this_dir)
+    executable = '{}/util/condor/condor_job.sh'.format(this_dir)
     comm = ['cp',executable,rundir]
     sub.check_call(comm)
 
