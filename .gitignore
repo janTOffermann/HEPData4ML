@@ -37,3 +37,8 @@ pip-delete-this-directory.txt
 *.tar.bz2
 *.rootmap
 *.pcm
+
+# Ignore test files
+test.sh
+test*.sh
+test*.py
