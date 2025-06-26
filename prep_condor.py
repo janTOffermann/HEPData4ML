@@ -2,13 +2,13 @@ import sys,os,pathlib
 import argparse as ap
 import subprocess as sub
 from util.condor import condor_utils
-from util.args import parse_mc_steps
+from util.args import parse_mc_steps, FloatListAction
 
 def main(args):
     parser = ap.ArgumentParser()
     parser.add_argument('-n',                '--nevents',         type=int, help='Number of events per pt bin.', required=True)
     parser.add_argument('-steps',             '--steps',             type = parse_mc_steps, default = 'generation simulation reconstruction', help='Comma- or space-separated list of step. Options are [generation,simulation,reconstruction].')
-    parser.add_argument('-p',                '--ptbins',          type=int, help='Transverse momentum bin edges.', nargs='+', default=None)
+    parser.add_argument('-p',            '--ptbins',            action = FloatListAction, default=[-1,-1], nargs='*',    help='Transverse momentum bin edges, for outgoing particles of the hard process. Can be a list of floats, or a string of comma- or space-separated floats. In GeV.')
     parser.add_argument('-O',                '--outdir',          type=str, help='Output directory for the jobs', default=None)
     parser.add_argument('-R',                '--rundir',          type=str, help='Run directory -- where the condor jobs will go.', default='run0')
     parser.add_argument('-rng',              '--rng',             type=int, help='Pythia RNG seed offset -- seed will be offset + job number.',default=1)

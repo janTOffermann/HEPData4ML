@@ -74,7 +74,7 @@ validation_fraction=0.2
 echo "Invoking run.py..."
 python ${gitdir}/run.py \
   -n ${nevents_per_bin} \
-  -p ${pt_bins} \
+  --ptbins="${pt_bins}" \
   -steps ${steps} \
   -O ${outdir_local} \
   -o ${output_filename} \
