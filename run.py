@@ -213,7 +213,7 @@ def main(args):
         if(configurator.GetHepMCFormat().lower() == 'root'):
             hepmc_extension = 'root'
 
-        hep_file = 'events_{}-{}.{}'.format(float_to_str(pt_min),float_to_str(pt_max),hepmc_extension)
+        hep_file = 'events_{}.{}'.format(i,hepmc_extension)
 
         generator = PythiaGenerator(pt_min,pt_max, configurator, pythia_rng,pythia_config_file=pythia_config)
         # generator.SetEventFilter(configurator.GetEventFilter())
