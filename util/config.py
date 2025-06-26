@@ -166,8 +166,6 @@ class Configurator:
     #     return return_dict
 
     def GetSimulationType(self):
-        for key, val in self.config['simulation'].items():
-            print(key,val)
         return self.config['simulation']['type'].lower()
 
     def SetDelphesConfig(self,value=True):
