@@ -4,16 +4,16 @@
 # $1 Number of events per pT bin.
 # $2 pT bins (list of bin edges)
 # $3 which steps to run
-# $3 RNG seed for generation. (can be used to overwrite the builtin config file)
-# $4 whether or not to split final HDF5 file into train/validation/test files. Only relevant if making the HDF5 file.
-# $5 Pythia config (can be used to overwrite the builtin config file)
-# $6 Event index offset.
-# $7 Configuration file (Python).
-# $8 Output directory (for the condor job).
-# $9 Process number (for naming the output).
-# $10 OpenBLAS max thread count (for multithreading).
-# $11 Git option. Determines if we do a git clone here, or if the code has been shipped in as a tarball.
-# $12 Git branch.
+# $4 RNG seed for generation. (can be used to overwrite the builtin config file)
+# $5 whether or not to split final HDF5 file into train/validation/test files. Only relevant if making the HDF5 file.
+# $6 Pythia config (can be used to overwrite the builtin config file)
+# $7 Event index offset.
+# $8 Configuration file (Python).
+# $9 Output directory (for the condor job).
+# $10 Process number (for naming the output).
+# $11 OpenBLAS max thread count (for multithreading).
+# $12 Git option. Determines if we do a git clone here, or if the code has been shipped in as a tarball.
+# $13 Git branch.
 #
 
 nevents_per_bin=$1
