@@ -90,28 +90,34 @@ python ${gitdir}/run.py \
 
 copy_script=${gitdir}/util/condor/copy_output.py
 
-if [ "${do_split}" == "1" ]; then
-  echo "Splitting output."
+# NOTE: The output_file doesn't necessarily exist; if we to the generation step only
+#       we won't have it. (We will have some other output, that's in the outdir_local
+#       and that we'll capture further below.
 
-  python ${gitdir}/util/tools/split.py \
-    -i $output_file \
-    -o ${outdir_local} \
-    -f1 $training_faction \
-    -f2 $validation_fraction \
-    -s 1 \
-    -c 9
-  rm $output_file
-  python $copy_script -i ${outdir_local}/train.h5 -e "h5" -o ${outdir} -n ${proc_number}
-  python $copy_script -i ${outdir_local}/test.h5  -e "h5" -o ${outdir} -n ${proc_number}
-  python $copy_script -i ${outdir_local}/valid.h5 -e "h5" -o ${outdir} -n ${proc_number}
-  rm ${outdir_local}/train.h5 ${outdir_local}/test.h5 ${outdir_local}/valid.h5
+if test -f "${output_file}"; then
+  if [ "${do_split}" == "1" ]; then
+    echo "Splitting output."
 
-else
-  python $copy_script -i $output_file -e "h5" -o ${outdir} -n ${proc_number}
-  rm $output_file
+    python ${gitdir}/util/tools/split.py \
+      -i $output_file \
+      -o ${outdir_local} \
+      -f1 $training_faction \
+      -f2 $validation_fraction \
+      -s 1 \
+      -c 9
+    rm $output_file
+    python $copy_script -i ${outdir_local}/train.h5 -e "h5" -o ${outdir} -n ${proc_number}
+    python $copy_script -i ${outdir_local}/test.h5  -e "h5" -o ${outdir} -n ${proc_number}
+    python $copy_script -i ${outdir_local}/valid.h5 -e "h5" -o ${outdir} -n ${proc_number}
+    rm ${outdir_local}/train.h5 ${outdir_local}/test.h5 ${outdir_local}/valid.h5
+
+  else
+    python $copy_script -i $output_file -e "h5" -o ${outdir} -n ${proc_number}
+    rm $output_file
+  fi
 fi
 
-# Compress the output and extract it.
+# Compress the full output and extract it.
 outname="output.tar.gz"
 tar -czf ${outname} ${outdir_local}
 
