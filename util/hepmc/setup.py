@@ -1,7 +1,7 @@
 from util.qol_utils.misc import stdout_redirected
 from util.qol_utils.progress_bar import printProgressBar, printProgressWithOutput
 import subprocess as sub
-import sys, os, glob, re, pathlib, importlib, threading, atexit, queue
+import sys, os, glob, re, pathlib, importlib, threading, atexit, queue, uuid
 from collections import deque
 from typing import Optional, Union
 
@@ -657,7 +657,10 @@ class _HepMCSetupInternal:
             self._vprint("    ✓ Success.")
 
             # copy the test file, we'll append to the copy and then delete it at the end of the test.
-            test_file_copy = test_file.replace('test_events.root','test_events_copy.root')
+            test_file_name = None
+            while((test_file_name is None) or pathlib.Path(test_file_name).exists()):
+                test_file_name = 'test_events_{}.root'.format(str(uuid.uuid4()))
+            test_file_copy = test_file.replace('test_events.root',test_file_name)
             sub.check_call(['cp',test_file,test_file_copy])
 
             self._vprint("  Step 5: Attempt to append event to copy of test file: {}".format(test_file_copy))
