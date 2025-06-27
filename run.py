@@ -239,10 +239,10 @@ def main(args):
     #===============================
     if('pileup' in steps):
         pileup_handler = configurator.GetPileupHandler()
-        pileup_handler.SetInputDirectory(outdir)
-        pileup_handler.SetOutputDirectory(outdir)
 
         if(pileup_handler is not None): # if it's set to None, we just skip the pileup step
+            pileup_handler.SetInputDirectory(outdir)
+            pileup_handler.SetOutputDirectory(outdir)
 
             hep_files_with_pileup = pileup_handler.Process(hepmc_files)
             # for i,hep_file in enumerate(hepmc_files):

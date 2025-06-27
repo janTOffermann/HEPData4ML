@@ -1,7 +1,9 @@
 import ROOT as rt
+import uproot as ur
 import numpy as np
 import glob,sys,os
 import subprocess as sub
+from util.qol_utils.progress_bar import printProgressBarColor
 
 from util.hepmc.setup import HepMCSetup, prepend_to_pythonpath
 from util.hepmc.readers import ReaderAscii, ReaderRootTree # our wrappers for the HepMC3 reader classes
@@ -29,6 +31,8 @@ class PileupOverlay:
 
         # Upon start, make sure that hepmc is set up
         self._init_hepmc()
+
+        self.verbosity = 1
 
         self.files = None
         self.SetPileupFiles(pileup_files)
@@ -64,6 +68,9 @@ class PileupOverlay:
 
         self.indir = None
         self.outdir = None
+
+    def SetVerbosity(self,val:int):
+        self.verbosity = val
 
     def SetInputDirectory(self,val:str):
         self.indir = val
@@ -167,7 +174,7 @@ class PileupOverlay:
         self.selected_indices = self.rng.choice(self.event_indices[self.event_mask],size=self.mu)
         if(update_mask): self._update_mask()
 
-        print('self.selected_indices = ', self.selected_indices)
+        # print('self.selected_indices = ', self.selected_indices)
 
     def _update_mask(self,indices=None):
         """
@@ -225,16 +232,20 @@ class PileupOverlay:
             indices = np.atleast_1d(int)
         indices = sorted(indices)
 
+        indices = np.array([x - self.first_idx[filename] for x in indices],dtype=int) # adjust from global indexing, to indexing iwthin this file
+
         events = [hm.GenEvent()] * len(indices)
-        counter = 0
-        write_counter = 0
+        # counter = 0
+        # write_counter = 0
 
         reader = ReaderRootTree(filename)
 
         for i,idx in enumerate(indices):
-            reader.read_event_at_index(events[i],idx) # TODO: Add better check for out-of-bounds indices?
-            if(reader.failed()):
+            evt = hm.GenEvent()
+            status = reader.read_event_at_index(evt,idx)
+            if(reader.failed() or (not status)):
                 assert False
+            events[i] = evt
 
         reader.close()
         return events
@@ -254,15 +265,14 @@ class PileupOverlay:
             indices = np.atleast_1d(int)
         indices = sorted(indices)
 
-        events = [hm.GenEvent()] * len(indices)
-        counter = 0
-        write_counter = 0
+        # events = [hm.GenEvent()] * len(indices)
+        # counter = 0
+        # write_counter = 0
 
         if(filename.split('.')[-1].lower() == 'root'):
             return self._fetch_event_single_file_root(filename,indices)
         else:
             return self._fetch_event_single_file_ascii(filename,indices)
-
 
     def _fetch_events(self,indices:Union[int,list,np.ndarray]):
         if(isinstance(indices,int)):
@@ -271,7 +281,9 @@ class PileupOverlay:
         # determine which files we'll have to pull pileup events from
         file_indices = {}
         for idx in indices:
-            file_idx = np.where(idx >= np.array(list(self.first_idx.values()),dtype=int))[0][0]
+            file_idx_1 = np.where(idx >= np.array(list(self.first_idx.values()),dtype=int))[0]
+            file_idx_2 = np.where(idx < np.array(list(self.first_idx.values())) + np.array(list(self.n_dict.values()),dtype=int))[0]
+            file_idx = np.intersect1d(file_idx_1,file_idx_2)[0]
 
             if(file_idx not in file_indices.keys()):
                 file_indices[file_idx] = []
@@ -281,7 +293,16 @@ class PileupOverlay:
         events = []
         for key,val in file_indices.items():
             events += self._fetch_event_single_file(self.files[key],val)
+
         return events
+
+    def _get_nevents_root(self,filename:str):
+        f = ur.open(filename)
+        t = f['hepmc3_tree']
+        n = t.num_entries
+        f.close()
+        return n
+
 
     def __call__(self,input_file:str,output_file:Optional[str]=None):
         from pyHepMC3 import HepMC3 as hm
@@ -305,8 +326,16 @@ class PileupOverlay:
             return
 
         events = []
+        mode = 'root'
 
-        if(input_file_extension.lower() == 'root'):
+        if(input_file_extension.lower() != 'root'):
+            mode = 'ascii'
+
+        nevents = None
+        if(mode=='root'):
+            nevents = self._get_nevents_root(input_file)
+
+        if(mode=='root'):
             reader = ReaderRootTree(input_file)
         else:
             reader = ReaderAscii(input_file)
@@ -317,6 +346,8 @@ class PileupOverlay:
             evt = hm.GenEvent()
             reader.read_event(evt)
             if(reader.failed()):
+                # if(self.verbosity > 0 and nevents is not None):
+                #     printProgressBarColor(nevents,nevents,'Adding pileup:',decimals=2)
                 break
 
             self._pick_event_indices()
@@ -324,7 +355,7 @@ class PileupOverlay:
 
             # overlay pileup on this event
             # for now, use automatic displacement -- will use self.beam_spot_sigma
-            self._combine_event_with_pileup(evt,pileup_events)
+            evt = self._combine_event_with_pileup(evt,pileup_events)
 
             # store the combined event in memory
             events.append(evt)
@@ -337,6 +368,9 @@ class PileupOverlay:
                 self._flush_to_file(events,output_file)
 
             i += 1
+
+            if(self.verbosity > 0 and nevents is not None):
+                printProgressBarColor(i,nevents,'Adding pileup:',decimals=2)
 
         # one last flush for any stragglers
         if(len(events) > 0):
@@ -548,7 +582,7 @@ class PileupOverlay:
 
             new_vertex = hm.GenVertex(new_position)
             new_vertex.set_status(vertex.status())
-            target_event.add_vertex(new_vertex)
+            # target_event.add_vertex(new_vertex)
             vertex_map[i] = new_vertex
 
         # Copy particles and establish relationships
@@ -577,7 +611,10 @@ class PileupOverlay:
                     end_vertex = vertex_map[vertex_idx]
                     end_vertex.add_particle_in(new_particle)
                 except ValueError:
-                    print(f"Warning: Could not find end vertex for particle {particle.pid}")
+                    print("Warning: Could not find end vertex for particle {}".format(particle.pid))
+
+        for i,vtx in vertex_map.items():
+            target_event.add_vertex(vtx)
 
 class PileupOverlaySingle(PileupOverlay):
 

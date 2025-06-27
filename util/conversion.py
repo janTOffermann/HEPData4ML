@@ -77,45 +77,6 @@ class Processor:
             self.delphes = True
             self.delphes_files = val
 
-    def ResetDataContainers(self):
-
-        self.event_record_vector_components = {
-            'px':None,
-            'py':None,
-            'pz':None,
-            'e':None,
-            'pt':None,
-            'eta':None,
-            'phi':None,
-            'm':None,
-            'pdg':None,
-            'status':None
-        }
-
-        self.stable_particle_components = {
-            'px':None,
-            'py':None,
-            'pz':None,
-            'e':None,
-            'pt':None,
-            'eta':None,
-            'phi':None,
-            'm':None,
-            'pdg':None
-        }
-
-        self.truth_particle_components = {
-            'px':None,
-            'py':None,
-            'pz':None,
-            'e':None,
-            'pt':None,
-            'eta':None,
-            'phi':None,
-            'm':None,
-            'pdg':None
-        }
-
     def SetProgressBarPrefix(self,text:str):
         self.prefix_level1 = text
 
@@ -184,7 +145,7 @@ class Processor:
             for key in self.data.keys(): self.data[key][:] = 0
 
             # 0) Write some keys that are the same across all events in this chunk.
-            self.WriteToDataBuffer(None,'is_signal',self.configurator.GetSignalFlag())
+            self.WriteToDataBuffer(None,'SignalFlag',self.configurator.GetSignalFlag())
 
             # 1) Save the stable truth-level particles from the event.
             # Extract all the particles from the HepMC events, into memory.
@@ -286,6 +247,45 @@ class Processor:
                         ]).T,
                                             dimensions={1:self.n_delphes[k]}
                         )
+
+                        # Fill certain fields that are only relevant for tracks (e.g. Track and EFlowTrack).
+                        is_track = ('d0' in var_map[delphes_type].keys())
+
+                        if(is_track):
+                            delphes_d0  = delphes_arr[var_map[delphes_type]['d0']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
+                            delphes_z0  = delphes_arr[var_map[delphes_type]['z0']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
+
+                            delphes_d0e  = delphes_arr[var_map[delphes_type]['errord0']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
+                            delphes_z0e  = delphes_arr[var_map[delphes_type]['errorz0']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
+
+                            delphes_pid  = delphes_arr[var_map[delphes_type]['pid']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
+                            delphes_charge = delphes_arr[var_map[delphes_type]['charge']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
+
+                            self.WriteToDataBuffer(j, '{}.D0'.format(delphes_type), delphes_d0, dimensions={1:self.n_delphes[k]})
+                            self.WriteToDataBuffer(j, '{}.D0.Error'.format(delphes_type), delphes_d0e, dimensions={1:self.n_delphes[k]})
+
+                            self.WriteToDataBuffer(j, '{}.Z0'.format(delphes_type), delphes_z0, dimensions={1:self.n_delphes[k]})
+                            self.WriteToDataBuffer(j, '{}.Z0.Error'.format(delphes_type), delphes_z0e, dimensions={1:self.n_delphes[k]})
+
+                            self.WriteToDataBuffer(j, '{}.PdgId'.format(delphes_type), delphes_pid, dimensions={1:self.n_delphes[k]}, dtype=int)
+                            self.WriteToDataBuffer(j, '{}.Charge'.format(delphes_type), delphes_charge, dimensions={1:self.n_delphes[k]}, dtype=int)
+
+                        # Certain objects record their position in (t,x,y,z). Note that tracks *do not* do this (those are all zero for them).
+                        else:
+                            delphes_t  = delphes_arr[var_map[delphes_type]['t' ]][start_idxs[i]:stop_idxs[i]][j].to_numpy()
+                            delphes_x  = delphes_arr[var_map[delphes_type]['x' ]][start_idxs[i]:stop_idxs[i]][j].to_numpy()
+                            delphes_y  = delphes_arr[var_map[delphes_type]['y' ]][start_idxs[i]:stop_idxs[i]][j].to_numpy()
+                            delphes_z  = delphes_arr[var_map[delphes_type]['z' ]][start_idxs[i]:stop_idxs[i]][j].to_numpy()
+
+                            delphes_xvecs = [rt.Math.XYZTVector(*x) for x in zip(delphes_x,delphes_y,delphes_z,delphes_t)]
+
+                            self.WriteToDataBuffer(j, '{}.Xmu'.format(delphes_type), np.vstack([
+                                [getattr(vec, method)() for vec in delphes_xvecs]
+                                for method in ['T','X','Y','Z']
+                            ]).T,
+                                                dimensions={1:self.n_delphes[k]}
+                            )
+
 
             # We have now filled a chunk, time to write it.
             # If this is the first instance of the loop, we will initialize the HDF5 file.
@@ -403,7 +403,13 @@ class Processor:
         #       We'll probably need to support both versions soon.
 
         types = self.configurator.GetDelphesObjects()
-        components = ['PT','Eta','Phi','ET'] # not all types have all components, this is OK
+        components = [
+            'PT','Eta','Phi','ET', # momentum componenets
+            'D0','ErrorD0','DZ','ErrorDZ', # impact parameters and associated uncertainties (for tracks). NOTE: Delphes seems to have misspelt "Z0" -> "DZ"!
+            'X', 'Y', 'Z', 'T', # 4-position -- relevant for non-track objects (tracks parameterized differently)
+            'Eem','Ehad','Etrk', # energy depositions -- relevant for EFlow objects (possibly quite detector card-specific!)
+            'Charge', 'PID'
+        ] # not all types have all components, this is OK
         delphes_keys = ['{x}.{y}'.format(x=x,y=y) for x in types for y in components]
         delphes_tree = 'Delphes'
         delphes_trees = ['{}:{}'.format('{}/{}'.format(self.outdir,x),delphes_tree) for x in self.delphes_files]
@@ -414,9 +420,15 @@ class Processor:
         var_map = {key:{} for key in types}
         for branch in delphes_keys:
             key,var = branch.split('.')
-            if('Eta' in var): var_map[key]['eta'] = branch
-            elif('Phi' in var): var_map[key]['phi'] = branch
-            else: var_map[key]['pt'] = branch
+            var = var.lower()
+            # convert "et" -> "pt" # TODO: Consider restructuring?
+            if(var=='et'):
+                var = 'pt'
+            elif(var=='dz'): # fix delphes typo
+                var = 'z0'
+            elif(var=='errordz'): # fix delphes typo
+                var = 'errorz0'
+            var_map[key][var.lower()] = branch
         return delphes_arr,var_map
 
     def PrepH5File(self,filename,nentries,data_buffer):
@@ -505,7 +517,7 @@ def MergeH5(target_file, input_file, cwd=None, delete_stats_file=False, compress
 def RemoveFailedFromHDF5(h5_file, cwd=None, copts=9):
     """
     Remove any failed events from the HDF5 file -- these are identified
-    as those with a negative value in the "is_signal" dataset.
+    as those with a negative value in the "SignalFlag" dataset.
     """
     if(cwd is not None): h5_file = '{}/{}'.format(cwd,h5_file)
 
@@ -516,7 +528,7 @@ def RemoveFailedFromHDF5(h5_file, cwd=None, copts=9):
     shapes = [f[key].shape for key in keys]
     N = shapes[0][0] # number of events
 
-    keep_indices = f['is_signal'][:] >= 0
+    keep_indices = f['SignalFlag'][:] >= 0
     if(np.sum(keep_indices) == N): return
 
     g = h5.File(fname_tmp,'w')
@@ -540,7 +552,7 @@ def AddEventIndices(h5_file,cwd=None,copts=9,key='event_idx',offset=0):
     """
     if(cwd is not None): h5_file = '{}/{}'.format(cwd,h5_file)
     f = h5.File(h5_file,'r+')
-    nevents = f['is_signal'].shape[0]
+    nevents = f['SignalFlag'].shape[0]
     event_indices = np.arange(offset,nevents+offset,dtype=int)
     f.create_dataset(key,data=event_indices, compression='gzip', compression_opts=copts)
     f.close()
@@ -553,7 +565,7 @@ def AddConstantValue(h5_file,cwd=None,copts=9,value=0,key='constant_value',dtype
     """
     if(cwd is not None): h5_file = '{}/{}'.format(cwd,h5_file)
     f = h5.File(h5_file,'r+')
-    nevents = f['is_signal'].shape[0]
+    nevents = f['SignalFlag'].shape[0]
 
     if(dtype is None): dtype = np.dtype('f8')
     if(dtype != str):
@@ -582,7 +594,7 @@ def AddMetaDataWithReference(h5_file,cwd=None,value='',key='metadata',copts=9):
     """
     if(cwd is not None): h5_file = '{}/{}'.format(cwd,h5_file)
     f = h5.File(h5_file,'r+')
-    nevents = f['is_signal'].shape[0]
+    nevents = f['SignalFlag'].shape[0]
     metadata = f.attrs
     if(key not in metadata.keys()): f.attrs[key] = [value]
     else: f.attrs[key] = list(f.attrs[key]) + [value] # I think the list <-> array stuff should be OK here
