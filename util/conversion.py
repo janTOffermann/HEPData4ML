@@ -7,13 +7,25 @@ import subprocess as sub
 from util.calcs import embed_array
 from util.qol_utils.progress_bar import printProgressBarColor
 from util.hepmc.hepmc import ExtractHepMCEvents, ExtractHepMCParticles, ParticleToVector, GetParticleID
+from typing import Union, Optional, List, TYPE_CHECKING
+
+if(TYPE_CHECKING):
+    import sys
+    from util.config import Configurator
+    from util.hepmc.setup import HepMCSetup
+    setup = HepMCSetup(verbose=False)
+    setup.PrepHepMC() # will download/install if necessary
+    python_dir = setup.GetPythonDirectory()
+    if(python_dir not in sys.path):
+        sys.path = [setup.GetPythonDirectory()] + sys.path # prepend, to make sure we pick this one up first
+    from pyHepMC3 import HepMC3 as hm
 
 class Processor:
     """
     Convert HepMC or Delphes/ROOT file, representing an event, into an HDF5 file where each entry/event corresponds
     with a single jet. (Can also skip jet clustering entirely).
     """
-    def __init__(self, configurator):
+    def __init__(self, configurator:'Configurator'):
         self.configurator = configurator
         self.delphes = False # will be set to True if SetDelphesFiles() is called
 
@@ -45,11 +57,11 @@ class Processor:
         # truth selector
         self.SetParticleSelection()
 
-    def _identity_selector(self,event):
+    def _identity_selector(self,event:'hm.GenEvent'):
         """
         A placeholder truth particle selector.
         """
-        return {'TruthParticles',event.particles}
+        return {'TruthParticles',event.particles()}
 
     def SetParticleSelection(self):
         if(self.configurator is None):
@@ -57,10 +69,10 @@ class Processor:
         else:
             self.truth_selection = self.configurator.GetParticleSelection()
 
-    def SetNentriesPerChunk(self,val):
+    def SetNentriesPerChunk(self,val:int):
         self.nevents_per_chunk = int(val)
 
-    def SetDelphesFiles(self,val):
+    def SetDelphesFiles(self,val:List[str]):
         if(len(val) > 0):
             self.delphes = True
             self.delphes_files = val
@@ -104,7 +116,7 @@ class Processor:
             'pdg':None
         }
 
-    def SetProgressBarPrefix(self,text):
+    def SetProgressBarPrefix(self,text:str):
         self.prefix_level1 = text
 
     def SetPostProcessing(self,post_proc=None):
@@ -124,16 +136,16 @@ class Processor:
         #         self.SetRecordFinalStateIndices(True)
         #         break
 
-    def SetStatsFile(self,filename):
+    def SetStatsFile(self,filename:str):
         self.stats_file = filename
 
-    def SetVerbosity(self,flag):
+    def SetVerbosity(self,flag:bool):
         self.verbose = flag
 
-    def SetOutputDirectory(self,outdir):
+    def SetOutputDirectory(self,outdir:str):
         self.outdir = outdir
 
-    def Process(self, hepmc_files, h5_file=None, verbosity=0):
+    def Process(self, hepmc_files:Union[List[str],str], h5_file:Optional[str]=None, verbosity:int=0):
         if(type(hepmc_files) == list): hepmc_files = ['{}/{}'.format(self.outdir,x) for x in hepmc_files]
         else: hepmc_files = '{}/{}'.format(self.outdir,hepmc_files)
 
@@ -293,7 +305,7 @@ class Processor:
         # if(self.diagnostic_plots): self.OutputHistograms()
         return h5_file
 
-    def AddKeyToDataBuffer(self,key,value,dtype=None,dimensions=None):
+    def AddKeyToDataBuffer(self,key:str,value:Union[int,float,np.ndarray,list],dtype:Optional[Union[str,np.dtype]]=None,dimensions:dict=None):
         if(key in self.data.keys()):
             return
         value_array = np.asarray(value)
@@ -318,7 +330,7 @@ class Processor:
             self.data[key] = np.zeros(buffer_shape, dtype=dtype)
         return
 
-    def WriteToDataBuffer(self,event_index,key,value,dtype=None,dimensions=None):
+    def WriteToDataBuffer(self,event_index:Optional[int],key:str,value:Union[int,float,np.ndarray,list],dtype:Optional[Union[str,np.dtype]]=None,dimensions:dict=None):
         if(key not in self.data.keys()):
             self.AddKeyToDataBuffer(key,value,dtype,dimensions)
 
@@ -333,7 +345,10 @@ class Processor:
             self.data[key][:] = embed_array(value_array,self.data[key].shape)
         return
 
-    def PostProcess(self,hepmc_files, h5_files=None):
+    def PostProcess(self,hepmc_files:Union[str,List[str]], h5_files:Optional[Union[str,List[str]]]=None):
+        if(not isinstance(hepmc_files,list)):
+            hepmc_files = [hepmc_files]
+
         if(self.post_processing is None):
             return
         nfiles = len(hepmc_files)

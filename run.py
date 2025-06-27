@@ -10,8 +10,6 @@ from util.config import Configurator,GetConfigFileContent, GetConfigDictionary
 from util.args import parse_mc_steps, FloatListAction, none_or_str
 
 
-
-
 def trace_hepmc3_imports():
     """Add import tracing to see what imports pyHepMC3 first"""
     original_import = __builtins__.__import__
@@ -47,7 +45,7 @@ def main(args):
     parser = ap.ArgumentParser()
 
     parser.add_argument('-n',            '--nevents',           type=int,          required=True,            help='Number of events per pt bin.')
-    parser.add_argument('-steps',        '--steps',             type = parse_mc_steps, default = 'generation simulation reconstruction', help='Comma- or space-separated list of step. Options are [generation,simulation,reconstruction].')
+    parser.add_argument('-steps',        '--steps',             type = parse_mc_steps, default = 'generation pileup simulation reconstruction', help='Comma- or space-separated list of step. Options are [generation,simulation,reconstruction].')
     parser.add_argument('-p',            '--ptbins',            action = FloatListAction, default=[-1,-1], nargs='*',    help='Transverse momentum bin edges, for outgoing particles of the hard process. Can be a list of floats, or a string of comma- or space-separated floats. In GeV.')
     parser.add_argument('-o',            '--outfile',           type=str,          default='events.h5',      help='Output HDF5 file name.')
     parser.add_argument('-O',            '--outdir',            type=none_or_str,  default=None,             help='Output directory.')
@@ -237,7 +235,29 @@ def main(args):
         hepmc_files.append(hep_file)
 
     #===============================
-    # STEP 2: Simulation (optional)
+    # STEP 2: Pileup (optional)
+    #===============================
+    if('pileup' in steps):
+        pileup_handler = configurator.GetPileupHandler()
+        pileup_handler.SetInputDirectory(outdir)
+        pileup_handler.SetOutputDirectory(outdir)
+
+        if(pileup_handler is not None): # if it's set to None, we just skip the pileup step
+
+            hep_files_with_pileup = pileup_handler.Process(hepmc_files)
+            # for i,hep_file in enumerate(hepmc_files):
+            #     output_file = 'events_{}.pileup.{}'.format(i,hepmc_extension)
+            #     _ = pileup_handler(hep_file)
+            # ls    hep_files_with_pileup.append(output_file)
+
+            # # Now, we want to replace the original hepmc_files with the ones including pileup.
+            # for i,file in enumerate(hep_files_with_pileup):
+            #     hep_file = hepmc_files[i]
+            #     os.unlink(hep_file)
+            #     sub.check_call(['mv',file,hep_file])
+
+    #===============================
+    # STEP 3: Simulation (optional)
     #===============================
 
     if('simulation' in steps):
@@ -272,11 +292,10 @@ def main(args):
             # TODO: Rework this a little. Should just generically loop over HepMC files, since they might have an external source and not be pt-binned.
             pt_min = pt_bin_edges[i]
             pt_max = pt_bin_edges[i+1]
-            hepmc_files = [hepmc_files[i]]
             h5_file_individual = h5_file.replace('.h5','_{}-{}.h5'.format(float_to_str(pt_min),float_to_str(pt_max)))
             processor.SetProgressBarPrefix('\tConverting HepMC3 -> HDF5 for pT bin [{},{}]:'.format(pt_min,pt_max))
 
-            processor.Process(hepmc_files,h5_file_individual,verbosity=h5_conversion_verbosity)
+            processor.Process(hepmc_files[i],h5_file_individual,verbosity=h5_conversion_verbosity)
 
             # To each HDF5 event file, we will add event indices. These may be useful/necessary for the post-processing step.
             # We will remove these indices when concatenating files, since as one of our last steps we'll add indices again
@@ -284,7 +303,7 @@ def main(args):
             AddEventIndices(h5_file_individual,cwd=outdir,copts=compression_opts)
 
             # Optional post-processing. Any post-processing steps have been configured in the config file, config/config.py.
-            processor.PostProcess(hepmc_files,[h5_file_individual])
+            processor.PostProcess(hepmc_files[i],[h5_file_individual])
 
             # # Optionally add any "event_filter_flags" that were set in the configuration. If none were set, this doesn't do anything.
             # processor.MergeEventFilterFlag(h5_file_individual,filter_flag_files[i],copts=compression_opts)

@@ -66,12 +66,12 @@ class DelphesSimulator(DetectorSimulator):
             if(i == 0):
                 print('\tDelphes executable: {}'.format(self.delphes_wrapper.GetExecutable()[self.mode]))
                 print('\tDelphes card: {}'.format(self.delphes_card))
-                delphes_file = self.delphes_wrapper.HepMC3ToDelphes(
-                    hepmc_file=hep_file,
-                    output_file=delphes_file,
-                    cwd=self.outdir,
-                    delphes_card=self.delphes_card,
-                    logfile=self.logfile
-                )
-                self.output_files.append(delphes_file)
+            delphes_file = self.delphes_wrapper.HepMC3ToDelphes(
+                hepmc_file=hep_file,
+                output_file=delphes_file,
+                cwd=self.outdir,
+                delphes_card=self.delphes_card,
+                logfile=self.logfile
+            )
+            self.output_files.append(delphes_file)
         return
