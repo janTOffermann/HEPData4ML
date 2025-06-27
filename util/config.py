@@ -25,11 +25,13 @@ def GetConfigFileContent(config_file):
 class Configurator:
     def __init__(self,config_dictionary):
         self.generation=config_dictionary['generation']
+        self.pileup=config_dictionary['pileup']
         self.simulation=config_dictionary['simulation']
         self.reconstruction=config_dictionary['reconstruction']
 
-        self.config = {}
+        self.config = {} # TODO: Might want to eventually restructure this
         self.config['generation'] = self.generation
+        self.config['pileup'] = self.pileup
         self.config['simulation'] = self.simulation
         self.config['reconstruction'] = self.reconstruction
 
@@ -156,6 +158,9 @@ class Configurator:
 
     def GetPythiaRNGSeed(self):
         return self.config['generation']['rng']
+
+    def GetPileupHandler(self):
+        return self.config['pileup']['handler']
 
     def GetParticleSelection(self):
         return self.config['reconstruction']['particle_selection']

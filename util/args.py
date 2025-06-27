@@ -7,7 +7,7 @@ def none_or_str(value): # see https://stackoverflow.com/a/48295546
 
 def parse_mc_steps(value):
     """Parse MC steps from a list of strings, or a space- or comma-separated string"""
-    ALLOWED_STEPS = ['generation', 'simulation', 'reconstruction']
+    ALLOWED_STEPS = ['generation', 'pileup', 'simulation', 'reconstruction']
 
     if isinstance(value, list):
         steps = value  # Already a list from nargs

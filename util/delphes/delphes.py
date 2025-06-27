@@ -69,7 +69,7 @@ class DelphesWrapper:
         except: pass
 
         if(logfile is not None):
-            with open(logfile,'w') as f:
+            with open(logfile,'a') as f:
                 sub.check_call([delphes_ex, delphes_card, output_file, hepmc_file],
                             shell=False, stdout=f, stderr=f)
 

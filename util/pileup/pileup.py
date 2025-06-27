@@ -1,13 +1,14 @@
 import ROOT as rt
 import numpy as np
 import glob,sys,os
+import subprocess as sub
 
 from util.hepmc.setup import HepMCSetup, prepend_to_pythonpath
 from util.hepmc.readers import ReaderAscii, ReaderRootTree # our wrappers for the HepMC3 reader classes
 from typing import List, Union, Tuple, Optional, TYPE_CHECKING
 
 if(TYPE_CHECKING):
-    setup = HepMCSetup(verbose=True)
+    setup = HepMCSetup(verbose=False)
     setup.PrepHepMC() # will download/install if necessary
     python_dir = setup.GetPythonDirectory()
     if(python_dir not in sys.path):
@@ -61,8 +62,17 @@ class PileupOverlay:
         self.event_buffer_size = 10 # how many combined events to store in memory, before flushing to output file
         #TODO: Need to fix buffer behavior -- the HepMC writers overwrite the output_file each time they're initialized, as opposed to appending
 
+        self.indir = None
+        self.outdir = None
+
+    def SetInputDirectory(self,val:str):
+        self.indir = val
+
+    def SetOutputDirectory(self,val:str):
+        self.outdir = val
+
     def _init_hepmc(self):
-        setup = HepMCSetup(verbose=True)
+        setup = HepMCSetup(verbose=False)
         python_dir = setup.GetPythonDirectory()
         prepend_to_pythonpath(python_dir)
 
@@ -222,7 +232,7 @@ class PileupOverlay:
         reader = ReaderRootTree(filename)
 
         for i,idx in enumerate(indices):
-            reader.read_event(events[i],idx) # TODO: Add better check for out-of-bounds indices?
+            reader.read_event_at_index(events[i],idx) # TODO: Add better check for out-of-bounds indices?
             if(reader.failed()):
                 assert False
 
@@ -275,12 +285,16 @@ class PileupOverlay:
 
     def __call__(self,input_file:str,output_file:Optional[str]=None):
         from pyHepMC3 import HepMC3 as hm
-        # from pyHepMC3.rootIO.pyHepMC3rootIO.HepMC3 import ReaderRootTree
 
         input_file_extension = input_file.split('.')[-1]
 
+        if(self.indir is not None):
+            input_file = '{}/{}'.format(self.indir,input_file)
+
         if(output_file is None):
             output_file = input_file.replace('.{}'.format(input_file_extension),'_mixed.{}'.format(input_file_extension))
+        elif(self.outdir is not None):
+            output_file = '{}/{}'.format(self.outdir,output_file)
 
         # buffer file is only actually relevant for the ASCII mode
         # TODO: Have to check how ROOT writing works -- appends to existing file, or erases it?
@@ -302,6 +316,8 @@ class PileupOverlay:
 
             evt = hm.GenEvent()
             reader.read_event(evt)
+            if(reader.failed()):
+                break
 
             self._pick_event_indices()
             pileup_events = self._fetch_events(self.selected_indices)
@@ -333,6 +349,39 @@ class PileupOverlay:
             pass
 
         return output_file
+
+    def Process(self,inputs,outputs=None):
+        replace_inputs = False
+        if(outputs is None):
+            replace_inputs = True
+            final_outputs = []
+            outputs = [] # temporary filenames
+            for input in inputs:
+                file_extension = input.split('.')[-1]
+                basename = '.'.join(input.split('.')[:-1])
+                outputs.append('{}.pileup.{}'.format(basename,file_extension))
+
+        for (input,output) in zip(inputs,outputs):
+            self.__call__(input,output)
+
+            if(replace_inputs):
+                input_fullpath = input
+                if(self.indir is not None):
+                    input_fullpath = '{}/{}'.format(self.indir,input)
+                output_old = output
+                output_new = input
+                if(self.outdir is not None):
+                    output_old = '{}/{}'.format(self.outdir,output)
+                    output_new = '{}/{}'.format(self.outdir,input)
+
+                os.unlink(input_fullpath)
+                command = ['mv',output_old,output_new]
+                sub.check_call(command)
+                final_outputs.append(input) # TODO: a little messy in terms of code
+
+        if(replace_inputs):
+            return final_outputs
+        return outputs
 
     def _flush_to_file(self,events:List['hm.GenEvent'],output_file:str,buffername:str=None):
         from pyHepMC3 import HepMC3 as hm

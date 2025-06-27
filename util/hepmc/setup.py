@@ -777,7 +777,7 @@ class _HepMCSetupInternal:
 
             reader = hmroot.ReaderRootTree(test_file)
             evt = hm.GenEvent()
-            reader.read_event(evt) # Test file should have 2 events. This will break due to the 2nd argument, if we don't have the right ReaderRootTree::read_event() functionality.
+            reader.read_event_at_index(evt,0) # Test file should have 2 events. This will break due to the 2nd argument if we don't have the right ReaderRootTree::read_event_at_index() functionality.
             reader.close()
             self._vprint("    ✓ Success.")
             return True
