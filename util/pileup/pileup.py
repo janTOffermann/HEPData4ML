@@ -69,6 +69,9 @@ class PileupOverlay:
         self.indir = None
         self.outdir = None
 
+        # for particle charge lookup
+        self.pdg_database = rt.TDatabasePDG.Instance()
+
     def SetVerbosity(self,val:int):
         self.verbosity = val
 
@@ -303,7 +306,6 @@ class PileupOverlay:
         f.close()
         return n
 
-
     def __call__(self,input_file:str,output_file:Optional[str]=None):
         from pyHepMC3 import HepMC3 as hm
 
@@ -437,14 +439,27 @@ class PileupOverlay:
         if(A is None): A = 1. / (np.sqrt(2.0 * np.pi))
         return A * np.exp(-np.square((x - mu) / sig) / 2)
 
+    def _sumpt2(self,evt:'hm.GenEvent'):
+        """
+        Compute the sum of pt2 of charged particles in the event.
+        Used for scaling the x/y displacement of the primary vertex,
+        see https://github.com/delphes/delphes/blob/d256775e652525b0c35929e72a8bf20252328696/modules/PileUpMerger.cc#L181.
+        """
+
+        sumpt2 = 0.
+        for i,particle in enumerate(evt.particles()):
+            charge = self.pdg_database.GetParticle(particle.pid()).Charge() # charge is in units of |e|/3
+            if(np.abs(charge) > 1.0e-9): # abs might not be needed based on the above
+                sumpt2 += np.square(particle.momentum().px()) + np.square(particle.momentum().py())
+        return sumpt2
+
     def _combine_event_with_pileup(self,
         main_event: 'hm.GenEvent',
         pileup_events: Union['hm.GenEvent', List['hm.GenEvent']],
         pileup_displacements: Optional[Union[Tuple[float, float, float, float],
                                         List[Tuple[float, float, float, float]]]] = None,
         auto_displace: bool = True,
-        beam_spot_sigma: Optional[Tuple[float,float,float,float]] = None,
-        in_place: bool = True
+        beam_spot_sigma: Optional[Tuple[float,float,float,float]] = None
     ) -> 'hm.GenEvent':
         """
         Combine a main event with pileup events, applying vertex displacements.
@@ -463,9 +478,6 @@ class PileupOverlay:
         beam_spot_sigma : tuple, optional
             Standard deviation for random displacement generation (mm/ns), in (t,x,y,z).
             Defaults to self.beam_spot_sigma (preferred use).
-        in_place: bool
-            If True, modifies main_event in-place. If False, copies main_event first.
-            For the foreseen use cases, this should be set to True (it is faster).
 
         Returns:
         --------
@@ -492,12 +504,19 @@ class PileupOverlay:
         if len(pileup_displacements) != len(pileup_events):
             raise ValueError("Number of displacements ({}) must match number of pileup events ({})".format(len(pileup_displacements),len(pileup_events)))
 
-        # Copy all particles and vertices from main event to combined_event
-        # NOTE: Doing things in-place appears to be 30% faster in basic tests. So this is preferred based on usage.
-        if(in_place): #
-            combined_event = main_event
-        else:
-            combined_event = self._copy_event_content(main_event)
+        # We displace the main event as well.
+        # NOTE: Based on the approach taken in Delphes (https://github.com/delphes/delphes/blob/d256775e652525b0c35929e72a8bf20252328696/modules/PileUpMerger.cc#L181),
+        # it looks like we should scale the x/y displacement by the sum of pT^2 of the event.
+        # Note that there, the vertex position is basically some sort of pt2-weighted average of attached particles' "positions",
+        # though it's not a perfect average since all particles contribute to the numerator (regardless of charge) but only
+        # charged particles contribute to the denominator. I don't know how well-motivated this really is. - Jan
+        combined_event = main_event
+
+        main_event_displacement = np.random.normal(0,beam_spot_sigma,4)
+        sumpt2 = self._sumpt2(main_event)
+        main_event_displacement[1:3] /= sumpt2 # adjust the x- and y-displacements, to make them smaller based on sum of pt2 of charged particles. A little unclear on units/scale here...
+        combined_event.shift_position_by(hm.FourVector(*np.roll(main_event_displacement,-1))) # using np.roll to get from (t,x,y,z) to (x,y,z,t)
+        # self._displace_event(combined_event,*main_event_displacement)
 
         # Add each pileup event with displacement
         for pileup_event, (dt, dx, dy, dz) in zip(pileup_events, pileup_displacements):
@@ -558,12 +577,21 @@ class PileupOverlay:
                     print(f"Warning: Could not find end vertex for particle {particle.pid}")
         return target_event
 
+    # def _displace_event(self, target_event: 'hm.GenEvent',
+    #                     dt: float, dx: float, dy: float, dz: float):
+    #     from pyHepMC3 import HepMC3 as hm
+
+    #     target_event.shift_position_by(hm.FourVector(dx,dy,dz,dt)) # signature is (x,y,z,t)
+    #     return
+
     def _add_displaced_event(self,
                             target_event: 'hm.GenEvent',
                             pileup_event: 'hm.GenEvent',
                             dt: float, dx: float, dy: float, dz: float):
         """Add a pileup event to the target event with vertex displacement."""
         from pyHepMC3 import HepMC3 as hm
+
+        # TODO: Consider using hm.GenEvent.shift_position_by() here?
 
         # Create mapping from old vertex objects to new vertex objects using list index
         vertex_map = {}
