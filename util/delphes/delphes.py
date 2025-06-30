@@ -12,7 +12,7 @@ class DelphesWrapper:
     def __init__(self,delphes_dir=None, use_root=False):
 
         self.setup = DelphesSetup(delphes_dir=delphes_dir)
-        self.setup.PrepDelphes()
+        self.setup.Prepare()
         self.delphes_dir = self.setup.GetDirectory()
         self.executable = {'hepmc': self.setup.GetExecutable()}
         self.default_card = "delphes_card_ATLAS.tcl" # Default to the ATLAS card. Will search for this within the Delphes directory.
