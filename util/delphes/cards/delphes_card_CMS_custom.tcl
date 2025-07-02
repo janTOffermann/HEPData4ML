@@ -2,9 +2,9 @@
 # This is a custom CMS card, combining features
 # from a number of cards shipped with Delphes,
 # namely "delphes_card_CMS_pileup.tcl" and
-# "CMS_PhaseII/testVertexing.tcl".
-# All I have done is recombine features of these,
-# and remove some FastJet stuff. - Jan T. Offermann (Brown U.)
+# "CMS_PhaseII/testVertexing.tcl", as well
+# as "trkCountingBTaggingCMS.tcl".
+# - Jan T. Offermann (Brown U.)
 #
 
 #######################################
@@ -13,6 +13,18 @@
 
 set ExecutionPath {
 
+  # NOTE: Uses my update of BeamSpotFilter,
+  #       that bases it off of truth-level
+  #       vertices (that it reconstructs).
+  #       It picks the one with the highest
+  #       sum(pt^2) as the beamspot. - Jan
+  BeamSpotFilter
+
+  # NOTE: Uses my update of TruthVertexFinder,
+  #       similarly picks the vertex with the
+  #       highest sum(pt^2). In principle,
+  #       some redundancy w.r.t. the
+  #       BeamSpotFilter above. - Jan
   TruthVertexFinder
   ParticlePropagator
 
@@ -25,6 +37,21 @@ set ExecutionPath {
   MuonMomentumSmearing
 
   TrackMerger
+
+  ##########################
+  # Section adapted from
+  # testVertexing.tcl &
+  # trkCountingBTaggingCMS.tcl
+  # cards.
+  ##########################
+
+  TrackSmearing
+  TimeSmearing
+
+  # VertexFinder
+  VertexFinderDA4D
+
+  ##########################
 
   ECal
   HCal
@@ -56,6 +83,25 @@ set ExecutionPath {
 
   TreeWriter
 }
+
+
+#######################
+# GenBeamSpotFilter
+# Saves a vertex intended to represent the beamspot.
+# NOTE: Internally computes vertices, similar to TruthVertexFinder
+#######################
+
+module BeamSpotFilter BeamSpotFilter {
+  set InputArray Delphes/stableParticles
+  set OutputArray beamSpotParticle
+
+  # use highest-sum-pt2 vertex instead of particles
+  set Mode 1
+
+  ## below this distance two vertices are assumed to be merged (in m)
+  set Resolution 1E-06
+}
+
 
 #####################
 # Truth Vertex Finder
@@ -221,13 +267,73 @@ module Merger TrackMerger {
   set OutputArray tracks
 }
 
+################################
+# Track impact parameter smearing
+################################
+
+module TrackSmearing TrackSmearing {
+  set InputArray TrackMerger/tracks
+#  set BeamSpotInputArray BeamSpotFilter/beamSpotParticle
+  set OutputArray tracks
+#  set ApplyToPileUp true
+
+  # magnetic field
+  set Bz 3.8
+
+  source trackResolutionCMS.tcl
+}
+
+########################################
+#   Track time Smearing
+########################################
+
+module TimeSmearing TimeSmearing {
+  set InputArray TrackSmearing/tracks
+  set OutputArray tracks
+
+  # assume 20 ps resolution for now
+  set TimeResolution 20E-12
+}
+
+##################################
+# Primary vertex reconstruction
+##################################
+
+module VertexFinderDA4D VertexFinderDA4D {
+  set InputArray TimeSmearing/tracks
+
+  set OutputArray tracks
+  set VertexOutputArray vertices
+
+  set Verbose 0
+  set MinPT 1.0
+
+  # in mm
+  set VertexSpaceSize 0.5
+
+  # in s
+  set VertexTimeSize 10E-12
+
+  set UseTc 1
+  set BetaMax 0.1
+  set BetaStop 1.0
+  set CoolingFactor 0.8
+  set MaxIterations 100
+
+  # in mm
+  set DzCutOff 40
+  set D0CutOff 30
+
+}
+
+
 #############
 #   ECAL
 #############
 
 module SimpleCalorimeter ECal {
   set ParticleInputArray ParticlePropagator/stableParticles
-  set TrackInputArray TrackMerger/tracks
+  set TrackInputArray TimeSmearing/tracks
 
   set TowerOutputArray ecalTowers
   set EFlowTrackOutputArray eflowTracks
@@ -696,5 +802,6 @@ module TreeWriter TreeWriter {
   add Branch UniqueObjectFinder/muons Muon Muon
   add Branch MissingET/momentum MissingET MissingET
   add Branch Rho/rho Rho Rho
+
   add Branch TruthVertexFinder/vertices GenVertex Vertex
 }
