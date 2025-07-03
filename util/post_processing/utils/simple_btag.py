@@ -62,7 +62,7 @@ class TrackCountingBTagging:
 
     def _tag(self,jet_vector,obj : 'JetFinder'):
 
-        jet = rt.Math.PxPyPzEVector(np.roll(jet_vector,-1)) # np.roll to get from (e,px,py,pz) to (px,py,pz,e)
+        jet = rt.Math.PxPyPzEVector(*np.roll(jet_vector,-1)) # np.roll to get from (e,px,py,pz) to (px,py,pz,e)
         count = 0;
 
         # loop over the track collection
@@ -70,21 +70,21 @@ class TrackCountingBTagging:
 
         for i in range(ntracks):
 
-            track_momentum = rt.Math.PxPyPzEVector(np.roll(obj.input_collection_arrays['{}.Pmu'.format(self.track_key)[obj._i]],-1)) # np.roll to get from (e,px,py,pz) to (px,py,pz,e)
+            track_momentum = rt.Math.PxPyPzEVector(*np.roll(obj.input_collection_arrays['{}.Pmu'.format(self.track_key)][obj._i,i],-1)) # np.roll to get from (e,px,py,pz) to (px,py,pz,e)
 
             tpt = track_momentum.Pt()
             if(tpt < self.track_pt_min): continue
 
-            d0 = np.abs(obj.input_collection_arrays['{}.D0'.format(self.track_key)][obj._i])
+            d0 = np.abs(obj.input_collection_arrays['{}.D0'.format(self.track_key)][obj._i,i])
             if(d0 > self.track_ip_max): continue
 
             dr = rt.Math.VectorUtil.DeltaR(jet,track_momentum)
             if(dr > self.dr): continue
 
-            xd,yd,zd = obj.input_collection_arrays['{}.Xdi'.format(self.track_key)][obj._i]
-            dd0 = np.abs(obj.input_collection_arrays['{}.D0.Error'.format(self.track_key)][obj._i])
-            z0 = np.abs(obj.input_collection_arrays['{}.DZ'.format(self.track_key)][obj._i])
-            dz0 = np.abs(obj.input_collection_arrays['{}.DZ.Error'.format(self.track_key)][obj._i])
+            xd,yd,zd = obj.input_collection_arrays['{}.Xdi'.format(self.track_key)][obj._i,i]
+            dd0 = np.abs(obj.input_collection_arrays['{}.D0.Error'.format(self.track_key)][obj._i,i])
+            z0 = np.abs(obj.input_collection_arrays['{}.Z0'.format(self.track_key)][obj._i,i])
+            dz0 = np.abs(obj.input_collection_arrays['{}.Z0.Error'.format(self.track_key)][obj._i,i])
 
             # NOTE: This is all copied quite verbatim from Delphes, but can't I just check if sign > 0, since if not then sip will be negative and always less than self.sig_min? (assuming sig is positive)
             if(self.use_3d):
@@ -128,7 +128,6 @@ class TrackCountingBTagging:
         else:
             self._initializeBuffer(obj) # will initialize buffer if it doesn't already exist
             self._addFlagToBuffer(obj)
-            self._addWToBuffer(obj)
 
     def _initializeBuffer(self,obj : 'JetFinder'):
         """
