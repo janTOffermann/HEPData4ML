@@ -258,6 +258,10 @@ class Processor:
                             delphes_d0e  = delphes_arr[var_map[delphes_type]['errord0']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
                             delphes_z0e  = delphes_arr[var_map[delphes_type]['errorz0']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
 
+                            delphes_xd  = delphes_arr[var_map[delphes_type]['xd']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
+                            delphes_yd  = delphes_arr[var_map[delphes_type]['yd']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
+                            delphes_zd  = delphes_arr[var_map[delphes_type]['zd']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
+
                             delphes_pid  = delphes_arr[var_map[delphes_type]['pid']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
                             delphes_charge = delphes_arr[var_map[delphes_type]['charge']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
 
@@ -266,6 +270,17 @@ class Processor:
 
                             self.WriteToDataBuffer(j, '{}.Z0'.format(delphes_type), delphes_z0, dimensions={1:self.n_delphes[k]})
                             self.WriteToDataBuffer(j, '{}.Z0.Error'.format(delphes_type), delphes_z0e, dimensions={1:self.n_delphes[k]})
+
+                            # store 3-position of closest approach as a vector (Xd, Yd, Zd). Unfortunately Delphes' ParticlePropagator computes Td but doesn't save it...?!
+                            #  NOTE: Could consider adding in Td on my own branch of Delphes -- already use this for some other things.
+                            self.WriteToDataBuffer(j, '{}.Xdi'.format(delphes_type), np.vstack([
+                                delphes_xd, delphes_yd, delphes_zd
+                            ]).T,
+                                                dimensions={1:self.n_delphes[k]}
+                            )
+                            # self.WriteToDataBuffer(j, '{}.Xd'.format(delphes_type), delphes_xd, dimensions={1:self.n_delphes[k]})
+                            # self.WriteToDataBuffer(j, '{}.Yd'.format(delphes_type), delphes_yd, dimensions={1:self.n_delphes[k]})
+                            # self.WriteToDataBuffer(j, '{}.Zd'.format(delphes_type), delphes_zd, dimensions={1:self.n_delphes[k]})
 
                             self.WriteToDataBuffer(j, '{}.PdgId'.format(delphes_type), delphes_pid, dimensions={1:self.n_delphes[k]}, dtype=int)
                             self.WriteToDataBuffer(j, '{}.Charge'.format(delphes_type), delphes_charge, dimensions={1:self.n_delphes[k]}, dtype=int)
@@ -404,9 +419,10 @@ class Processor:
 
         types = self.configurator.GetDelphesObjects()
         components = [
-            'PT','Eta','Phi','ET', # momentum componenets
+            'PT','Eta','Phi','ET', 'MET', # momentum componenets
             'D0','ErrorD0','DZ','ErrorDZ', # impact parameters and associated uncertainties (for tracks). NOTE: Delphes seems to have misspelt "Z0" -> "DZ"!
             'X', 'Y', 'Z', 'T', # 4-position -- relevant for non-track objects (tracks parameterized differently)
+            'Xd', 'Yd', 'Zd', # 3-position of track position of closest approach to z-axis
             'Eem','Ehad','Etrk', # energy depositions -- relevant for EFlow objects (possibly quite detector card-specific!)
             'Charge', 'PID'
         ] # not all types have all components, this is OK

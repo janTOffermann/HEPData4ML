@@ -12,6 +12,7 @@ import util.post_processing.utils.softdrop as softdrop
 import util.post_processing.utils.jhtagger as jhtagger
 import util.post_processing.utils.jet_filter as jet_filter
 import util.post_processing.utils.containment as containment
+import util.post_processing.utils.simple_btag as simple_btag
 
 class JetFinder(JetFinderBase):
     """
@@ -173,7 +174,7 @@ class JetFinder(JetFinderBase):
             self.ClearUserInfo()
 
             # Gather the different input collections together, into one array of four-momenta.
-            self.input_vecs = np.vstack([self.input_collection_arrays[key][self._i] for key in self.input_collections]) # NOTE: Using self.input_collections_array.keys() can be dangerous, due to modifications/additions to keys by things like GhostAssociation()
+            self.input_vecs = np.vstack([self.input_collection_arrays[key][self._i] for key in self.input_collections]) # NOTE: Using self.input_collections_array.keys() can be dangerous, due to modifications/additions to keys by things like GhostAssociation(). Those should not touch self.input_collections, for this reason.
 
             # Optional modification of inputs. May be harnessed by some special configurations.
             self._modifyInputs()
@@ -398,4 +399,23 @@ class JetFinder(JetFinderBase):
             delta_r = self.radius
 
         self.processors.append(containment.ContainmentTagger(truth_key,truth_indices,delta_r,mode,use_rapidity,tag_name))
+        return self
+
+
+    def TrackCountingBTag(self,track_key,track_pt_min=1., delta_r=0.3, track_ip_max=2., sig_min=6.5, ntracks=3, use_3d=False, mode='tag',tag_name=None):
+        """
+        This function performs a simple b-tagging algorithm,
+        taken from Delphes' TrackCountingBTagging module.
+        This counts the number of tracks near the jet that
+        meet certain criteria on momentum and displacement.
+
+        With mode=='filter', it will filter out non-tagged jets.
+        With mode=='tag', it will save a btag flag to the output.
+
+        Returns self, so this can be chained with the constructor.
+        """
+        if delta_r is None:
+            delta_r = self.radius * 0.75
+
+        self.processors.append(simple_btag.TrackCountingBTagging(mode,track_key,track_pt_min,delta_r,track_ip_max,sig_min,ntracks, use_3d, tag_name))
         return self
