@@ -783,4 +783,6 @@ module TreeWriter TreeWriter {
   add Branch Rho/rho Rho Rho
 
   add Branch TruthVertexFinder/vertices GenVertex Vertex
+  add Branch VertexFinderDA4D/vertices Vertex Vertex
+
 }
