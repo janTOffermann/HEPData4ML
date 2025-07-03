@@ -248,28 +248,24 @@ class Processor:
                                             dimensions={1:self.n_delphes[k]}
                         )
 
-                        # Fill certain fields that are only relevant for tracks (e.g. Track and EFlowTrack).
-                        is_track = ('d0' in var_map[delphes_type].keys())
+                        # Not all objects have all fields, so we do a lot of checking here.
+                        is_track = False
 
-                        if(is_track):
+                        if('d0' in var_map[delphes_type].keys()):
                             delphes_d0  = delphes_arr[var_map[delphes_type]['d0']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
                             delphes_z0  = delphes_arr[var_map[delphes_type]['z0']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
-
                             delphes_d0e  = delphes_arr[var_map[delphes_type]['errord0']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
                             delphes_z0e  = delphes_arr[var_map[delphes_type]['errorz0']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
 
+                            self.WriteToDataBuffer(j, '{}.D0'.format(delphes_type), delphes_d0, dimensions={1:self.n_delphes[k]})
+                            self.WriteToDataBuffer(j, '{}.D0.Error'.format(delphes_type), delphes_d0e, dimensions={1:self.n_delphes[k]})
+                            self.WriteToDataBuffer(j, '{}.Z0'.format(delphes_type), delphes_z0, dimensions={1:self.n_delphes[k]})
+                            self.WriteToDataBuffer(j, '{}.Z0.Error'.format(delphes_type), delphes_z0e, dimensions={1:self.n_delphes[k]})
+
+                        if('xd' in var_map[delphes_type].keys()):
                             delphes_xd  = delphes_arr[var_map[delphes_type]['xd']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
                             delphes_yd  = delphes_arr[var_map[delphes_type]['yd']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
                             delphes_zd  = delphes_arr[var_map[delphes_type]['zd']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
-
-                            delphes_pid  = delphes_arr[var_map[delphes_type]['pid']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
-                            delphes_charge = delphes_arr[var_map[delphes_type]['charge']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
-
-                            self.WriteToDataBuffer(j, '{}.D0'.format(delphes_type), delphes_d0, dimensions={1:self.n_delphes[k]})
-                            self.WriteToDataBuffer(j, '{}.D0.Error'.format(delphes_type), delphes_d0e, dimensions={1:self.n_delphes[k]})
-
-                            self.WriteToDataBuffer(j, '{}.Z0'.format(delphes_type), delphes_z0, dimensions={1:self.n_delphes[k]})
-                            self.WriteToDataBuffer(j, '{}.Z0.Error'.format(delphes_type), delphes_z0e, dimensions={1:self.n_delphes[k]})
 
                             # store 3-position of closest approach as a vector (Xd, Yd, Zd). Unfortunately Delphes' ParticlePropagator computes Td but doesn't save it...?!
                             #  NOTE: Could consider adding in Td on my own branch of Delphes -- already use this for some other things.
@@ -281,12 +277,19 @@ class Processor:
                             # self.WriteToDataBuffer(j, '{}.Xd'.format(delphes_type), delphes_xd, dimensions={1:self.n_delphes[k]})
                             # self.WriteToDataBuffer(j, '{}.Yd'.format(delphes_type), delphes_yd, dimensions={1:self.n_delphes[k]})
                             # self.WriteToDataBuffer(j, '{}.Zd'.format(delphes_type), delphes_zd, dimensions={1:self.n_delphes[k]})
+                            is_track = True # only tracks have this component
 
-                            self.WriteToDataBuffer(j, '{}.PdgId'.format(delphes_type), delphes_pid, dimensions={1:self.n_delphes[k]}, dtype=int)
+                        if('charge' in var_map[delphes_type].keys()):
+                            delphes_charge = delphes_arr[var_map[delphes_type]['charge']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
                             self.WriteToDataBuffer(j, '{}.Charge'.format(delphes_type), delphes_charge, dimensions={1:self.n_delphes[k]}, dtype=int)
 
-                        # Certain objects record their position in (t,x,y,z). Note that tracks *do not* do this (those are all zero for them).
-                        else:
+                        if('pid' in var_map[delphes_type].keys()):
+                            delphes_pid  = delphes_arr[var_map[delphes_type]['pid']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
+                            self.WriteToDataBuffer(j, '{}.PdgId'.format(delphes_type), delphes_pid, dimensions={1:self.n_delphes[k]}, dtype=int)
+
+                        # Certain objects record their position in (t,x,y,z). Note that tracks *do not* do this (those are all zero for them), so we
+                        if('x' in var_map[delphes_type].keys() and not is_track):
+
                             delphes_t  = delphes_arr[var_map[delphes_type]['t' ]][start_idxs[i]:stop_idxs[i]][j].to_numpy()
                             delphes_x  = delphes_arr[var_map[delphes_type]['x' ]][start_idxs[i]:stop_idxs[i]][j].to_numpy()
                             delphes_y  = delphes_arr[var_map[delphes_type]['y' ]][start_idxs[i]:stop_idxs[i]][j].to_numpy()
@@ -300,7 +303,6 @@ class Processor:
                             ]).T,
                                                 dimensions={1:self.n_delphes[k]}
                             )
-
 
             # We have now filled a chunk, time to write it.
             # If this is the first instance of the loop, we will initialize the HDF5 file.
@@ -445,6 +447,7 @@ class Processor:
             elif(var=='errordz'): # fix delphes typo
                 var = 'errorz0'
             var_map[key][var.lower()] = branch
+            # print(key,var.lower(),branch)
         return delphes_arr,var_map
 
     def PrepH5File(self,filename,nentries,data_buffer):
