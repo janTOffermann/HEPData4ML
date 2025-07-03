@@ -132,12 +132,13 @@ def main(args):
     # # we can get the FastJet banner printout out of the way. We remove the banner with some ANSI printing
     # # hackery, since it's really not useful and clutters up our printout (we acknowledge the use in the
     # # documentation, having this unavoidable printout for a single package's use is quite gratuitous).
-    # print(13 * '\n')
-    # dummy_processor = Processor(configurator)
-    # line_up = '\033[1A'
-    # line_clear = '\x1b[2K'
-    # for i in range(13):
-    #     print(line_up, end=line_clear)
+    # if('reconstruction' in steps):
+    #     print(13 * '\n')
+    #     dummy_processor = Processor(configurator)
+    #     line_up = '\033[1A'
+    #     line_clear = '\x1b[2K'
+    #     for i in range(13):
+    #         print(line_up, end=line_clear)
 
     # Setting the verbosity for the HDF5 conversion.
     # If there are many events it might take a bit, so some printout
