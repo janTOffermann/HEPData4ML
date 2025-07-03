@@ -24,7 +24,7 @@ class DelphesWrapper:
             self._setup_root()
 
     def _setup_root(self):
-        self.setup_hepmc3root.PrepDelphesHepMC3ROOT()
+        self.setup_hepmc3root.Prepare()
         self.delphes_root_dir = self.setup_hepmc3root.GetDirectory()
         self.executable['root'] = self.setup_hepmc3root.GetExecutable()
 

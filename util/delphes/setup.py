@@ -120,45 +120,6 @@ class DelphesSetup:
     def _print(self,val:str):
         print('{}: {}'.format(self.prefix,val))
 
-    # def run_make_with_progress(self,command=['make'],prefix='Building Delphes'):
-    #     """
-    #     Runs "make", with a progress bar.
-    #     NOTE: This is quite hard-coded, due to how the make printouts
-    #     work for Delphes (they don't have their own progress tracking).
-    #     """
-
-    #     with open(self.logfile, 'w') as f, open(self.errfile, 'w') as g:
-    #         process = sub.Popen(
-    #             command,
-    #             cwd=self.build_dir,
-    #             stdout=sub.PIPE,
-    #             stderr=sub.PIPE,
-    #             universal_newlines=True,
-    #             bufsize=1  # Line buffered
-    #         )
-
-    #         # Read stdout line by line
-    #         counter = 0
-    #         N = 281
-    #         for line in iter(process.stdout.readline, ''):
-    #             f.write(line)  # Write to log file
-    #             f.flush()
-
-    #             progress = (counter + 1)/N * 100.
-    #             progress = np.maximum(progress,100) # just in case -- this is all a little hard-coded
-    #             printProgressBar(progress, 100, prefix=prefix, suffix='Complete')
-    #             counter +=1
-
-    #         # Read any remaining stderr
-    #         stderr_output = process.stderr.read()
-    #         if stderr_output:
-    #             g.write(stderr_output)
-
-    #         # Wait for process to complete and check return code
-    #         return_code = process.wait()
-    #         if return_code != 0:
-    #             raise sub.CalledProcessError(return_code, command)
-
     def run_command_with_progress(self, command, prefix, cwd=None,
                                 show_output_lines=10, output_width=80, output_length=None):
             """
@@ -270,7 +231,7 @@ class DelphesSetup:
                             else:
                                 printProgressBar(current_progress, 100, prefix=prefix, suffix='Complete')
 
-                            counter += 1
+                            if(stream_name == 'stdout'): counter += 1
                         except queue.Empty:
                             continue  # Continue checking if process is still running
 
@@ -299,18 +260,7 @@ class DelphesSetup:
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-class DelphesROOTHepMC3Setup:
+class DelphesROOTHepMC3Setup(DelphesSetup):
     """
     A class for running building the
     DelphesHepMC3ROOT executable -- our own custom one
@@ -340,7 +290,7 @@ class DelphesROOTHepMC3Setup:
     def GetExecutable(self)->str:
         return self.executable
 
-    def PrepDelphesHepMC3ROOT(self, j:int=4, force:bool=False, verbose:bool=False):
+    def Prepare(self, j:int=4, force:bool=False, verbose:bool=False):
         """
         Checks if DelphesHepMC3ROOT is built. If it's not,
         it will build it.
@@ -360,50 +310,52 @@ class DelphesROOTHepMC3Setup:
 
     def Build(self, j:int=4):
         self.build_dir = '{}/{}'.format(self.delphes_dir,'build')
+        os.makedirs(self.build_dir,exist_ok=True)
         self._print('Building DelphesHepMC3ROOT @ {} .'.format(self.build_dir))
         command = ['cmake', '../']
-        sub.check_call(command,cwd=self.build_dir)
+        self.run_command_with_progress(command,prefix='Configuring DelphesHepMC3ROOT',cwd=self.build_dir)
         command = ['make', '-j{}'.format(j)]
-        self.run_make_with_progress(command)
+        self.run_command_with_progress(command,prefix='Building DelphesHepMC3ROOT',cwd=self.build_dir,show_output_lines=5)
+        # self.run_make_with_progress(command)
         return
 
     def _print(self,val:str):
         print('{}: {}'.format(self.prefix,val))
 
-    def run_make_with_progress(self,command=['make'],prefix='Building DelphesHepMC3ROOT'):
-        """
-        Runs "make", with a progress bar.
-        """
-        # Pattern to match progress indicators
-        progress_pattern = re.compile(r'\[\s*(\d+)%\]')
+    # def run_make_with_progress(self,command=['make'],prefix='Building DelphesHepMC3ROOT'):
+    #     """
+    #     Runs "make", with a progress bar.
+    #     """
+    #     # Pattern to match progress indicators
+    #     progress_pattern = re.compile(r'\[\s*(\d+)%\]')
 
-        with open(self.logfile, 'w') as f, open(self.errfile, 'w') as g:
-            process = sub.Popen(
-                command,
-                cwd=self.build_dir,
-                stdout=sub.PIPE,
-                stderr=sub.PIPE,
-                universal_newlines=True,
-                bufsize=1  # Line buffered
-            )
+    #     with open(self.logfile, 'w') as f, open(self.errfile, 'w') as g:
+    #         process = sub.Popen(
+    #             command,
+    #             cwd=self.build_dir,
+    #             stdout=sub.PIPE,
+    #             stderr=sub.PIPE,
+    #             universal_newlines=True,
+    #             bufsize=1  # Line buffered
+    #         )
 
-            # Read stdout line by line
-            for line in iter(process.stdout.readline, ''):
-                f.write(line)  # Write to log file
-                f.flush()
+    #         # Read stdout line by line
+    #         for line in iter(process.stdout.readline, ''):
+    #             f.write(line)  # Write to log file
+    #             f.flush()
 
-                # Check for progress indicator
-                match = progress_pattern.search(line)
-                if match:
-                    progress = int(match.group(1))
-                    printProgressBar(progress, 100, prefix=prefix, suffix='Complete')
+    #             # Check for progress indicator
+    #             match = progress_pattern.search(line)
+    #             if match:
+    #                 progress = int(match.group(1))
+    #                 printProgressBar(progress, 100, prefix=prefix, suffix='Complete')
 
-            # Read any remaining stderr
-            stderr_output = process.stderr.read()
-            if stderr_output:
-                g.write(stderr_output)
+    #         # Read any remaining stderr
+    #         stderr_output = process.stderr.read()
+    #         if stderr_output:
+    #             g.write(stderr_output)
 
-            # Wait for process to complete and check return code
-            return_code = process.wait()
-            if return_code != 0:
-                raise sub.CalledProcessError(return_code, command)
+    #         # Wait for process to complete and check return code
+    #         return_code = process.wait()
+    #         if return_code != 0:
+    #             raise sub.CalledProcessError(return_code, command)

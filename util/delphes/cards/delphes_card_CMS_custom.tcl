@@ -13,18 +13,8 @@
 
 set ExecutionPath {
 
-  # NOTE: Uses my update of BeamSpotFilter,
-  #       that bases it off of truth-level
-  #       vertices (that it reconstructs).
-  #       It picks the one with the highest
-  #       sum(pt^2) as the beamspot. - Jan
   BeamSpotFilter
 
-  # NOTE: Uses my update of TruthVertexFinder,
-  #       similarly picks the vertex with the
-  #       highest sum(pt^2). In principle,
-  #       some redundancy w.r.t. the
-  #       BeamSpotFilter above. - Jan
   TruthVertexFinder
   ParticlePropagator
 
@@ -38,20 +28,10 @@ set ExecutionPath {
 
   TrackMerger
 
-  ##########################
-  # Section adapted from
-  # testVertexing.tcl &
-  # trkCountingBTaggingCMS.tcl
-  # cards.
-  ##########################
-
   TrackSmearing
   TimeSmearing
 
-  # VertexFinder
   VertexFinderDA4D
-
-  ##########################
 
   ECal
   HCal
@@ -83,7 +63,6 @@ set ExecutionPath {
 
   TreeWriter
 }
-
 
 #######################
 # GenBeamSpotFilter
