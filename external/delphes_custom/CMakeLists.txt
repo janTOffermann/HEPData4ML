@@ -72,7 +72,19 @@ message(STATUS "Found HepMC3/ROOT library: ${HEPMC3_ROOT_LIBRARIES}")
 # Find DELPHES.
 # Will search CMAKE_PREFIX_PATH, plus the DELPHES_EXT_DIR
 # that we define here (to pick up a possible local installation).
-set(DELPHES_EXT_DIR "${REPO_DIR}/external/delphes/delphes-3.5.1pre12")
+file(GLOB DELPHES_SUBDIRS "${REPO_DIR}/external/delphes/*")
+foreach(subdir ${DELPHES_SUBDIRS})
+    if(IS_DIRECTORY ${subdir})
+        set(DELPHES_EXT_DIR ${subdir})
+        break()
+    endif()
+endforeach()
+
+# Check if we found a directory
+if(NOT DELPHES_EXT_DIR)
+    set(DELPHES_EXT_DIR "${REPO_DIR}/external/delphes/delphes") # TODO: Make this better -- catch the error elegantly
+    # message(FATAL_ERROR "No Delphes subdirectory found in ${REPO_DIR}/external/delphes/")
+endif()
 
 # Step 1: Search first for local installation. Using NO_DEFAULT_PATH.
 find_path(DELPHES_INCLUDE_DIR
