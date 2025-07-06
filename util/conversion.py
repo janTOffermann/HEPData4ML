@@ -225,30 +225,32 @@ class Processor:
                 for j in range(len(particles)): # TODO: reusing len(particles) (= number of events in chunk), OK but looks kind of hacky
                     for k,delphes_type in enumerate(var_map.keys()): # loop over different kinds of Delphes collections
 
-                        delphes_pt  = delphes_arr[var_map[delphes_type]['pt' ]][start_idxs[i]:stop_idxs[i]][j].to_numpy()
-                        delphes_eta = delphes_arr[var_map[delphes_type]['eta']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
-                        delphes_phi = delphes_arr[var_map[delphes_type]['phi']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
-                        delphes_m   = np.zeros(delphes_pt.shape)
-
-                        delphes_vecs = [rt.Math.PtEtaPhiMVector(*x) for x in zip(delphes_pt,delphes_eta,delphes_phi,delphes_m)]
-
-                        self.WriteToDataBuffer(j,'{}.N'.format(delphes_type),len(delphes_pt))
-
-                        self.WriteToDataBuffer(j, '{}.Pmu'.format(delphes_type), np.vstack([
-                            [getattr(vec, method)() for vec in delphes_vecs]
-                            for method in ['E','Px','Py','Pz']
-                        ]).T,
-                                            dimensions={1:self.n_delphes[k]}
-                        )
-
-                        self.WriteToDataBuffer(j, '{}.Pmu_cyl'.format(delphes_type), np.vstack([
-                            [getattr(vec, method)() for vec in delphes_vecs]
-                            for method in ['Pt','Eta','Phi','M']
-                        ]).T,
-                                            dimensions={1:self.n_delphes[k]}
-                        )
-
                         # Not all objects have all fields, so we do a lot of checking here.
+                        if('pt' in var_map[delphes_type].keys()):
+
+                            delphes_pt  = delphes_arr[var_map[delphes_type]['pt' ]][start_idxs[i]:stop_idxs[i]][j].to_numpy()
+                            delphes_eta = delphes_arr[var_map[delphes_type]['eta']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
+                            delphes_phi = delphes_arr[var_map[delphes_type]['phi']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
+                            delphes_m   = np.zeros(delphes_pt.shape)
+
+                            delphes_vecs = [rt.Math.PtEtaPhiMVector(*x) for x in zip(delphes_pt,delphes_eta,delphes_phi,delphes_m)]
+
+                            self.WriteToDataBuffer(j,'{}.N'.format(delphes_type),len(delphes_pt))
+
+                            self.WriteToDataBuffer(j, '{}.Pmu'.format(delphes_type), np.vstack([
+                                [getattr(vec, method)() for vec in delphes_vecs]
+                                for method in ['E','Px','Py','Pz']
+                            ]).T,
+                                                dimensions={1:self.n_delphes[k]}
+                            )
+
+                            self.WriteToDataBuffer(j, '{}.Pmu_cyl'.format(delphes_type), np.vstack([
+                                [getattr(vec, method)() for vec in delphes_vecs]
+                                for method in ['Pt','Eta','Phi','M']
+                            ]).T,
+                                                dimensions={1:self.n_delphes[k]}
+                            )
+
                         is_track = False
 
                         if('d0' in var_map[delphes_type].keys()):
@@ -440,7 +442,7 @@ class Processor:
             key,var = branch.split('.')
             var = var.lower()
             # convert "et" -> "pt" # TODO: Consider restructuring?
-            if(var=='et'):
+            if(var=='et' or var=='met'):
                 var = 'pt'
             elif(var=='dz'): # fix delphes typo
                 var = 'z0'
