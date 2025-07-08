@@ -284,7 +284,7 @@ module VertexFinderDA4D VertexFinderDA4D {
   set OutputArray tracks
   set VertexOutputArray vertices
 
-  set Verbose 0
+  set Verbose 1
   set MinPT 1.0
 
   # in mm
