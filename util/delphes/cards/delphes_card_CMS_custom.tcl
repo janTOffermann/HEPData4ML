@@ -35,6 +35,7 @@ set ExecutionPath {
 
   ECal
   HCal
+  Calorimeter
 
   ElectronFilter
   TrackPileUpSubtractor
@@ -44,6 +45,7 @@ set ExecutionPath {
   EFlowFilter
 
   NeutrinoFilter
+  GenJetFinder
   GenMissingET
 
   Rho
@@ -485,6 +487,18 @@ module SimpleCalorimeter HCal {
 
 }
 
+###################################################
+# Tower Merger (in case not using e-flow algorithm)
+###################################################
+
+module Merger Calorimeter {
+# add InputArray InputArray
+  add InputArray ECal/ecalTowers
+  add InputArray HCal/hcalTowers
+  set OutputArray towers
+}
+
+
 #################
 # Electron filter
 #################
@@ -622,6 +636,21 @@ module PdgCodeFilter NeutrinoFilter {
 
 }
 
+#####################
+# MC truth jet finder
+#####################
+
+module FastJetFinder GenJetFinder {
+  set InputArray NeutrinoFilter/filteredParticles
+
+  set OutputArray jets
+
+  # algorithm: 1 CDFJetClu, 2 MidPoint, 3 SIScone, 4 kt, 5 Cambridge/Aachen, 6 antikt
+  set JetAlgorithm 6
+  set ParameterR 0.4
+
+  set JetPTMin 20.0
+}
 
 #########################
 # Gen Missing ET merger
@@ -770,10 +799,16 @@ module TreeWriter TreeWriter {
 # add Branch InputArray BranchName BranchClass
   add Branch Delphes/allParticles Particle GenParticle
 
+  add Branch TrackMerger/tracks Track Track
+  add Branch Calorimeter/towers Tower Tower
+
+  # NOTE: Delphes' built-in event display will *not* display EFlow objects.
+  # The workaround is to include the "basic" tracks and towers
   add Branch TrackPileUpSubtractor/eflowTracks EFlowTrack Track
   add Branch ECal/eflowPhotons EFlowPhoton Tower
   add Branch HCal/eflowNeutralHadrons EFlowNeutralHadron Tower
 
+  add Branch GenJetFinder/jets GenJet Jet
   add Branch GenMissingET/momentum GenMissingET MissingET
 
   add Branch UniqueObjectFinder/electrons Electron Electron
