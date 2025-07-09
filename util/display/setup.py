@@ -1,109 +1,87 @@
 import os, glob,pathlib, threading, queue, re
 from collections import deque
+import ROOT as rt
 import subprocess as sub
 from util.qol_utils.misc import stdout_redirected
 from util.qol_utils.progress_bar import printProgressBar, printProgressWithOutput
 
-class FastJetSetup:
-    def __init__(self,fastjet_dir=None, full_setup=False,verbose=True):
-        self.fastjet_version = '3.4.2'
-        self.SetDirectory(fastjet_dir)
-        if(full_setup): self.PrepFastjet(verbose=verbose)
+class DisplaySetup:
+    """
+    This class is for setting up our event display code, built on the ROOT
+    Eve module and the DELPHES event display classes.
+    This is some custom C++/ROOT code.
+    """
+    def __init__(self,directory=None):
+        self.SetDirectory(directory)
+        self.executable = '/bin/bash'
+        self.lib_extensions = ['so','dylib']
+        self.status = False
 
-    def SetDirectory(self,fastjet_dir=None):
-        self.fastjet_dir = fastjet_dir
-        if(self.fastjet_dir is None):
-                self.fastjet_dir = os.path.dirname(os.path.abspath(__file__)) + '/../../external/fastjet'
-        self.fastjet_dir = os.path.normpath(self.fastjet_dir)
-        os.makedirs(self.fastjet_dir,exist_ok=True)
+        self.logfile = '{}/log.stdout'.format(self.dir)
+        self.errfile = '{}/log.stderr'.format(self.dir)
 
-        self.SetPythonDirectory() # attempts to get the Python library subdir, only sets it if found
 
-        self.logfile = '{}/log.stdout'.format(self.fastjet_dir)
-        self.errfile = '{}/log.stderr'.format(self.fastjet_dir)
+    def SetDirectory(self,dir):
+        if(dir is None):
+            dir = os.path.dirname(os.path.abspath(__file__)) + '/../root/display'
+        self.dir = dir
 
-        self.source_dir = '{}/fastjet-{}'.format(self.fastjet_dir,self.fastjet_version)
-        self.build_dir = self.source_dir # a bit weird but it works
-        self.install_dir = '{}/fastjet-install'.format(self.fastjet_dir)
+    def Prepare(self):
+        self.status = False
+        # try: self.Load()
+        # except:
+        self.Build()
+        self.Load()
+        self.status = True
         return
 
-    def GetDirectory(self):
-        return self.fastjet_dir
+    def Build(self):
+        """
+        Builds the library.
+        This runs a shell script.
+        """
+        self.build_script = 'build.sh'
+        command = [self.executable,self.build_script]
+        self.run_command_with_progress(command,'Building EventDisplay:',cwd=self.dir,show_output_lines=20)
+        return
 
-    def SetPythonDirectory(self):
+    def Load(self,quiet=False):
+        # Load our custom ROOT library.
         try:
-            self.python_dir = os.path.normpath(glob.glob('{}/**/site-packages'.format(self.fastjet_dir),recursive=True)[0])
+            a = rt.EventDisplay
+            return
         except:
-            self.python_dir = None
+            pass
 
-    def GetPythonDirectory(self):
-        return self.python_dir
+        # Note that we *also* need to fetch some include files -- this has something to do with using the ROOT interpreter.
+        # Also note that we have multiple library paths -- to allow for Linux/macOS compatibility.
+        build_dir = self.dir + '/display/build'
+        custom_lib_paths = [os.path.realpath('{}/lib/libEventDisplay.{}'.format(build_dir,x)) for x in self.lib_extensions]
+        custom_inc_paths = os.path.realpath('{}/include/display'.format(build_dir))
+        custom_inc_paths = glob.glob(custom_inc_paths + '/**/*.h',recursive=True)
 
-    def PrepFastjet(self, j=4, force=False, verbose=True):
-        # Check if Fastjet is already built at destination.
-        # Specifically, we will look for some Python-related files.
-        if(not force):
+        # Check for any of the libraries.
+        found_libary = False
+        for libpath in custom_lib_paths:
+            if(pathlib.Path(libpath).exists()):
+                custom_lib_path = libpath
+                found_libary = True
+                break
 
-            files_to_find = [
-                '{}/**/site-packages/fastjet.py'.format(self.fastjet_dir),
-                '{}/**/site-packages/_fastjet.a'.format(self.fastjet_dir),
-                '{}/**/site-packages/_fastjet.so.0'.format(self.fastjet_dir)
-            ]
+        if(not found_libary):
+            if(not quiet): print('Error: The EventDisplay lib has not been built!')
+            assert False
 
-            files_to_find = [glob.glob(x,recursive=True) for x in files_to_find]
-            files_to_find = [len(x) for x in files_to_find]
-            found_fastjet = False
-            for entry in files_to_find:
-                if(entry > 0):
-                    found_fastjet = True # Loose condition since not all these files may exist (e.g. no .so on macos). Should be okay.
-                    break
-            if(found_fastjet):
-                if(verbose): print('Found existing Fastjet installation with Python extension @ {}.'.format(self.fastjet_dir))
-                # TODO: Do something else here?
-                return
+        for inc_path in custom_inc_paths:
+            command = '#include "{}"'.format(inc_path)
+            status = rt.gInterpreter.Declare(command)
+            assert status, 'The following header file did not load properly: {}'.format(inc_path)
 
-        # Fastjet was not found -> download and build.
-        self.DownloadFastjet(verbose=verbose)
-        self.BuildFastjet(verbose=verbose)
-
-    def DownloadFastjet(self,force=False,verbose=True):
-        with open(self.logfile,'w') as f, open(self.errfile,'w') as g:
-            if(not force and pathlib.Path(self.source_dir).exists()): # check if fastjet source is already present, if so we do not need to download it again
-                print('Found local fastjet source code, but fastjet is not locally built yet.')
-                return
-
-            # Fetch the Fastjet source
-            fastjet_download = 'http://fastjet.fr/repo/fastjet-{}.tar.gz'.format(self.fastjet_version)
-            fastjet_file = fastjet_download.split('/')[-1]
-            if(verbose): print('Downloading fastjet from {}.'.format(fastjet_download))
-
-            # Depending on Linux/macOS, we use wget or curl.
-            has_wget = True
-            with stdout_redirected():
-                try: sub.check_call('which wget'.split(' '))
-                except:
-                    has_wget = False
-                    pass
-
-            if(has_wget): sub.check_call(['wget', fastjet_download], shell=False, cwd=self.fastjet_dir, stdout=f, stderr=g)
-            else: sub.check_call(['curl',fastjet_download,'-o',fastjet_file], shell=False, cwd=self.fastjet_dir, stdout=f, stderr=g)
-            sub.check_call(['tar', 'zxvf', fastjet_file], shell=False, cwd=self.fastjet_dir, stdout=f, stderr=g)
-            sub.check_call(['rm', fastjet_file], shell=False, cwd=self.fastjet_dir, stdout=f, stderr=g)
-
-    def BuildFastjet(self,j=4,verbose=True):
-        # Note that we request the python bindings in the configuration.
-        command = ['./configure', '--prefix={}'.format(self.install_dir), '--enable-pyext']
-        self.run_command_with_progress(command,cwd=self.source_dir,output_length=324,prefix='Configuring Fastjet:')
-
-        # Now make and install. Will skip "make check".
-        self.run_command_with_progress(command=['make', '-j{}'.format(j)],cwd=self.build_dir, output_length=947,prefix='Building Fastjet:',output_width=80)
-
-        self.run_command_with_progress(command=['make', 'install'],cwd=self.build_dir, output_length=458,prefix='Installing Fastjet:',output_width=80)
-
-        self.SetPythonDirectory()
+        status = rt.gSystem.Load(custom_lib_path)
+        assert status == 0, 'The EventDisplay lib did not load properly.'
         return
 
-    def run_command_with_progress(self, command, prefix, cwd=None,
+    def run_command_with_progress(self, command, prefix, cwd=None, env=None,
                                 show_output_lines=10, output_width=80, output_length=None):
             """
             Run command with progress bar and scrolling output display
@@ -147,6 +125,7 @@ class FastJetSetup:
                 process = sub.Popen(
                     command,
                     cwd=cwd,
+                    env=env,
                     stdout=sub.PIPE,
                     stderr=sub.PIPE,
                     universal_newlines=True,
