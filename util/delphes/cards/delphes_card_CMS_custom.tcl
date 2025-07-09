@@ -254,7 +254,7 @@ module Merger TrackMerger {
 
 module TrackSmearing TrackSmearing {
   set InputArray TrackMerger/tracks
-#  set BeamSpotInputArray BeamSpotFilter/beamSpotParticle
+  set BeamSpotInputArray BeamSpotFilter/beamSpotParticle
   set OutputArray tracks
 #  set ApplyToPileUp true
 
