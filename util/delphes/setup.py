@@ -110,11 +110,20 @@ class DelphesSetup:
         return
 
     def Build(self, j:int=4):
+        """
+        Builds Delphes. The official documentation suggests simply running "make", which will use the existing Makefile
+        that ships with Delphes. However, we're going to invoke CMake since Delphes also ships a CMakeLists.txt file,
+        and it looks like this will automatically build the display library (that we may also want to leverage).
+        """
+
+        self._print('Configuring Delphes.')
+        command = ['cmake','./']
+        self.run_command_with_progress(command,cwd=self.build_dir, prefix='Configuring Delphes:',output_length=18)
+
         # self.build_dir = '{}/{}'.format(self.delphes_dir,self.delphes_file.replace('.tar.gz','')) # TODO: clean this up
         self._print('Building Delphes @ {} .'.format(self.build_dir))
-        command = ['make', '-j{}'.format(j)]
-        self.run_command_with_progress(command,cwd=self.build_dir, prefix='Building Delphes:',output_length=self.expected_stdout)
-        # self.run_make_with_progress(command)
+        command = ['cmake', '--build','.', '-j{}'.format(j)]
+        self.run_command_with_progress(command,cwd=self.build_dir, prefix='Building Delphes:')#,output_length=self.expected_stdout)
         return
 
     def _print(self,val:str):
@@ -257,8 +266,6 @@ class DelphesSetup:
                 return_code = process.wait()
                 if return_code != 0:
                     raise sub.CalledProcessError(return_code, command)
-
-
 
 class DelphesROOTHepMC3Setup(DelphesSetup):
     """
