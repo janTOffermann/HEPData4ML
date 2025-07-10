@@ -34,7 +34,6 @@ done
 # fi
 # source ${ATLAS_LOCAL_ROOT_BASE}/user/atlasLocalSetup.sh -q
 
-echo "Checking OS version. (see setup.sh script)"
 os_version=$(uname -r)
 echo "OS version: ${os_version}"
 # if [[ $os_version == *"el9"* ]]; then
