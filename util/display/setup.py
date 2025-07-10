@@ -20,13 +20,15 @@ class DisplaySetup:
         self.logfile = '{}/log.stdout'.format(self.dir)
         self.errfile = '{}/log.stderr'.format(self.dir)
 
-
     def SetDirectory(self,dir):
         if(dir is None):
             dir = os.path.dirname(os.path.abspath(__file__)) + '/../root/display'
         self.dir = dir
 
     def Prepare(self):
+        """
+        For now, we force a (re)build.
+        """
         self.status = False
         # try: self.Load()
         # except:

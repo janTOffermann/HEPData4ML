@@ -37,8 +37,8 @@ namespace EventDisplay{
     Delphes3DGeometry det3D_geom(new TGeoManager("delphes", "Delphes geometry"), kFALSE);
     det3D_geom.readFile(delphesCardFilepath, "ParticlePropagator", "ChargedHadronTrackingEfficiency", "MuonEfficiency", "HCal");
 
-
-
+    // display
+    det3D_geom.getDetector()->Draw("ogl");
   }
 
 }
