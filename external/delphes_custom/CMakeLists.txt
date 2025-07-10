@@ -34,8 +34,6 @@ find_package(ROOT CONFIG REQUIRED)
 # Note that we're also searching for the HepMC3/ROOT interface.
 set(HEPMC3_EXT_DIR "${REPO_DIR}/external/hepmc/hepmc3-install")
 
-message(STATUS "Looking for HEPMC3 in HEPMC_EXT_DIR: ${HEPMC3_EXT_DIR}")
-
 find_path(HEPMC3_INCLUDE_DIR
     NAMES HepMC3
     PATHS
