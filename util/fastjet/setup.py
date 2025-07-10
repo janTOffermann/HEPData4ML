@@ -6,7 +6,7 @@ from util.qol_utils.progress_bar import printProgressBar, printProgressWithOutpu
 
 class FastJetSetup:
     def __init__(self,fastjet_dir=None, full_setup=False,verbose=True):
-        self.fastjet_version = '3.4.2'
+        self.fastjet_version = '3.5.1'
         self.SetDirectory(fastjet_dir)
         if(full_setup): self.PrepFastjet(verbose=verbose)
 
@@ -43,11 +43,11 @@ class FastJetSetup:
         # Check if Fastjet is already built at destination.
         # Specifically, we will look for some Python-related files.
         if(not force):
-
             files_to_find = [
                 '{}/**/site-packages/fastjet.py'.format(self.fastjet_dir),
                 '{}/**/site-packages/_fastjet.a'.format(self.fastjet_dir),
-                '{}/**/site-packages/_fastjet.so.0'.format(self.fastjet_dir)
+                '{}/**/site-packages/_fastjet.so.0'.format(self.fastjet_dir),
+                '{}/**/site-packages/**/*_fastjet*.so*'.format(self.fastjet_dir) # added due to how CMake build works -- not necessary for ./configure method from official release
             ]
 
             files_to_find = [glob.glob(x,recursive=True) for x in files_to_find]
@@ -67,14 +67,16 @@ class FastJetSetup:
         self.BuildFastjet(verbose=verbose)
 
     def DownloadFastjet(self,force=False,verbose=True):
-        with open(self.logfile,'w') as f, open(self.errfile,'w') as g:
+        with open(self.logfile,'a') as f, open(self.errfile,'a') as g:
             if(not force and pathlib.Path(self.source_dir).exists()): # check if fastjet source is already present, if so we do not need to download it again
-                print('Found local fastjet source code, but fastjet is not locally built yet.')
+                print('Found local fastjet source code (but didn\'t find Python module -- maybe this was not built yet?)')
                 return
-
             # Fetch the Fastjet source
-            fastjet_download = 'http://fastjet.fr/repo/fastjet-{}.tar.gz'.format(self.fastjet_version)
-            fastjet_file = fastjet_download.split('/')[-1]
+            fastjet_download = 'https://gitlab.com/fastjet/fastjet/-/archive/fastjet-{v}/fastjet-fastjet-{v}.tar.gz'.format(v=self.fastjet_version)
+            # fastjet_download = 'http://fastjet.fr/repo/fastjet-{}.tar.gz'.format(self.fastjet_version)
+            # fastjet_file = fastjet_download.split('/')[-1]
+            fastjet_file = 'fastjet-{}.tar.gz'.format(self.fastjet_version)
+            print("fastjet_file = ",fastjet_file)
             if(verbose): print('Downloading fastjet from {}.'.format(fastjet_download))
 
             # Depending on Linux/macOS, we use wget or curl.
@@ -85,12 +87,54 @@ class FastJetSetup:
                     has_wget = False
                     pass
 
-            if(has_wget): sub.check_call(['wget', fastjet_download], shell=False, cwd=self.fastjet_dir, stdout=f, stderr=g)
-            else: sub.check_call(['curl',fastjet_download,'-o',fastjet_file], shell=False, cwd=self.fastjet_dir, stdout=f, stderr=g)
-            sub.check_call(['tar', 'zxvf', fastjet_file], shell=False, cwd=self.fastjet_dir, stdout=f, stderr=g)
-            sub.check_call(['rm', fastjet_file], shell=False, cwd=self.fastjet_dir, stdout=f, stderr=g)
+            if(has_wget):
+                sub.check_call(['wget', fastjet_download,'-O',fastjet_file], cwd=self.fastjet_dir, stdout=f, stderr=g)
+            else:
+                sub.check_call(['curl',fastjet_download,'-o',fastjet_file], cwd=self.fastjet_dir, stdout=f, stderr=g)
+
+            # Now we force extraction to particular directory name.
+            # NOTE: This might not be totally bulletproof?
+            source_dir_short = self.source_dir.replace(self.fastjet_dir + '/','')
+            transform = "s/fastjet-{s}/{s}/".format(s=source_dir_short)
+            command = ['tar','zxvf',fastjet_file,'--transform',transform]
+            sub.check_call(command, cwd=self.fastjet_dir, stdout=f, stderr=g)
+            sub.check_call(['rm', fastjet_file], cwd=self.fastjet_dir, stdout=f, stderr=g)
 
     def BuildFastjet(self,j=4,verbose=True):
+        """
+        To be used with Fastjet downloaded from GitLab,
+        which ships with a CMakeLists.txt file.
+        Note that we disable SISCone, which is a git submodule
+        that we don't get when we download the code as an archive.
+        """
+        command = [
+                'cmake',
+                '-DCMAKE_INSTALL_PREFIX={}'.format(self.install_dir),
+                '-DFASTJET_ENABLE_PYTHON:BOOL=ON',
+                '-DFASTJET_ENABLE_PLUGIN_SISCONE:BOOL=OFF',
+                self.source_dir
+            ]
+
+        # Note that we request the python bindings in the configuration.
+        self.run_command_with_progress(command,cwd=self.source_dir,output_length=324,prefix='Configuring Fastjet:')
+
+        # Now make and install.
+        command = ['make', '-j{}'.format(j)]
+        self.run_command_with_progress(command,cwd=self.build_dir,prefix='Building Fastjet:',output_width=80)
+
+        command = ['make', 'install']
+        self.run_command_with_progress(command,cwd=self.build_dir, output_length=458,prefix='Installing Fastjet:',output_width=80)
+
+        self.SetPythonDirectory()
+        return
+
+    def BuildFastjetWithConfigure(self,j=4,verbose=True):
+        """
+        To be used with the official Fastjet release, which ships
+        with a configuration script. (A little old-fashioned, but it
+        does get the job done!). This has been deprecated, in favor
+        of the CMake-style build.
+        """
         # Note that we request the python bindings in the configuration.
         command = ['./configure', '--prefix={}'.format(self.install_dir), '--enable-pyext']
         self.run_command_with_progress(command,cwd=self.source_dir,output_length=324,prefix='Configuring Fastjet:')
