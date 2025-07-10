@@ -111,19 +111,19 @@ class FastJetSetup:
                 'cmake',
                 '-DCMAKE_INSTALL_PREFIX={}'.format(self.install_dir),
                 '-DFASTJET_ENABLE_PYTHON:BOOL=ON',
-                '-DFASTJET_ENABLE_PLUGIN_SISCONE:BOOL=OFF',
+                '-DFASTJET_ENABLE_PLUGIN_SISCONE:BOOL=OFF', # disable since this is shipped as a git submodule, which we don't pick up in the archive download from GitLab
                 self.source_dir
             ]
 
         # Note that we request the python bindings in the configuration.
-        self.run_command_with_progress(command,cwd=self.source_dir,output_length=324,prefix='Configuring Fastjet:')
+        self.run_command_with_progress(command,cwd=self.source_dir,output_length=45,prefix='Configuring Fastjet:')
 
         # Now make and install.
         command = ['make', '-j{}'.format(j)]
         self.run_command_with_progress(command,cwd=self.build_dir,prefix='Building Fastjet:',output_width=80)
 
         command = ['make', 'install']
-        self.run_command_with_progress(command,cwd=self.build_dir, output_length=458,prefix='Installing Fastjet:',output_width=80)
+        self.run_command_with_progress(command,cwd=self.build_dir, output_length=118,prefix='Installing Fastjet:',output_width=80)
 
         self.SetPythonDirectory()
         return
