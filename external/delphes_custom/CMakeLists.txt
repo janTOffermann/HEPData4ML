@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.10)
 project(DelphesHepMC3ROOT)
 
 # Set C++ standard to match ROOT/Delphes
+# TODO: Does this limit portability?
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -31,12 +32,16 @@ find_package(ROOT CONFIG REQUIRED)
 # Will search CMAKE_PREFIX_PATH, plus the HEPMC3_EXT_DIR
 # that we define here (to pick up a possible local installation).
 # Note that we're also searching for the HepMC3/ROOT interface.
-set(HEPMC3_EXT_DIR "${REPO_DIR}/external/hepmc3")
+set(HEPMC3_EXT_DIR "${REPO_DIR}/external/hepmc/hepmc3-install")
+
+message(STATUS "Looking for HEPMC3 in HEPMC_EXT_DIR: ${HEPMC3_EXT_DIR}")
 
 find_path(HEPMC3_INCLUDE_DIR
     NAMES HepMC3
     PATHS
         ${HEPMC3_EXT_DIR} # fallback
+        ${HEPMC3_EXT_DIR}/include # fallback
+
 )
 
 find_library(HEPMC3_LIBRARIES
@@ -54,6 +59,7 @@ find_library(HEPMC3_ROOT_LIBRARIES
     NAMES HepMC3rootIO libHepMC3rootIO
     PATHS
         ${HEPMC3_EXT_DIR}/lib64
+        ${HEPMC3_EXT_DIR}/lib
         ${HEPMC3_EXT_DIR}
         ${CMAKE_PREFIX_PATH}
         ${CMAKE_PREFIX_PATH}/lib
@@ -108,6 +114,31 @@ if(NOT DELPHES_INCLUDE_DIR)
     endif()
 endif()
 
+# Also pick up the subdirectory with the "external" stuff. Not sure why this is necessary; only ran into this
+# issue when testing on macOS. Maybe something LCG-related? (e.g. I was picking this up from a different Delphes?)
+# Step 1: Search first for local installation. Using NO_DEFAULT_PATH.
+find_path(DELPHES_EXT_INCLUDE_DIR
+    NAMES ExRootAnalysis/ExRootTask.h
+    PATHS
+        ${DELPHES_EXT_DIR}/external
+        ${DELPHES_EXT_DIR}/include/external
+    PATH_SUFFIXES delphes Delphes
+    NO_DEFAULT_PATH
+)
+
+# Step 2: If the above doesn't work, manually set the path.
+if(NOT DELPHES_EXT_INCLUDE_DIR)
+    # Direct path assignment as fallback
+    if(EXISTS "${DELPHES_EXT_DIR}/external/ExRootAnalysis/ExRootTask.h")
+        set(DELPHES_EXT_INCLUDE_DIR "${DELPHES_EXT_DIR}/external")
+    elseif(EXISTS "${DELPHES_EXT_DIR}/include/external/ExRootAnalysis/ExRootTask.h")
+        set(DELPHES_EXT_INCLUDE_DIR "${DELPHES_EXT_DIR}/include/external")
+    else()
+        message(FATAL_ERROR "ExRootTask.h not found in ${DELPHES_EXT_DIR}/external or ${DELPHES_EXT_DIR}/include/external")
+    endif()
+endif()
+
+
 find_library(DELPHES_LIBRARIES
     NAMES Delphes libDelphes
     PATHS
@@ -146,6 +177,7 @@ target_include_directories(DelphesHepMC3ROOT
     PRIVATE
         "${CMAKE_SOURCE_DIR}/inc"
         ${DELPHES_INCLUDE_DIR}
+        ${DELPHES_EXT_INCLUDE_DIR}
         ${HEPMC3_INCLUDE_DIR}
 )
 
