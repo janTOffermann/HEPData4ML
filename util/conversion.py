@@ -5,6 +5,7 @@ import ROOT as rt
 import uproot as ur
 import subprocess as sub
 from util.calcs import embed_array
+from util.buffer import IndexableLazyLoader
 from util.qol_utils.progress_bar import printProgressBarColor
 from util.hepmc.hepmc import ExtractHepMCEvents, ExtractHepMCParticles, ParticleToVector, GetParticleID
 from typing import Union, Optional, List, TYPE_CHECKING
@@ -417,6 +418,38 @@ class Processor:
         return
 
     def PrepDelphesArrays(self,):
+        types = self.configurator.GetDelphesObjects()
+        components = [
+            'PT','Eta','Phi','ET', 'MET', # momentum componenets
+            'D0','ErrorD0','DZ','ErrorDZ', # impact parameters and associated uncertainties (for tracks). NOTE: Delphes seems to have misspelt "Z0" -> "DZ"!
+            'X', 'Y', 'Z', 'T', # 4-position -- relevant for non-track objects (tracks parameterized differently)
+            'Xd', 'Yd', 'Zd', # 3-position of track position of closest approach to z-axis
+            'Eem','Ehad','Etrk', # energy depositions -- relevant for EFlow objects (possibly quite detector card-specific!)
+            'Charge', 'PID'
+        ]
+        delphes_keys = ['{x}.{y}'.format(x=x,y=y) for x in types for y in components]
+        delphes_tree = 'Delphes'
+        delphes_files = ['{}/{}'.format(self.outdir, x) for x in self.delphes_files]
+
+        delphes_arr = IndexableLazyLoader(delphes_files, delphes_tree, delphes_keys)
+        delphes_keys = delphes_arr.fields
+
+        # Create var_map as before
+        var_map = {key:{} for key in types}
+        for branch in delphes_keys:
+            if '.' in branch:
+                key, var = branch.split('.')
+                var = var.lower()
+                if(var=='et' or var=='met'):
+                    var = 'pt'
+                elif(var=='dz'):
+                    var = 'z0'
+                elif(var=='errordz'):
+                    var = 'errorz0'
+                var_map[key][var.lower()] = branch
+        return delphes_arr, var_map
+
+    def PrepDelphesArraysOld(self,):
         # TODO: This uses uproot.lazy, which is part of uproot 4 but has been
         #       deprecated and removed in uproot 5, in favor of uproot.dask.
         #       We'll probably need to support both versions soon.
