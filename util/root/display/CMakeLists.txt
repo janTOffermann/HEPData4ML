@@ -11,9 +11,11 @@ project(
   VERSION 1.0
   LANGUAGES C CXX)
 
-# Set C++ standard to match ROOT/Delphes
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# # Set C++ standard to match ROOT/Delphes.
+# # NOTE: Not sure if it should be 17 or 20 -- I think the latter for LCG?
+# #       Would be nice to match ROOT.
+# set(CMAKE_CXX_STANDARD 20)
+# set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Define the path to this repository -- relative to this CMake file.
 # NOTE: If this executable is made into a separate git submodule,
@@ -28,6 +30,43 @@ set(REPO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
 
 # Find ROOT - as of ~6.20, this sets up some CMake macros too.
 find_package(ROOT CONFIG REQUIRED)
+
+# Find the root-config utility
+find_program(ROOT_CONFIG_CMD root-config)
+
+if(ROOT_CONFIG_CMD)
+    # Get ROOT's compile flags which include the C++ standard
+    execute_process(
+        COMMAND ${ROOT_CONFIG_CMD} --cflags
+        OUTPUT_VARIABLE ROOT_CFLAGS
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        RESULT_VARIABLE ROOT_CONFIG_RESULT
+    )
+
+    if(ROOT_CONFIG_RESULT EQUAL 0)
+        # message(STATUS "ROOT CFLAGS: ${ROOT_CFLAGS}")
+
+        # Parse for -std=c++XX in the CXXFLAGS
+        if(ROOT_CFLAGS MATCHES "-std=c\\+\\+([0-9]+)")
+            set(ROOT_DETECTED_STD ${CMAKE_MATCH_1})
+            # message(STATUS "Detected C++ standard from ROOT: C++${ROOT_DETECTED_STD}")
+            set(CMAKE_CXX_STANDARD ${ROOT_DETECTED_STD})
+        else()
+            # Fallback if no -std flag found
+            set(CMAKE_CXX_STANDARD 17)
+            message(WARNING "Could not parse C++ standard from ROOT flags, using C++17")
+        endif()
+    else()
+        message(WARNING "Failed to run root-config --cflags")
+        set(CMAKE_CXX_STANDARD 17)
+    endif()
+else()
+    message(WARNING "root-config not found")
+    set(CMAKE_CXX_STANDARD 17)
+endif()
+
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 #######################################################
 
 #######################################################
