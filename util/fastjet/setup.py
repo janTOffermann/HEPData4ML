@@ -76,7 +76,6 @@ class FastJetSetup:
             # fastjet_download = 'http://fastjet.fr/repo/fastjet-{}.tar.gz'.format(self.fastjet_version)
             # fastjet_file = fastjet_download.split('/')[-1]
             fastjet_file = 'fastjet-{}.tar.gz'.format(self.fastjet_version)
-            print("fastjet_file = ",fastjet_file)
             if(verbose): print('Downloading fastjet from {}.'.format(fastjet_download))
 
             # Depending on Linux/macOS, we use wget or curl.
@@ -93,11 +92,20 @@ class FastJetSetup:
                 sub.check_call(['curl',fastjet_download,'-o',fastjet_file], cwd=self.fastjet_dir, stdout=f, stderr=g)
 
             # Now we force extraction to particular directory name.
-            # NOTE: This might not be totally bulletproof?
+            # Unfortunately different Linux distros/macOS have different options
+            # available for `tar`, so we'll try different things and hopefully
+            # one method works!
+
             source_dir_short = self.source_dir.replace(self.fastjet_dir + '/','')
-            transform = "s/fastjet-{s}/{s}/".format(s=source_dir_short)
-            command = ['tar','zxvf',fastjet_file,'--transform',transform]
-            sub.check_call(command, cwd=self.fastjet_dir, stdout=f, stderr=g)
+            try:
+                transform = "s/fastjet-{s}/{s}/".format(s=source_dir_short)
+                command = ['tar','zxvf',fastjet_file,'--transform',transform]
+                sub.check_call(command, cwd=self.fastjet_dir, stdout=f, stderr=g)
+            except:
+                os.makedirs(self.source_dir,exist_ok=True)
+                command = ['tar','zxvf',fastjet_file,'-C',source_dir_short, '--strip-components=1']
+                sub.check_call(command, cwd=self.fastjet_dir, stdout=f, stderr=g)
+
             sub.check_call(['rm', fastjet_file], cwd=self.fastjet_dir, stdout=f, stderr=g)
 
     def BuildFastjet(self,j=4,verbose=True):
