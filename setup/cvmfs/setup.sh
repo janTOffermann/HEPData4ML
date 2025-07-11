@@ -14,9 +14,11 @@ Help()
 #        Main program
 # ============================
 
-lcg="LCG_105"
+# lcg="LCG_105"
+lcg="LCG_108"
 setupOption="EL9"
-build="x86_64-el9-gcc13-opt"
+# build="x86_64-el9-gcc13-opt"
+build="x86_64-el9-clang19-opt"
 while getopts ":hl" option; do # getopts is kind of terrible, but this will do for now...
   case $option in
     h) # display Help
