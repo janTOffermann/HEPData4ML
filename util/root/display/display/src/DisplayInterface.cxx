@@ -1,4 +1,4 @@
-#include <display/Display.h>
+#include <display/DisplayInterface.h>
 
 // standard library includes
 #include <iostream>
@@ -16,24 +16,24 @@ using namespace std;
 
 namespace EventDisplay{
 
-  Display::Display(){
-    TString s = "Created Display class.";
+  DisplayInterface::DisplayInterface(){
+    TString s = "Created DisplayInterface class.";
     cout << s << endl;
   };
 
-  Display::~Display(){};
+  DisplayInterface::~DisplayInterface(){};
 
 
-  void Display::DisplayEvent(TString delphesCardFilepath){
+  void DisplayInterface::DisplayEvent(TString delphesCardFilepath){
 
-    cout << "Display::DisplayEvent()" << endl;
+    cout << "DisplayInterface::DisplayEvent()" << endl;
 
     // load the libraries
     gSystem->Load("libGeom");
     gSystem->Load("libGuiHtml");
     gSystem->Load("libDelphesDisplay");
 
-    cout << "Display::DisplayEvent(): delphesCardFilepath = " << delphesCardFilepath << endl;
+    cout << "DisplayInterface::DisplayEvent(): delphesCardFilepath = " << delphesCardFilepath << endl;
 
     Delphes3DGeometry det3D_geom(new TGeoManager("delphes", "Delphes geometry"), kTRUE);
     det3D_geom.readFile(delphesCardFilepath, "ParticlePropagator", "ChargedHadronTrackingEfficiency", "MuonEfficiency", "HCal");
@@ -44,8 +44,8 @@ namespace EventDisplay{
 
   }
 
-  void Display::Test(TString filename){
-    cout << "Display::Test()" << endl;
+  void DisplayInterface::Test(TString filename){
+    cout << "DisplayInterface::Test()" << endl;
     TGeoManager::Import(filename);
    // gGeoManager->DefaultColors();
     gGeoManager->SetMaxVisNodes(5000);

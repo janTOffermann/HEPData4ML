@@ -3,9 +3,9 @@
 
 ROOT_STANDARD_LIBRARY_PACKAGE(EventDisplay
   HEADERS
-    display/Display.h
+    display/DisplayInterface.h
   SOURCES
-    src/Display.cxx
+    src/DisplayInterface.cxx
   LINKDEF
     Display_LinkDef.h
   DEPENDENCIES
