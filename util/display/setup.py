@@ -57,10 +57,11 @@ class DisplaySetup:
 
         # Note that we *also* need to fetch some include files -- this has something to do with using the ROOT interpreter.
         # Also note that we have multiple library paths -- to allow for Linux/macOS compatibility.
-        build_dir = self.dir + '/display/build'
-        custom_lib_paths = [os.path.realpath('{}/lib/libEventDisplay.{}'.format(build_dir,x)) for x in self.lib_extensions]
-        custom_inc_paths = os.path.realpath('{}/include/display'.format(build_dir))
-        custom_inc_paths = glob.glob(custom_inc_paths + '/**/*.h',recursive=True)
+        root_dir = self.dir + '/display'
+        build_dir = os.path.realpath('{}/build'.format(root_dir))
+        inc_dir = os.path.realpath('{}/inc'.format(root_dir))
+        custom_lib_paths = ['{}/lib/libEventDisplay.{}'.format(build_dir,x) for x in self.lib_extensions]
+        custom_inc_paths = glob.glob(inc_dir + '/**/*.h',recursive=True)
 
         # Check for any of the libraries.
         found_libary = False
