@@ -83,6 +83,9 @@ echo "Using ${lcg} with build ${build}."
 source /cvmfs/sft.cern.ch/lcg/views/${lcg}/${build}/setup.sh
 
 #echo "-----------------------"
-#echo "Here is a potentially useful option for the configuration file in config/config.py:"
-#echo "'delphes_dir' : '/cvmfs/sft.cern.ch/lcg/releases/delphes/3.5.1pre09-60e9b/x86_64-el9-gcc13-opt'"
-#echo "For fastjet, you will need Python bindings and thus a local build -- preferably done interactively, so that you can later point condor jobs to that and they don't all have to build fastjet again."
+
+# We need the "pdg" Python library, which isn't part of the software package from CVMFS
+if ! python -c "import pdg" &>/dev/null; then
+    echo "Installing pdg locally..."
+    pip install pdg --user
+fi

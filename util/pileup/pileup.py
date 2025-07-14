@@ -4,6 +4,7 @@ import numpy as np
 import glob,sys,os
 import subprocess as sub
 from util.qol_utils.progress_bar import printProgressBarColor
+from util.qol_utils.pdg import DatabasePDG
 
 from util.hepmc.setup import HepMCSetup, prepend_to_pythonpath
 from util.hepmc.readers import ReaderAscii, ReaderRootTree # our wrappers for the HepMC3 reader classes
@@ -70,7 +71,7 @@ class PileupOverlay:
         self.outdir = None
 
         # for particle charge lookup
-        self.pdg_database = rt.TDatabasePDG.Instance()
+        self.pdg_database = DatabasePDG()
 
     def SetVerbosity(self,val:int):
         self.verbosity = val
@@ -448,7 +449,7 @@ class PileupOverlay:
 
         sumpt2 = 0.
         for i,particle in enumerate(evt.particles()):
-            charge = self.pdg_database.GetParticle(particle.pid()).Charge() # charge is in units of |e|/3
+            charge = self.pdg_database.GetCharge(particle.pid()) # charge is in units of |e|/3
             if(np.abs(charge) > 1.0e-9): # abs might not be needed based on the above
                 sumpt2 += np.square(particle.momentum().px()) + np.square(particle.momentum().py())
         return sumpt2
