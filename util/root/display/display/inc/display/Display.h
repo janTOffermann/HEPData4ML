@@ -23,6 +23,8 @@ namespace EventDisplay{
 
       void DisplayEvent(TString delphesCardFilepath);
 
+      void Test(TString filename);
+
 
     private:
 

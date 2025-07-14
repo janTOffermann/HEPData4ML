@@ -33,12 +33,26 @@ namespace EventDisplay{
     gSystem->Load("libGuiHtml");
     gSystem->Load("libDelphesDisplay");
 
+    cout << "Display::DisplayEvent(): delphesCardFilepath = " << delphesCardFilepath << endl;
 
-    Delphes3DGeometry det3D_geom(new TGeoManager("delphes", "Delphes geometry"), kFALSE);
+    Delphes3DGeometry det3D_geom(new TGeoManager("delphes", "Delphes geometry"), kTRUE);
     det3D_geom.readFile(delphesCardFilepath, "ParticlePropagator", "ChargedHadronTrackingEfficiency", "MuonEfficiency", "HCal");
 
     // display
+    // det3D_geom.getDetector()->Draw();
     det3D_geom.getDetector()->Draw("ogl");
+
+  }
+
+  void Display::Test(TString filename){
+    cout << "Display::Test()" << endl;
+    TGeoManager::Import(filename);
+   // gGeoManager->DefaultColors();
+    gGeoManager->SetMaxVisNodes(5000);
+    // gGeoManager->SetVisLevel(4);
+    gGeoManager->GetVolume("ATLS")->Draw("ogl");
+    // new TBrowser;
+
   }
 
 }
