@@ -15,10 +15,10 @@
 using namespace std;
 namespace EventDisplay{
 
-  class Display{
+  class DisplayInterface{
     public:
-      Display();
-      ~Display();
+      DisplayInterface();
+      ~DisplayInterface();
 
 
       void DisplayEvent(TString delphesCardFilepath);

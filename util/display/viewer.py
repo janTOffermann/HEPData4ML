@@ -15,7 +15,7 @@ class EventDisplay:
 
     def InitializeDisplay(self,delphes_card):
 
-        self.display = rt.EventDisplay.Display()
+        self.display = rt.EventDisplay.DisplayInterface()
         self.display.DisplayEvent(delphes_card)
 
         # this_dir = os.path.dirname(os.path.abspath(__file__))
