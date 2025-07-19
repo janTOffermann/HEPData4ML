@@ -1,5 +1,6 @@
 import sys,os
 import ROOT as rt
+import argparse as ap
 from util.display.viewer import EventDisplay
 
 def main(args):
@@ -20,19 +21,25 @@ def main(args):
     # main_frame.Resize(main_frame.GetDefaultSize())
     # main_frame.MapWindow()
 
+    this_dir = os.path.dirname(os.path.abspath(__file__))
+
+    parser = ap.ArgumentParser()
+    parser.add_argument('-i','--inputFile',type=str,required=True)
+    parser.add_argument('-c','--cardFile',type=str,default=None)
+    parser.add_argument('-ei','--eventIndex',type=int,default=0)
+    args = vars(parser.parse_args())
+
+    input_file = args['inputFile']
+    card_file = args['cardFile']
+    event_index = args['eventIndex']
+
+    if(card_file is None):
+        card_file = "{}/util/delphes/cards/delphes_card_CMS.tcl".format(this_dir)
 
     ev_disp = EventDisplay()
-
-    this_dir = os.path.dirname(os.path.abspath(__file__))
-    card_file = "{}/util/delphes/cards/delphes_card_CMS.tcl".format(this_dir)
-
     ev_disp.InitializeDisplay(delphes_card = card_file)
 
-    # app.Run(True)
-
-    # print("Display started.")
-    # input("Press Enter to exit...")
-    # app.Terminate()
+    ev_disp.Display(input_file,event_index)
 
 
 if(__name__=='__main__'):

@@ -260,5 +260,10 @@ def ExtractHepMCParticles(events:List['hm.GenEvent'], nparticles_max:Optional[in
 def ParticleToVector(particle:'hm.GenParticle'):
     return rt.Math.PxPyPzEVector(particle.momentum().px(), particle.momentum().py(), particle.momentum().pz(), particle.momentum().e())
 
+def ParticleToProductionVertex(particle:'hm.GenParticle'):
+    prod_vertex_position = particle.production_vertex().position()
+    return rt.Math.XYZTVector(prod_vertex_position.x(), prod_vertex_position.y(), prod_vertex_position.z(), prod_vertex_position.t())
+
+
 def GetParticleID(particle:'hm.GenParticle'):
     return particle.pid()
