@@ -7,7 +7,7 @@ import subprocess as sub
 from util.calcs import embed_array
 from util.buffer import IndexableLazyLoader
 from util.qol_utils.progress_bar import printProgressBarColor
-from util.hepmc.hepmc import ExtractHepMCEvents, ExtractHepMCParticles, ParticleToVector, GetParticleID
+from util.hepmc.hepmc import ExtractHepMCEvents, ExtractHepMCParticles, ParticleToVector, ParticleToProductionVertex, GetParticleID
 from typing import Union, Optional, List, TYPE_CHECKING
 
 if(TYPE_CHECKING):
@@ -161,6 +161,7 @@ class Processor:
                 #       dropping PyHepMC since in practice we won't be switching back and forth.
 
                 stable_particle_vecs = [ParticleToVector(x) for x in stable_particles]
+                stable_particle_prod_vertices = [ParticleToProductionVertex(x) for x in stable_particles]
 
                 self.WriteToDataBuffer(j,'{}.N'.format(self.stable_truth_particle_name),len(stable_particle_vecs))
 
@@ -179,8 +180,16 @@ class Processor:
                 )
 
                 self.WriteToDataBuffer(j,'{}.PdgId'.format(self.stable_truth_particle_name),[GetParticleID(x) for x in stable_particles],
+                                       dimensions={1:self.nparticles_stable}, dtype=np.dtype('i4')
+                )
+
+                self.WriteToDataBuffer(j, '{}.Xmu'.format(self.stable_truth_particle_name), np.vstack([
+                    [getattr(vec, method)() for vec in stable_particle_prod_vertices]
+                    for method in ['T','X','Y','Z']
+                ]).T,
                                        dimensions={1:self.nparticles_stable}
                 )
+
 
             # 2) Extract the filtered truth record from the events.
             for key,selection in self.truth_selection.items():
@@ -190,6 +199,7 @@ class Processor:
 
                     # truth_selected_particles = list(itertools.compress(event_particles, truth_selected_status == 1))
                     truth_selected_particle_vecs = [ParticleToVector(x) for x in truth_selected_particles]
+                    truth_selected_particle_prod_vertices = [ParticleToProductionVertex(x) for x in truth_selected_particles]
 
                     self.WriteToDataBuffer(j,'{}.N'.format(key),len(truth_selected_particle_vecs))
 
@@ -208,7 +218,14 @@ class Processor:
                     )
 
                     self.WriteToDataBuffer(j,'{}.PdgId'.format(key),[GetParticleID(x) for x in truth_selected_particles],
-                                            dimensions={1:self.nparticles_truth_selected}
+                                            dimensions={1:self.nparticles_truth_selected}, dtype=np.dtype('i4')
+                    )
+
+                    self.WriteToDataBuffer(j, '{}.Xmu'.format(key), np.vstack([
+                        [getattr(vec, method)() for vec in truth_selected_particle_prod_vertices]
+                        for method in ['T','X','Y','Z']
+                    ]).T,
+                                        dimensions={1:self.nparticles_truth_selected}
                     )
 
             # 3) Optional: Extract the full event record, store it separately. This is both particles and vertices.
@@ -225,6 +242,9 @@ class Processor:
             if(self.delphes):
                 for j in range(len(particles)): # TODO: reusing len(particles) (= number of events in chunk), OK but looks kind of hacky
                     for k,delphes_type in enumerate(var_map.keys()): # loop over different kinds of Delphes collections
+
+                        if('missinget' in delphes_type.lower()):
+                            self.n_delphes[k] = 1 # TODO: Would be nice to eliminate this dimension altogether
 
                         # Not all objects have all fields, so we do a lot of checking here.
                         if('pt' in var_map[delphes_type].keys()):
@@ -282,15 +302,47 @@ class Processor:
                             # self.WriteToDataBuffer(j, '{}.Zd'.format(delphes_type), delphes_zd, dimensions={1:self.n_delphes[k]})
                             is_track = True # only tracks have this component
 
+                        # In principle, d0, dz and phi give a different way to get Xdi.
+                        # TODO: Double-check this!
+                        elif('d0' in var_map[delphes_type].keys() and 'z0' in var_map[delphes_type].keys() and 'phi' in var_map[delphes_type].keys()):
+                            # d0, z0 and phi already extracted above
+                            delphes_xd = delphes_d0 * np.cos(delphes_phi)
+                            delphes_yd = delphes_d0 * np.sin(delphes_phi)
+                            delphes_zd = delphes_z0
+                            self.WriteToDataBuffer(j, '{}.Xdi'.format(delphes_type), np.vstack([
+                                delphes_xd, delphes_yd, delphes_zd
+                            ]).T,
+                                                dimensions={1:self.n_delphes[k]}
+                            )
+
                         if('charge' in var_map[delphes_type].keys()):
                             delphes_charge = delphes_arr[var_map[delphes_type]['charge']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
-                            self.WriteToDataBuffer(j, '{}.Charge'.format(delphes_type), delphes_charge, dimensions={1:self.n_delphes[k]}, dtype=int)
+                            self.WriteToDataBuffer(j, '{}.Charge'.format(delphes_type), delphes_charge, dimensions={1:self.n_delphes[k]}, dtype=float)
 
                         if('pid' in var_map[delphes_type].keys()):
                             delphes_pid  = delphes_arr[var_map[delphes_type]['pid']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
-                            self.WriteToDataBuffer(j, '{}.PdgId'.format(delphes_type), delphes_pid, dimensions={1:self.n_delphes[k]}, dtype=int)
+                            self.WriteToDataBuffer(j, '{}.PdgId'.format(delphes_type), delphes_pid, dimensions={1:self.n_delphes[k]}, dtype=np.dtype('i4'))
 
-                        # Certain objects record their position in (t,x,y,z). Note that tracks *do not* do this (those are all zero for them), so we
+                        if('eem' in var_map[delphes_type].keys()): # assume Eem and Ehad together
+                            delphes_e_em   = delphes_arr[var_map[delphes_type]['eem' ]][start_idxs[i]:stop_idxs[i]][j].to_numpy()
+                            self.WriteToDataBuffer(j, '{}.E.EM'.format(delphes_type), delphes_e_em, dimensions={1:self.n_delphes[k]}, dtype=float)
+
+                        if('ehad' in var_map[delphes_type].keys()):
+                            delphes_e_had  = delphes_arr[var_map[delphes_type]['ehad']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
+                            self.WriteToDataBuffer(j, '{}.E.Hadronic'.format(delphes_type), delphes_e_had, dimensions={1:self.n_delphes[k]}, dtype=float)
+
+                        if('etrk' in var_map[delphes_type].keys()):
+                            delphes_e_trk  = delphes_arr[var_map[delphes_type]['etrk']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
+                            self.WriteToDataBuffer(j, '{}.E.Track'.format(delphes_type), delphes_e_trk, dimensions={1:self.n_delphes[k]}, dtype=float)
+
+                        # Calorimeter towers indicate their edges in (eta,phi).
+                        if('edges' in var_map[delphes_type].keys()):
+                            delphes_edges  = delphes_arr[var_map[delphes_type]['edges']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
+                            # separate eta and phi edges -- I think this is clearer for later reference
+                            self.WriteToDataBuffer(j, '{}.Edges.Eta'.format(delphes_type), delphes_edges[:,:2], dimensions={1:self.n_delphes[k]})
+                            self.WriteToDataBuffer(j, '{}.Edges.Phi'.format(delphes_type), delphes_edges[:,2:4], dimensions={1:self.n_delphes[k]})
+
+                        # Certain objects record their position in (t,x,y,z). Note that tracks *do not* do this (those are all zero for them).
                         if('x' in var_map[delphes_type].keys() and not is_track):
 
                             delphes_t  = delphes_arr[var_map[delphes_type]['t' ]][start_idxs[i]:stop_idxs[i]][j].to_numpy()
@@ -344,9 +396,12 @@ class Processor:
             if(dimensions is not None):
                 for idx,val in dimensions.items():
                     try:
-                        buffer_shape[idx] = val
+                        buffer_shape[idx] = int(val)
                     except:
                         pass # TODO: Add warning
+
+            # # Collapse buffer_shape to remove any zeros
+            # buffer_shape = [x for x in buffer_shape if x!=0]
             self.data[key] = np.zeros(buffer_shape, dtype=dtype)
         return
 
@@ -355,11 +410,7 @@ class Processor:
             self.AddKeyToDataBuffer(key,value,dtype,dimensions)
 
         value_array = np.asarray(value) # TODO: not sure if needed?
-        # print('for key = {}, value_array has shape {}'.format(key,value_array.shape))
-        # print('self.nentries_per_chunk = ',self.nevents_per_chunk)
-        # print('\tself.data[{}] has shape {}'.format(key,self.data[key].shape))
         if(event_index is not None):
-
             self.data[key][event_index] = embed_array(value_array,self.data[key][event_index].shape)
         else:
             self.data[key][:] = embed_array(value_array,self.data[key].shape)
@@ -425,6 +476,7 @@ class Processor:
             'X', 'Y', 'Z', 'T', # 4-position -- relevant for non-track objects (tracks parameterized differently)
             'Xd', 'Yd', 'Zd', # 3-position of track position of closest approach to z-axis
             'Eem','Ehad','Etrk', # energy depositions -- relevant for EFlow objects (possibly quite detector card-specific!)
+            'Edges[4]', # edges in eta and phi, for calorimeter towers -- format is (etaMin, etaMax, phiMin, phiMax)
             'Charge', 'PID'
         ]
         delphes_keys = ['{x}.{y}'.format(x=x,y=y) for x in types for y in components]
@@ -446,44 +498,10 @@ class Processor:
                     var = 'z0'
                 elif(var=='errordz'):
                     var = 'errorz0'
+                elif(var=='edges[4]'):
+                    var = 'edges'
                 var_map[key][var.lower()] = branch
         return delphes_arr, var_map
-
-    def PrepDelphesArraysOld(self,):
-        # TODO: This uses uproot.lazy, which is part of uproot 4 but has been
-        #       deprecated and removed in uproot 5, in favor of uproot.dask.
-        #       We'll probably need to support both versions soon.
-
-        types = self.configurator.GetDelphesObjects()
-        components = [
-            'PT','Eta','Phi','ET', 'MET', # momentum componenets
-            'D0','ErrorD0','DZ','ErrorDZ', # impact parameters and associated uncertainties (for tracks). NOTE: Delphes seems to have misspelt "Z0" -> "DZ"!
-            'X', 'Y', 'Z', 'T', # 4-position -- relevant for non-track objects (tracks parameterized differently)
-            'Xd', 'Yd', 'Zd', # 3-position of track position of closest approach to z-axis
-            'Eem','Ehad','Etrk', # energy depositions -- relevant for EFlow objects (possibly quite detector card-specific!)
-            'Charge', 'PID'
-        ] # not all types have all components, this is OK
-        delphes_keys = ['{x}.{y}'.format(x=x,y=y) for x in types for y in components]
-        delphes_tree = 'Delphes'
-        delphes_trees = ['{}:{}'.format('{}/{}'.format(self.outdir,x),delphes_tree) for x in self.delphes_files]
-        delphes_arr = ur.lazy(delphes_trees, full_paths=False, filter_branch=lambda b: b.name in delphes_keys)
-        delphes_keys = delphes_arr.fields # only keep branches that actually exist
-
-        # Some convenient "mapping" between branch names and variable names we'll use.
-        var_map = {key:{} for key in types}
-        for branch in delphes_keys:
-            key,var = branch.split('.')
-            var = var.lower()
-            # convert "et" -> "pt" # TODO: Consider restructuring?
-            if(var=='et' or var=='met'):
-                var = 'pt'
-            elif(var=='dz'): # fix delphes typo
-                var = 'z0'
-            elif(var=='errordz'): # fix delphes typo
-                var = 'errorz0'
-            var_map[key][var.lower()] = branch
-            # print(key,var.lower(),branch)
-        return delphes_arr,var_map
 
     def PrepH5File(self,filename,nentries,data_buffer):
         dsets = {}

@@ -44,13 +44,13 @@ class DisplaySetup:
         """
         self.build_script = 'build.sh'
         command = [self.executable,self.build_script]
-        self.run_command_with_progress(command,'Building EventDisplay:',cwd=self.dir,show_output_lines=20)
+        self.run_command_with_progress(command,'Building Display:',cwd=self.dir,show_output_lines=20)
         return
 
     def Load(self,quiet=False):
         # Load our custom ROOT library.
         try:
-            a = rt.EventDisplay
+            a = rt.Display
             return
         except:
             pass
@@ -71,17 +71,21 @@ class DisplaySetup:
                 found_libary = True
                 break
 
+        print('custom lib path = ',custom_lib_path)
+
         if(not found_libary):
-            if(not quiet): print('Error: The EventDisplay lib has not been built!')
+            if(not quiet): print('Error: The Display lib has not been built!')
             assert False
 
+        custom_inc_paths.reverse()
         for inc_path in custom_inc_paths:
             command = '#include "{}"'.format(inc_path)
+            print(command)
             status = rt.gInterpreter.Declare(command)
             assert status, 'The following header file did not load properly: {}'.format(inc_path)
 
         status = rt.gSystem.Load(custom_lib_path)
-        assert status == 0, 'The EventDisplay lib did not load properly.'
+        assert status == 0, 'The Display lib did not load properly.'
         return
 
     def run_command_with_progress(self, command, prefix, cwd=None, env=None,

@@ -1,8 +1,12 @@
 import ROOT as rt
 import numpy as np
-import os
+import re,pathlib
+import h5py as h5
 from util.display.setup import DisplaySetup
 
+def ExtractJetRadius(text):
+    match = re.search(r'\d+', text)
+    return int(match.group()) / 10 if match else None
 
 class EventDisplay:
 
@@ -12,12 +16,176 @@ class EventDisplay:
         # library is built and ready.
         self.setup = DisplaySetup()
         self.setup.Prepare()
+        self.delphes_card = None
+
+        self.data = None # dictionary where data from an event is loaded
+        self.object_names = []
+
+        # expect to have multiple jet collections, thus have multiple colors to cycle through
+        self.jet_colors = [rt.kYellow, rt.kBlue-7, rt.kSpring, rt.kOrange+1, rt.kMagenta]
 
     def InitializeDisplay(self,delphes_card):
 
-        self.display = rt.EventDisplay.DisplayInterface()
-        self.display.DisplayEvent(delphes_card)
+        self.delphes_card = delphes_card
+        self.display = rt.Display.DisplayInterface(self.delphes_card)
 
         # this_dir = os.path.dirname(os.path.abspath(__file__))
         # filename = this_dir + '/test_data/atlas.root'
         # self.display.Test(filename)
+
+    def Display(self, input_file, event_index = 0, delphes_card = None):
+        if(delphes_card is not None):
+            self.delphes_card = delphes_card
+        assert self.delphes_card is not None
+        self.input_file = input_file
+
+        # load in data -- for now we don't allow for event changing, just picking one event to view.
+        self.LoadData(event_index)
+
+        self.display.DisplayEvent(self.delphes_card)
+
+    def LoadData(self,event_index):
+        assert self.input_file is not None
+        assert pathlib.Path(self.input_file).exists()
+
+        f = h5.File(self.input_file,'r')
+        self.data = {key: f[key][event_index] for key in f.keys()}
+        f.close()
+        self.object_names = list(set([key.split('.')[0] for key in self.data.keys()]))
+
+        self.LoadTrackData()
+        self.LoadCaloData()
+        self.LoadLeptonData()
+        self.LoadPhotonData()
+        self.LoadJetData()
+        self.LoadMETData()
+        self.LoadGenParticleData()
+
+    def LoadTrackData(self):
+        for object_name in self.object_names:
+            if('Track' in object_name):
+                nobj = self.data['{}.N'.format(object_name)]
+                self.display.GetEventDisplay().AddTrackData(
+                    object_name,
+                    self.data['{}.Pmu_cyl'.format(object_name)][:nobj,0],
+                    self.data['{}.Pmu_cyl'.format(object_name)][:nobj,1],
+                    self.data['{}.Pmu_cyl'.format(object_name)][:nobj,2],
+                    self.data['{}.Pmu_cyl'.format(object_name)][:nobj,3],
+                    self.data['{}.Xdi'.format(object_name)][:nobj,0],
+                    self.data['{}.Xdi'.format(object_name)][:nobj,1],
+                    self.data['{}.Xdi'.format(object_name)][:nobj,2],
+                    self.data['{}.PdgId'.format(object_name)][:nobj]
+                )
+
+    def LoadCaloData(self):
+        """
+        We dump all the calorimeter data into the same collection for the viewer,
+        due to some limitations with how it currently functions.
+        """
+        name = 'UnifiedCaloData'
+        for object_name in self.object_names:
+            if('{}.Edges.Eta'.format(object_name) in self.data.keys()):
+                nobj = self.data['{}.N'.format(object_name)]
+
+                self.display.GetEventDisplay().AddCaloData(
+                    name,
+                    self.data['{}.Edges.Eta'.format(object_name)][:nobj,0],
+                    self.data['{}.Edges.Eta'.format(object_name)][:nobj,1],
+                    self.data['{}.Edges.Phi'.format(object_name)][:nobj,0],
+                    self.data['{}.Edges.Phi'.format(object_name)][:nobj,1],
+                    self.data['{}.E.EM'.format(object_name)][:nobj],
+                    self.data['{}.E.Hadronic'.format(object_name)][:nobj]
+                )
+
+    def LoadLeptonData(self):
+        for object_name in self.object_names:
+            if('Electron' in object_name):
+                nobj = self.data['{}.N'.format(object_name)]
+                self.display.GetEventDisplay().AddElectronData(
+                    object_name,
+                    self.data['{}.Pmu_cyl'.format(object_name)][:nobj,0],
+                    self.data['{}.Pmu_cyl'.format(object_name)][:nobj,1],
+                    self.data['{}.Pmu_cyl'.format(object_name)][:nobj,2],
+                    self.data['{}.Pmu_cyl'.format(object_name)][:nobj,3],
+                    self.data['{}.Xdi'.format(object_name)][:nobj,0],
+                    self.data['{}.Xdi'.format(object_name)][:nobj,1],
+                    self.data['{}.Xdi'.format(object_name)][:nobj,2],
+                    self.data['{}.Charge'.format(object_name)][:nobj]
+                )
+            elif('Muon' in object_name):
+                nobj = self.data['{}.N'.format(object_name)]
+                self.display.GetEventDisplay().AddMuonData(
+                    object_name,
+                    self.data['{}.Pmu_cyl'.format(object_name)][:nobj,0],
+                    self.data['{}.Pmu_cyl'.format(object_name)][:nobj,1],
+                    self.data['{}.Pmu_cyl'.format(object_name)][:nobj,2],
+                    self.data['{}.Pmu_cyl'.format(object_name)][:nobj,3],
+                    self.data['{}.Xdi'.format(object_name)][:nobj,0],
+                    self.data['{}.Xdi'.format(object_name)][:nobj,1],
+                    self.data['{}.Xdi'.format(object_name)][:nobj,2],
+                    self.data['{}.Charge'.format(object_name)][:nobj]
+                )
+
+    def LoadJetData(self):
+        jet_counter = 0
+        for object_name in self.object_names:
+            if('jet' in object_name.lower()):
+                nobj = self.data['{}.N'.format(object_name)]
+                radius = ExtractJetRadius(object_name)
+                if(radius is None): radius = 0.4
+
+                color = self.jet_colors[jet_counter % len(self.jet_colors)]
+
+                self.display.GetEventDisplay().AddJetData_EPxPyPz(
+                    object_name,
+                    self.data['{}.Pmu'.format(object_name)][:nobj,0],
+                    self.data['{}.Pmu'.format(object_name)][:nobj,1],
+                    self.data['{}.Pmu'.format(object_name)][:nobj,2],
+                    self.data['{}.Pmu'.format(object_name)][:nobj,3],
+                    radius,
+                    color
+                )
+                jet_counter += 1
+
+    def LoadPhotonData(self):
+        for object_name in self.object_names:
+            if('photon' in object_name.lower() and 'eflow' not in object_name.lower()):
+                nobj = self.data['{}.N'.format(object_name)]
+                self.display.GetEventDisplay().AddPhotonData(
+                    object_name,
+                    self.data['{}.Pmu_cyl'.format(object_name)][:nobj,0],
+                    self.data['{}.Pmu_cyl'.format(object_name)][:nobj,1],
+                    self.data['{}.Pmu_cyl'.format(object_name)][:nobj,2],
+                    self.data['{}.Pmu_cyl'.format(object_name)][:nobj,3],
+                )
+
+    def LoadMETData(self):
+        # TODO: Our MissingET objects can apparently have non-zero z-components...?
+        #       Enforcing eta=0 for the visualization
+        for object_name in self.object_names:
+            if('missinget' in object_name.lower()):
+                nobj = 1
+                self.display.GetEventDisplay().AddMETData(
+                    object_name,
+                    self.data['{}.Pmu_cyl'.format(object_name)][:nobj,0],
+                    np.zeros(nobj),
+                    self.data['{}.Pmu_cyl'.format(object_name)][:nobj,2],
+                    self.data['{}.Pmu_cyl'.format(object_name)][:nobj,3],
+                )
+
+    def LoadGenParticleData(self):
+        for object_name in self.object_names:
+            if('truthparticle' in object_name.lower()):
+                nobj = self.data['{}.N'.format(object_name)]
+                self.display.GetEventDisplay().AddGenParticleData(
+                    object_name,
+                    self.data['{}.Pmu'.format(object_name)][:nobj,0],
+                    self.data['{}.Pmu'.format(object_name)][:nobj,1],
+                    self.data['{}.Pmu'.format(object_name)][:nobj,2],
+                    self.data['{}.Pmu'.format(object_name)][:nobj,3],
+                    self.data['{}.Xmu'.format(object_name)][:nobj,1],
+                    self.data['{}.Xmu'.format(object_name)][:nobj,2],
+                    self.data['{}.Xmu'.format(object_name)][:nobj,3],
+                    self.data['{}.PdgId'.format(object_name)][:nobj]
+                )
+                print(object_name,nobj)

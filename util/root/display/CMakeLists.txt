@@ -160,7 +160,7 @@ if(NOT DELPHES_DISPLAY_LIBRARIES)
 endif()
 
 
-message(STATUS "Found Delphes headers: ${DELPHES_INCLUDE_DIR}")
+message(STATUS "Found Delphes include directory: ${DELPHES_INCLUDE_DIR}")
 message(STATUS "Found Delphes library: ${DELPHES_LIBRARIES}")
 message(STATUS "Found DelphesDisplay library: ${DELPHES_DISPLAY_LIBRARIES}")
 

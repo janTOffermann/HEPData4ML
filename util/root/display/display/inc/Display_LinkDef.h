@@ -4,6 +4,6 @@
 #pragma link off all classes;
 #pragma link off all functions;
 
-#pragma link C++ namespace EventDisplay;
-
+#pragma link C++ namespace Display;
+#pragma link C++ class Display::CaloData+;
 #endif

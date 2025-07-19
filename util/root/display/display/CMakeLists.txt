@@ -4,12 +4,20 @@
 ROOT_STANDARD_LIBRARY_PACKAGE(EventDisplay
   HEADERS
     display/DisplayInterface.h
+    display/EventDisplay.h
+    display/BranchElement.h
+    display/CaloData.h
+    display/TestUtils.h
   SOURCES
     src/DisplayInterface.cxx
+    src/EventDisplay.cxx
+    src/BranchElement.cxx
+    src/CaloData.cxx
+    src/TestUtils.cxx
   LINKDEF
     Display_LinkDef.h
   DEPENDENCIES
-    ROOT::Core ROOT::Tree ROOT::EG ROOT::Geom
+    ROOT::Core ROOT::Tree ROOT::EG ROOT::Geom ROOT::Eve ROOT::Gui ROOT::GuiHtml
   DICTIONARY_OPTIONS
     -writeEmptyRootPCM
 )
@@ -19,6 +27,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(EventDisplay
 # to be called on ${CMAKE_SOURCE_DIR}/display/inc
 
 # Add the include directories.
+message(STATUS "Adding to target_include_directories: ${DELPHES_INCLUDE_DIR}")
 target_include_directories(EventDisplay
     PRIVATE
         "${CMAKE_SOURCE_DIR}/display/inc"
@@ -33,6 +42,9 @@ target_link_libraries(EventDisplay
         ROOT::Tree
         ROOT::EG
         ROOT::Geom
+        ROOT::Eve
+        ROOT::Gui
+        ROOT::GuiHtml
         # ROOT::GeomPainter
         # ROOT::GeomBuilder
 )
