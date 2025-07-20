@@ -47,7 +47,7 @@
 #include "TEveJetCone.h"
 #include "TEveManager.h"
 #include "TEveTrack.h"
-#include "TEveTrackPropagator.h"
+// #include "TEveTrackPropagator.h"
 #include "TEveTrans.h"
 #include "TEveViewer.h"
 #include "TGButton.h"
@@ -99,6 +99,7 @@ namespace Display{
     // delete chain_;
     // for(auto entry : calo3d_) delete entry;
     // for(auto entry : calo3d_lego_) delete entry;
+    for(auto entry : trkProp_) delete entry;
   }
 
   void EventDisplay::EventChanged(Int_t e){
@@ -549,32 +550,45 @@ namespace Display{
   void EventDisplay::AddGenParticleData(TString name,
     vector<Double_t> E, vector<Double_t> px,
     vector<Double_t> py, vector<Double_t> pz,
-    vector<Double_t> x, vector<Double_t> y,
-    vector<Double_t> z,
-    vector<Int_t> pdgId){
+    vector<Double_t> xProd, vector<Double_t> yProd, vector<Double_t> zProd,
+    vector<Double_t> xDecay, vector<Double_t> yDecay, vector<Double_t> zDecay,
+    vector<Bool_t> stable, vector<Int_t> pdgId){
 
-    if(elements_.find(name) == elements_.end()){
-      AddTrackContainer(name,kCyan);
-    }
+    if(elements_.find(name) == elements_.end()) AddTrackContainer(name,kCyan);
     Size_t nElements = E.size();
 
     BranchElement<TEveTrackList>* br = dynamic_cast<BranchElement<TEveTrackList> *>(elements_[name]);
     ROOT::Math::PxPyPzEVector vec;
-    ROOT::Math::XYZTVector posVec;
+    ROOT::Math::XYZTVector productionVec;
+    ROOT::Math::XYZTVector decayVec;
     TEveTrack *eveTrack;
-
-    TEveTrackPropagator *trkProp = br->GetContainer()->GetPropagator();
-    trkProp->SetMagField(0., 0., br->GetTrackingVolume().at(2));
-    trkProp->SetMaxR(br->GetTrackingVolume().at(0));
-    trkProp->SetMaxZ(br->GetTrackingVolume().at(1));
+    TEveTrackPropagator *trkProp;// = new TEveTrackPropagator(br->GetContainer()->GetPropagator());
 
     for(Int_t i = 0; i < nElements; i++){
-    vec.SetCoordinates(px.at(i),py.at(i),pz.at(i),E.at(i));
-    posVec.SetCoordinates(x.at(i)/10.,y.at(i)/10.,z.at(i)/10.,0.); // note the conversion
+      // make a new track propagator -- this allows for customizing the maximum R/Z
+      // trkProp = new TEveTrackPropagator(*(br->GetContainer()->GetPropagator())); // not accessible in ROOT / not implemented! Maybe something to fix in ROOT... -Jan
+      trkProp = new TEveTrackPropagator();
+      trkProp->SetMagField(0., 0., br->GetTrackingVolume().at(2));
+
+      Float_t maxR = br->GetTrackingVolume().at(0);
+      Float_t maxZ = br->GetTrackingVolume().at(1);
+
+      if(!stable.at(i)){
+        decayVec.SetCoordinates(xDecay.at(i),yDecay.at(i),zDecay.at(i),0.);
+        Float_t decayR = decayVec.Rho();
+        Float_t decayZ = decayVec.Z();
+        if(decayR < maxR) maxR = decayR;
+        if(decayZ < maxZ) maxZ = decayZ;
+      }
+      trkProp->SetMaxR(maxR);
+      trkProp->SetMaxZ(maxZ);
+
+      vec.SetCoordinates(px.at(i),py.at(i),pz.at(i),E.at(i));
+      productionVec.SetCoordinates(xProd.at(i)/10.,yProd.at(i)/10.,zProd.at(i)/10.,0.); // note the conversion
       TParticle pb(
         pdgId.at(i), 1, 0, 0, 0, 0,
         vec.Px(), vec.Py(), vec.Pz(), vec.E(),
-        posVec.X(), posVec.Y(), posVec.Z(), posVec.T()
+        productionVec.X(), productionVec.Y(), productionVec.Z(), productionVec.T()
       );
       eveTrack = new TEveTrack(&pb, i, trkProp);
       eveTrack->SetName(Form("%s [%d]", pb.GetName(), i));
@@ -585,6 +599,7 @@ namespace Display{
       br->GetContainer()->AddElement(eveTrack);
       eveTrack->SetLineColor(br->GetColor());
       eveTrack->MakeTrack();
+      trkProp_.push_back(trkProp); // keep this accessible -- avoid memory leaks!
     }
   }
 

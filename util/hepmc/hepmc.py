@@ -264,6 +264,23 @@ def ParticleToProductionVertex(particle:'hm.GenParticle'):
     prod_vertex_position = particle.production_vertex().position()
     return rt.Math.XYZTVector(prod_vertex_position.x(), prod_vertex_position.y(), prod_vertex_position.z(), prod_vertex_position.t())
 
+def IsStable(particle:'hm.GenParticle'):
+    """
+    Check stability via status.
+    """
+    return particle.status() == 1
+
+def ParticleToEndVertex(particle:'hm.GenParticle'):
+    """
+    A little more complex than production vertices -- particles may not have end vertices, if they are stable!
+    """
+    end_vertex = particle.end_vertex()
+    if(end_vertex is None):
+        return rt.Math.XYZTVector(np.nan, np.nan, np.nan, np.nan)
+
+    end_vertex_position = end_vertex.position()
+    return rt.Math.XYZTVector(end_vertex_position.x(), end_vertex_position.y(), end_vertex_position.z(), end_vertex_position.t())
+
 
 def GetParticleID(particle:'hm.GenParticle'):
     return particle.pid()

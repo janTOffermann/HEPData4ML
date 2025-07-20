@@ -173,19 +173,39 @@ class EventDisplay:
                     self.data['{}.Pmu_cyl'.format(object_name)][:nobj,3],
                 )
 
-    def LoadGenParticleData(self):
+    def LoadGenParticleData(self, enforce_lifetimes=False):
         for object_name in self.object_names:
             if('truthparticle' in object_name.lower()):
                 nobj = self.data['{}.N'.format(object_name)]
+
+                # Some trickery: we always have a StableTruthParticles collection,
+                # which -- as the name implies -- is stable, so it does not contain
+                # branches like "Decay.Xmu" or "Stable" because these would be
+                # redundant. Other truth particle collections will have these, though.
+                # Whether or not we want to use these is another thing -- for short-lived
+                # truth particles, limiting their visible tracks to their actual lifetime
+                # might be unproductive as they will be effectively invisible in the event
+                # display.
+
+                if(object_name.lower() == 'stabletruthparticles' or not enforce_lifetimes):
+                    decay_xmu = np.full((nobj,4),0.)
+                    stable = np.full(nobj,True)
+                else: # realistic lifetimes -- at the possible cost of infinitesimally short tracks
+                    decay_xmu = self.data['{}.Decay.Xmu'.format(object_name)]
+                    stable = self.data['{}.Stable'.format(object_name)]
+
                 self.display.GetEventDisplay().AddGenParticleData(
                     object_name,
                     self.data['{}.Pmu'.format(object_name)][:nobj,0],
                     self.data['{}.Pmu'.format(object_name)][:nobj,1],
                     self.data['{}.Pmu'.format(object_name)][:nobj,2],
                     self.data['{}.Pmu'.format(object_name)][:nobj,3],
-                    self.data['{}.Xmu'.format(object_name)][:nobj,1],
-                    self.data['{}.Xmu'.format(object_name)][:nobj,2],
-                    self.data['{}.Xmu'.format(object_name)][:nobj,3],
+                    self.data['{}.Production.Xmu'.format(object_name)][:nobj,1],
+                    self.data['{}.Production.Xmu'.format(object_name)][:nobj,2],
+                    self.data['{}.Production.Xmu'.format(object_name)][:nobj,3],
+                    decay_xmu[:nobj,1],
+                    decay_xmu[:nobj,2],
+                    decay_xmu[:nobj,3],
+                    stable[:nobj],
                     self.data['{}.PdgId'.format(object_name)][:nobj]
                 )
-                print(object_name,nobj)
