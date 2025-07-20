@@ -37,6 +37,7 @@
 #include "Rtypes.h"
 #include "TEveElement.h"
 #include "TEveCalo.h"
+#include "TEveTrackPropagator.h"
 
 class TAxis;
 class TChain;
@@ -82,7 +83,7 @@ namespace Display{
     void AddMuonData(TString name,vector<Double_t> pt, vector<Double_t> eta, vector<Double_t> phi, vector<Double_t> m, vector<Double_t> x, vector<Double_t> y, vector<Double_t> z, vector<Double_t> charge);
     void AddPhotonData(TString name,vector<Double_t> pt, vector<Double_t> eta, vector<Double_t> phi, vector<Double_t> m);
     void AddMETData(TString name,vector<Double_t> pt, vector<Double_t> eta, vector<Double_t> phi, vector<Double_t> m);
-    void AddGenParticleData(TString name,vector<Double_t> E, vector<Double_t> px, vector<Double_t> py, vector<Double_t> pz, vector<Double_t> x, vector<Double_t> y, vector<Double_t> z, vector<Int_t> pdgId); // TODO: Eventually support displaced particle production vertices!
+    void AddGenParticleData(TString name,vector<Double_t> E, vector<Double_t> px, vector<Double_t> py, vector<Double_t> pz, vector<Double_t> xProd, vector<Double_t> yProd, vector<Double_t> zProd, vector<Double_t> xDecay, vector<Double_t> yDecay, vector<Double_t> zDecay, vector<Bool_t> stable, vector<Int_t> pdgId); // TODO: Eventually support displaced particle production vertices!
 
     // Functions for creating data containers.
     // These can be explicitly called, or they will be invoked by the
@@ -130,6 +131,8 @@ namespace Display{
     TGStatusBar *fStatusBar_;
     TEveElementList *geometry_ = 0;
     vector<TString> addedContainers_ = {};
+
+    vector<TEveTrackPropagator *> trkProp_ = {};
 
     // vector<TEveCalo3D *> calo3d_ = {};
     // vector<TEveCaloLego *> calo3d_lego_ = {};

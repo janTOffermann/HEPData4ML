@@ -7,7 +7,7 @@ import subprocess as sub
 from util.calcs import embed_array
 from util.buffer import IndexableLazyLoader
 from util.qol_utils.progress_bar import printProgressBarColor
-from util.hepmc.hepmc import ExtractHepMCEvents, ExtractHepMCParticles, ParticleToVector, ParticleToProductionVertex, GetParticleID
+from util.hepmc.hepmc import ExtractHepMCEvents, ExtractHepMCParticles, ParticleToVector, ParticleToProductionVertex, ParticleToEndVertex, IsStable, GetParticleID
 from typing import Union, Optional, List, TYPE_CHECKING
 
 if(TYPE_CHECKING):
@@ -161,7 +161,6 @@ class Processor:
                 #       dropping PyHepMC since in practice we won't be switching back and forth.
 
                 stable_particle_vecs = [ParticleToVector(x) for x in stable_particles]
-                stable_particle_prod_vertices = [ParticleToProductionVertex(x) for x in stable_particles]
 
                 self.WriteToDataBuffer(j,'{}.N'.format(self.stable_truth_particle_name),len(stable_particle_vecs))
 
@@ -183,8 +182,8 @@ class Processor:
                                        dimensions={1:self.nparticles_stable}, dtype=np.dtype('i4')
                 )
 
-                self.WriteToDataBuffer(j, '{}.Xmu'.format(self.stable_truth_particle_name), np.vstack([
-                    [getattr(vec, method)() for vec in stable_particle_prod_vertices]
+                self.WriteToDataBuffer(j, '{}.Production.Xmu'.format(self.stable_truth_particle_name), np.vstack([
+                    [getattr(vec, method)() for vec in [ParticleToProductionVertex(x) for x in stable_particles]]
                     for method in ['T','X','Y','Z']
                 ]).T,
                                        dimensions={1:self.nparticles_stable}
@@ -199,7 +198,6 @@ class Processor:
 
                     # truth_selected_particles = list(itertools.compress(event_particles, truth_selected_status == 1))
                     truth_selected_particle_vecs = [ParticleToVector(x) for x in truth_selected_particles]
-                    truth_selected_particle_prod_vertices = [ParticleToProductionVertex(x) for x in truth_selected_particles]
 
                     self.WriteToDataBuffer(j,'{}.N'.format(key),len(truth_selected_particle_vecs))
 
@@ -221,8 +219,19 @@ class Processor:
                                             dimensions={1:self.nparticles_truth_selected}, dtype=np.dtype('i4')
                     )
 
-                    self.WriteToDataBuffer(j, '{}.Xmu'.format(key), np.vstack([
-                        [getattr(vec, method)() for vec in truth_selected_particle_prod_vertices]
+                    self.WriteToDataBuffer(j, '{}.Production.Xmu'.format(key), np.vstack([
+                        [getattr(vec, method)() for vec in [ParticleToProductionVertex(x) for x in truth_selected_particles]]
+                        for method in ['T','X','Y','Z']
+                    ]).T,
+                                        dimensions={1:self.nparticles_truth_selected}
+                    )
+
+                    self.WriteToDataBuffer(j,'{}.Stable'.format(key),[IsStable(x) for x in truth_selected_particles],
+                                            dimensions={1:self.nparticles_truth_selected}, dtype=np.dtype('bool')
+                    )
+
+                    self.WriteToDataBuffer(j, '{}.Decay.Xmu'.format(key), np.vstack([
+                        [getattr(vec, method)() for vec in [ParticleToEndVertex(x) for x in truth_selected_particles]]
                         for method in ['T','X','Y','Z']
                     ]).T,
                                         dimensions={1:self.nparticles_truth_selected}
