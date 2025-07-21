@@ -368,6 +368,10 @@ class Processor:
                                                 dimensions={1:self.n_delphes[k]}
                             )
 
+                            # another opportunity to add multiplicity, if we haven't already
+                            self.WriteToDataBuffer(j,'{}.N'.format(delphes_type),len(delphes_t))
+
+
             # We have now filled a chunk, time to write it.
             # If this is the first instance of the loop, we will initialize the HDF5 file.
             # NOTE: We assume that after this first loop, we've generated all the necessary keys.

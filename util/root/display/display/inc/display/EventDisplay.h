@@ -84,6 +84,7 @@ namespace Display{
     void AddPhotonData(TString name,vector<Double_t> pt, vector<Double_t> eta, vector<Double_t> phi, vector<Double_t> m);
     void AddMETData(TString name,vector<Double_t> pt, vector<Double_t> eta, vector<Double_t> phi, vector<Double_t> m);
     void AddGenParticleData(TString name,vector<Double_t> E, vector<Double_t> px, vector<Double_t> py, vector<Double_t> pz, vector<Double_t> xProd, vector<Double_t> yProd, vector<Double_t> zProd, vector<Double_t> xDecay, vector<Double_t> yDecay, vector<Double_t> zDecay, vector<Bool_t> stable, vector<Int_t> pdgId); // TODO: Eventually support displaced particle production vertices!
+    void AddVertexData(TString name, vector<Double_t> x, vector<Double_t> y, vector<Double_t> z);
 
     // Functions for creating data containers.
     // These can be explicitly called, or they will be invoked by the
@@ -98,9 +99,8 @@ namespace Display{
     void AddMuonContainer(TString name, /*Int_t expectedSize=10,*/ const enum EColor color = kRed, Bool_t truthLevel = kFALSE){
       AddTrackContainer(name,/*Int_t expectedSize,*/ color, truthLevel, kTRUE);
     }
-
     void AddMETContainer(TString name, /*Int_t expectedSize=10,*/ const enum EColor color = kViolet);
-
+    void AddVertexContainer(TString name, /*Int_t expectedSize=10,*/ const enum EColor color = kBlue);
 
     void Display(Int_t eventNumber=-1);
 

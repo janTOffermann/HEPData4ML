@@ -53,6 +53,7 @@ class EventDisplay:
         f.close()
         self.object_names = list(set([key.split('.')[0] for key in self.data.keys()]))
 
+        self.LoadVertexData()
         self.LoadTrackData()
         self.LoadCaloData()
         self.LoadLeptonData()
@@ -208,4 +209,15 @@ class EventDisplay:
                     decay_xmu[:nobj,3],
                     stable[:nobj],
                     self.data['{}.PdgId'.format(object_name)][:nobj]
+                )
+
+    def LoadVertexData(self):
+        for object_name in self.object_names:
+            if('vertex' in object_name.lower()):
+                nobj = self.data['{}.N'.format(object_name)]
+                self.display.GetEventDisplay().AddVertexData(
+                    object_name,
+                    self.data['{}.Xmu'.format(object_name)][:nobj,1],
+                    self.data['{}.Xmu'.format(object_name)][:nobj,2],
+                    self.data['{}.Xmu'.format(object_name)][:nobj,3]
                 )

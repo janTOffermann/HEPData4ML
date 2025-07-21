@@ -47,6 +47,7 @@
 #include "TEveJetCone.h"
 #include "TEveManager.h"
 #include "TEveTrack.h"
+#include "TEvePointSet.h"
 // #include "TEveTrackPropagator.h"
 #include "TEveTrans.h"
 #include "TEveViewer.h"
@@ -572,9 +573,10 @@ namespace Display{
 
       Float_t maxR = br->GetTrackingVolume().at(0);
       Float_t maxZ = br->GetTrackingVolume().at(1);
+      productionVec.SetCoordinates(xProd.at(i)/10.,yProd.at(i)/10.,zProd.at(i)/10.,0.); // note the conversion
 
       if(!stable.at(i)){
-        decayVec.SetCoordinates(xDecay.at(i),yDecay.at(i),zDecay.at(i),0.);
+        decayVec.SetCoordinates(xDecay.at(i)/10.,yDecay.at(i)/10.,zDecay.at(i)/10.,0.);
         Float_t decayR = decayVec.Rho();
         Float_t decayZ = decayVec.Z();
         if(decayR < maxR) maxR = decayR;
@@ -584,7 +586,6 @@ namespace Display{
       trkProp->SetMaxZ(maxZ);
 
       vec.SetCoordinates(px.at(i),py.at(i),pz.at(i),E.at(i));
-      productionVec.SetCoordinates(xProd.at(i)/10.,yProd.at(i)/10.,zProd.at(i)/10.,0.); // note the conversion
       TParticle pb(
         pdgId.at(i), 1, 0, 0, 0, 0,
         vec.Px(), vec.Py(), vec.Pz(), vec.E(),
@@ -600,6 +601,33 @@ namespace Display{
       eveTrack->SetLineColor(br->GetColor());
       eveTrack->MakeTrack();
       trkProp_.push_back(trkProp); // keep this accessible -- avoid memory leaks!
+    }
+  }
+
+  void EventDisplay::AddVertexData(TString name, vector<Double_t> x, vector<Double_t> y, vector<Double_t> z){
+    if(elements_.find(name) == elements_.end()) AddVertexContainer(name);
+    Size_t nElements = x.size();
+    BranchElement<TEveElementList>* br = dynamic_cast<BranchElement<TEveElementList> *>(elements_[name]);
+    TEvePointSet* pointSet;
+
+    Float_t maxR2 = TMath::Sq(br->GetTrackingVolume().at(0));
+    Float_t maxZ = br->GetTrackingVolume().at(1);
+    Float_t R2 = 0.;
+
+    for(Int_t i = 0; i < nElements; i++){
+
+      if(z.at(i) > maxZ) continue;
+      R2 = TMath::Sq(x.at(i)/10.) + TMath::Sq(y.at(i)/10.);
+      if(R2 > maxR2) continue;
+
+      TString vertexName = name + Form(" [%d]", i);
+      pointSet = new TEvePointSet(vertexName,1); // make these all separate TEvePointSets, so that we can separately manipulate them
+      pointSet->SetMarkerStyle(kFullCircle);
+      pointSet->SetMarkerColor(br->GetColor());
+      pointSet->SetMarkerSize(2);
+      pointSet->SetNextPoint(x.at(i)/10.,y.at(i)/10.,z.at(i)/10.);
+      // cout << "Added " << vertexName << " @ " << x.at(i)/10. << " " << y.at(i)/10. << " " << z.at(i)/10. << endl;
+      br->GetContainer()->AddElement(pointSet);
     }
   }
 
@@ -642,6 +670,13 @@ namespace Display{
     elements_[name] = elist;
   }
 
+  void EventDisplay::AddVertexContainer(TString name, /*Int_t expectedSize,*/ const enum EColor color){
+    // TClonesArray* arr = new TClonesArray(name,expectedSize); // will tuck this away in the BranchElement.
+    BranchElement<TEveElementList> *elist = new BranchElement<TEveElementList>(name, color);
+    elist->SetTrackingVolume(tkRadius_, tkHalfLength_, bz_);
+    elements_[name] = elist;
+  }
+
   void EventDisplay::ResetContainers(){
     for(map<TString, BranchBase *>::iterator data = elements_.begin(); data != elements_.end(); ++data){
       data->second->Reset(); // TODO: Check this?
@@ -666,17 +701,9 @@ namespace Display{
     fStatusBar_->SetText(Form("Loading event %d.", event_id_), 1);
     gSystem->ProcessEvents();
 
-    // // clear the previous event
-    // TODO: This is broken with current usage, displays an event and immediately erases it
-    // gEve->GetViewers()->DeleteAnnotations();
-    // ResetContainers();
 
-    // // Load selected branches with data from specified event
-    // treeReader_->ReadEntry(event_id_);
-    // for(map<TString, BranchBase *>::iterator data = elements_.begin(); data != elements_.end(); ++data)
-    // {
-    //   data->second->ReadBranch();
-    // }
+    // Here, one could clear & then load an event from an associated file -- this is what Delphes does,
+    // but I have disabled it since we're taking in data from memory (via our own API). -Jan
 
     // // update display
     TEveElement *top = (TEveElement *)gEve->GetCurrentEvent();
