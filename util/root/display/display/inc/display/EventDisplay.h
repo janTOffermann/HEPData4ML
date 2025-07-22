@@ -43,13 +43,12 @@ class TAxis;
 class TChain;
 class TGHtml;
 class TGStatusBar;
-class DelphesDisplay;
+// class DelphesDisplay;
 class Delphes3DGeometry;
 class DelphesBranchBase;
 class DelphesHtmlSummary;
 class DelphesPlotSummary;
-class ExRootTreeReader;
-
+class ExDelphesDisplay;
 
 using namespace std;
 
@@ -84,7 +83,7 @@ namespace Display{
     void AddPhotonData(TString name,vector<Double_t> pt, vector<Double_t> eta, vector<Double_t> phi, vector<Double_t> m);
     void AddMETData(TString name,vector<Double_t> pt, vector<Double_t> eta, vector<Double_t> phi, vector<Double_t> m);
     void AddGenParticleData(TString name,vector<Double_t> E, vector<Double_t> px, vector<Double_t> py, vector<Double_t> pz, vector<Double_t> xProd, vector<Double_t> yProd, vector<Double_t> zProd, vector<Double_t> xDecay, vector<Double_t> yDecay, vector<Double_t> zDecay, vector<Bool_t> stable, vector<Int_t> pdgId); // TODO: Eventually support displaced particle production vertices!
-    void AddVertexData(TString name, vector<Double_t> x, vector<Double_t> y, vector<Double_t> z);
+    void AddVertexData(TString name, vector<Double_t> x, vector<Double_t> y, vector<Double_t> z, const enum EColor color = kBlue);
 
     // Functions for creating data containers.
     // These can be explicitly called, or they will be invoked by the
@@ -113,18 +112,28 @@ namespace Display{
     void ResetContainers();
 
     void AddContainersToScene();
-    void CreateUnifiedCaloDataContainer();
+    // void CreateUnifiedCaloDataContainer();
     void InitScene();
+
+    void ScaleLego();
+    void AddJetsToCaloDisplay();
+    void AddRefsToCaloDisplay();
+
+    // Need this unfortunate function due to some pretty irritating
+    // TEveCaloLego behaviour... - Jan
+    vector<Double_t> ConvertEtaPhiToCaloLego(Double_t eta, Double_t phi);
+    Double_t ConvertRadiusToCaloLego(Double_t radius);
+
+
 
     // Configuration and global variables.
     Int_t event_id_;
     Int_t event_id_tmp_;
-    ExRootTreeReader *treeReader_;
     Double_t tkRadius_, totRadius_, tkHalfLength_, muHalfLength_, bz_;
     TAxis *etaAxis_, *phiAxis_;
     TChain *chain_;
     map<TString, BranchBase *> elements_;
-    DelphesDisplay *delphesDisplay_;
+    ExDelphesDisplay *delphesDisplay_;
     DelphesHtmlSummary *htmlSummary_;
     TGHtml *gHtml_;
     DelphesPlotSummary *plotSummary_;
@@ -133,6 +142,15 @@ namespace Display{
     vector<TString> addedContainers_ = {};
 
     vector<TEveTrackPropagator *> trkProp_ = {};
+
+    TEveCaloLego *lego_ = 0;
+    vector<TString> jetContainers_ = {}; // keep track of which containers represent jets
+    map<TString, vector<Float_t>> jetEta_ = {};
+    map<TString, vector<Float_t>> jetPhi_ = {};
+    map<TString, Float_t> jetRadius_ = {};
+    Double_t legoEtaScale_ = 1.;
+    Double_t legoPhiScale_ = 1.;
+
 
     // vector<TEveCalo3D *> calo3d_ = {};
     // vector<TEveCaloLego *> calo3d_lego_ = {};

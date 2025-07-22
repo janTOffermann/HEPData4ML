@@ -5,7 +5,7 @@ import util.pileup.pileup as pu
 
 config = {
     'generation' : {
-        'proc' : 'bbar', # Filename. Can also correspond to a card name in the util/pythia_templates subdirectory.
+        'proc' : 'Top_Wqq', # Filename. Can also correspond to a card name in the util/pythia_templates subdirectory.
         'hadronization' : True, # Pythia8 hadronization flag
         'mpi' : False, # Pythia8 multi-parton interactions flag
         'isr' : False, # Pythia8 initial-state radiation flag
@@ -17,7 +17,8 @@ config = {
     },
 
     'pileup' : {
-        'handler' : None, # pu.PileupOverlay("/home/jofferma/data/HEPData4ML/pileup/part0/*.root",rng_seed=1) # For example, you can overlay pileup events from some pre-existing HepMC3 files (ideally in ROOT format!), which you can generate with this package too.
+        'handler':None,
+        # 'handler': pu.PileupOverlay("/Users/jan/tmp/pileup/part0/events_0.root",rng_seed=1) # For example, you can overlay pileup events from some pre-existing HepMC3 files (ideally in ROOT format!), which you can generate with this package too.
     },
 
     'simulation' : {
@@ -38,8 +39,10 @@ config = {
             'TruthParticles':
             parsel.MultiSelection(
                 [
-                    parsel.FirstSelector(23,5), # bottom quark
-                    parsel.AlgoSelection(algos.SelectFinalStateDaughters(parsel.FirstSelector(23,5)),n=60) # up to 60 stable daughters of b quark
+                    parsel.FirstSelector(22, 6), # top quark
+                    parsel.FirstSelector(23, 5), # bottom quark
+                    parsel.FirstSelector(22,24), # W boson
+                    parsel.AlgoSelection(algos.SelectFinalStateDaughters(parsel.FirstSelector(22,24)),n=120) # up to 120 stable daughters of W
                 ]
             ),
         },
@@ -47,8 +50,9 @@ config = {
         'split_seed' : 1, # RNG seed to be used for splitting the dataset into train/test/validation samples.
         'post_processing': [ # What post-processing algorithms to run -- this includes jet clustering! You can queue up multiple separate post-processors.
             # cluster jets
-            jets.JetFinder('StableTruthParticles',jet_algorithm='anti_kt',radius=0.4,jet_name='AntiKt04GenJets'), # some truth jets
-            jets.JetFinder(['EFlowPhoton','EFlowNeutralHadron','EFlowTrack'],jet_algorithm='anti_kt',radius=0.4,jet_name='AntiKt04GenJets').GhostAssociation('TruthParticles',0,mode='tag'), # some reco-level jets -- incl. a tag for whether or not they're ghost-associated with the bottom quark selected above
+            # jets.JetFinder('StableTruthParticles',jet_algorithm='anti_kt',radius=0.4,jet_name='AntiKt04GenJets').PtFilter(15.), # some truth jets, with at least 15 GeV in pT
+            jets.JetFinder(['EFlowPhoton','EFlowNeutralHadron','EFlowTrack'],jet_algorithm='anti_kt',radius=0.4,jet_name='AntiKt04RecoJets').PtFilter(15.).GhostAssociation('TruthParticles',0,mode='tag'), # some reco-level jets -- incl. a tag for whether or not they're ghost-associated with the bottom quark selected above
+            jets.JetFinder(['EFlowPhoton','EFlowNeutralHadron','EFlowTrack'],jet_algorithm='anti_kt',radius=0.8,jet_name='AntiKt08RecoJets').PtFilter(15.), # some reco-level jets -- larger radius
 
             # jets.JetFinder('StableTruthParticles',jet_algorithm='anti_kt',radius=0.8,jet_name='AntiKt08GenJets').PtFilter(15.).EtaFilter(2.).JohnsHopkinsTagger(mode='tag')
             # jets.JetFinder('StableTruthParticles',jet_algorithm='anti_kt',radius=0.4,jet_name='AntiKt04GenJets_bGhostAssociated').GhostAssociation('TruthParticles',0,mode='tag'),

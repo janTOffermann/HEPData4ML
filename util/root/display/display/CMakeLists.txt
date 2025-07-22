@@ -5,12 +5,14 @@ ROOT_STANDARD_LIBRARY_PACKAGE(EventDisplay
   HEADERS
     display/DisplayInterface.h
     display/EventDisplay.h
+    display/ExDelphesDisplay.h
     display/BranchElement.h
     display/CaloData.h
     display/TestUtils.h
   SOURCES
     src/DisplayInterface.cxx
     src/EventDisplay.cxx
+    src/ExDelphesDisplay.cxx
     src/BranchElement.cxx
     src/CaloData.cxx
     src/TestUtils.cxx
