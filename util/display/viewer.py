@@ -22,7 +22,7 @@ class EventDisplay:
         self.object_names = []
 
         # expect to have multiple jet collections, thus have multiple colors to cycle through
-        self.jet_colors = [rt.kYellow, rt.kBlue-7, rt.kSpring, rt.kOrange+1, rt.kMagenta]
+        self.jet_colors = [rt.kYellow, rt.kRed, rt.kBlue-7, rt.kSpring, rt.kOrange+1, rt.kMagenta]
 
     def InitializeDisplay(self,delphes_card):
 

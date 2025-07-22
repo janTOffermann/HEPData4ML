@@ -71,8 +71,6 @@ class DisplaySetup:
                 found_libary = True
                 break
 
-        print('custom lib path = ',custom_lib_path)
-
         if(not found_libary):
             if(not quiet): print('Error: The Display lib has not been built!')
             assert False
@@ -80,7 +78,6 @@ class DisplaySetup:
         custom_inc_paths.reverse()
         for inc_path in custom_inc_paths:
             command = '#include "{}"'.format(inc_path)
-            print(command)
             status = rt.gInterpreter.Declare(command)
             assert status, 'The following header file did not load properly: {}'.format(inc_path)
 

@@ -29,6 +29,8 @@
 
 #include <display/EventDisplay.h>
 #include <display/BranchElement.h>
+#include <display/CaloData.h>
+#include <display/ExDelphesDisplay.h>
 
 #include <algorithm>
 #include <cassert>
@@ -48,6 +50,10 @@
 #include "TEveManager.h"
 #include "TEveTrack.h"
 #include "TEvePointSet.h"
+#include "TEveScene.h"
+
+#include "TGeoTube.h"
+#include "TEveGeoShape.h"
 // #include "TEveTrackPropagator.h"
 #include "TEveTrans.h"
 #include "TEveViewer.h"
@@ -69,9 +75,8 @@
 #include "Math/VectorUtil.h"
 
 #include "display/Delphes3DGeometry.h"
-#include "display/DelphesBranchElement.h"
-#include "display/CaloData.h"
-#include "display/DelphesDisplay.h"
+// #include "display/DelphesBranchElement.h"
+// #include "display/DelphesDisplay.h"
 #include "display/DelphesHtmlSummary.h"
 #include "display/DelphesPlotSummary.h"
 
@@ -90,7 +95,7 @@ namespace Display{
     muHalfLength_ = 6.0;
     bz_ = 3.8;
     // chain_ = new TChain("Delphes");
-    treeReader_ = 0;
+    // treeReader_ = 0;
     delphesDisplay_ = 0;
     etaAxis_ = 0;
     phiAxis_ = 0;
@@ -101,6 +106,7 @@ namespace Display{
     // for(auto entry : calo3d_) delete entry;
     // for(auto entry : calo3d_lego_) delete entry;
     for(auto entry : trkProp_) delete entry;
+    if(lego_ != 0) delete lego_;
   }
 
   void EventDisplay::EventChanged(Int_t e){
@@ -142,7 +148,7 @@ namespace Display{
     tkHalfLength_ = 3.0;
     bz_ = 3.8;
     // chain_ = new TChain("Delphes");
-    treeReader_ = 0;
+    // treeReader_ = 0;
     delphesDisplay_ = 0;
 
     // initialize the application
@@ -252,16 +258,171 @@ namespace Display{
   //   return;
   // }
 
+  void EventDisplay::AddJetsToCaloDisplay(){
+    TEveScene* caloScene = delphesDisplay_->GetLegoCaloScene();
+
+    // Determine the eta and phi boundaries of our Lego display
+    Double_t phiMin, phiMax, etaMin, etaMax = 0.;
+    lego_->GetData()->GetEtaLimits(etaMin, etaMax);
+    lego_->GetData()->GetPhiLimits(phiMin, phiMax);
+
+    Double_t etaCenter = 0.5 * (etaMax + etaMin);
+    Double_t phiCenter = 0.5 * (phiMax + phiMin);
+
+    for(TString jetContainerName : jetContainers_){
+
+      Int_t nJets = jetEta_[jetContainerName].size();
+      for(Int_t i = 0; i < nJets; i++){
+          // Create a thin cylinder
+          Float_t radius = jetRadius_[jetContainerName];
+          Double_t dz = 0.01 * (0.4 / radius);
+          radius = ConvertRadiusToCaloLego(radius);
+          TGeoTube* tube = new TGeoTube(0.95 * radius, radius, dz);  // Very thin height // TODO: need to get radius!
+          TGeoVolume* vol = new TGeoVolume("JetProjection", tube);
+          vol->SetLineColor(kRed);
+          vol->SetTransparency(50);
+
+          TEveGeoShape* shape = new TEveGeoShape("Jet Circle");
+          BranchElement<TEveElementList>* br = dynamic_cast<BranchElement<TEveElementList> *>(elements_[jetContainerName]);
+          shape->SetFillColor(br->GetColor());
+          shape->SetLineColor(br->GetColor());
+          shape->SetShape(tube);
+
+          Double_t eta = jetEta_[jetContainerName].at(i);
+          Double_t phi = jetPhi_[jetContainerName].at(i);
+
+          // shape->RefMainTrans() = lego_->RefMainTrans();
+          shape->RefMainTrans().SetTrans(lego_->RefMainTrans());
+
+          // lego_->RefMainTrans().Print();
+
+          vector<Double_t> visualCoordinates = ConvertEtaPhiToCaloLego(eta,phi);
+          shape->RefMainTrans().SetPos(visualCoordinates.at(0), visualCoordinates.at(1), 0.0);
+          caloScene->AddElement(shape);
+      }
+    }
+  }
+
+  Double_t EventDisplay::ConvertRadiusToCaloLego(Double_t radius){
+    if(!lego_->GetBBoxOK()) lego_->ComputeBBox();
+
+    Double_t phiMin, phiMax, etaMin, etaMax = 0.;
+    lego_->GetData()->GetEtaLimits(etaMin, etaMax);
+    lego_->GetData()->GetPhiLimits(phiMin, phiMax);
+
+    Double_t etaRange = etaMax - etaMin;
+    Double_t phiRange = phiMax - phiMin;
+
+    Float_t* bbox = lego_->GetBBox();
+    Float_t magicNumber = 1.2; // Note: See L844 of TEveCalo.cxx (TEveCaloLego::ComputeBBox()), this is honestly pretty nasty...
+    Double_t xRange = (bbox[1] - bbox[0]) / magicNumber;
+    Double_t yRange = (bbox[3] - bbox[2]) / magicNumber;
+
+    Double_t etaScale = xRange / etaRange;
+    Double_t phiScale = yRange / phiRange;
+
+    Double_t sx,sy,sz;
+    lego_->RefMainTrans().GetScale(sx,sy,sz);
+    return radius * etaScale / 2.; // assuming etaScale == phiScale, otherwise this fails? // TODO: Not sure where factor of 1/2 comes from, empirically works? -Jan
+  }
+
+  vector<Double_t> EventDisplay::ConvertEtaPhiToCaloLego(Double_t eta, Double_t phi){
+    if(!lego_->GetBBoxOK()) lego_->ComputeBBox();
+
+    Double_t phiMin, phiMax, etaMin, etaMax = 0.;
+    lego_->GetData()->GetEtaLimits(etaMin, etaMax);
+    lego_->GetData()->GetPhiLimits(phiMin, phiMax);
+
+    Double_t etaRange = etaMax - etaMin;
+    Double_t phiRange = phiMax - phiMin;
+
+    Float_t* bbox = lego_->GetBBox();
+    Float_t magicNumber = 1.2; // Note: See L844 of TEveCalo.cxx (TEveCaloLego::ComputeBBox()), this is honestly pretty nasty...
+    Double_t xRange = (bbox[1] - bbox[0]) / magicNumber;
+    Double_t yRange = (bbox[3] - bbox[2]) / magicNumber;
+
+    Double_t etaScale = xRange / etaRange;
+    Double_t phiScale = yRange / phiRange;
+
+    Double_t etaCenter = 0.5 * (etaMax + etaMin);
+    Double_t phiCenter = 0.5 * (phiMax + phiMin);
+
+    Double_t sx,sy,sz;
+    lego_->RefMainTrans().GetScale(sx,sy,sz);
+
+    Double_t etaNew = (eta - etaCenter) * etaScale * sx;
+    Double_t phiNew = (phi - phiCenter) * phiScale * sy;
+
+    // cout << Form("\netaRange = %f, xRange = %f \t-> etaScale = %f",etaRange,xRange,etaScale) << endl;
+    // cout << Form("phiRange = %f, yRange = %f \t-> phiScale = %f",phiRange,yRange,phiScale) << endl;
+    // cout << Form("sx = %f, sy = %f, sz = %f\n",sx,sy,sz) << endl;
+
+    vector<Double_t> adjustedCoordinates = {};
+    adjustedCoordinates.push_back(etaNew);
+    adjustedCoordinates.push_back(phiNew);
+    return adjustedCoordinates;
+  }
+
+
+  void EventDisplay::AddRefsToCaloDisplay(){
+    TEveScene* caloScene = delphesDisplay_->GetLegoCaloScene();
+
+    vector<Float_t> etaRefs = {-5., -4., -3., -2., -1.,0.,1., 2., 3., 4., 5.};
+    vector<Float_t> phiRefs = {-5., -4., -3., -2., -1., 0., 1., 2., 3., 4., 5.};
+
+    TEvePointSet* points = new TEvePointSet(etaRefs.size() * phiRefs.size());
+    points->SetMarkerColor(kGreen);
+    points->SetMarkerSize(2);
+
+    for(Float_t etaRef : etaRefs){
+        for(Float_t phiRef : phiRefs){
+            vector<Double_t> adjustedCoordinates = ConvertEtaPhiToCaloLego(etaRef,phiRef);
+            points->SetNextPoint(adjustedCoordinates.at(0), adjustedCoordinates.at(1), 0.01);
+        }
+    }
+    caloScene->AddElement(points);
+  }
+
+  void EventDisplay::ScaleLego(){
+    Double_t etaMin, etaMax, phiMin, phiMax = 0.;
+    lego_->GetData()->GetEtaLimits(etaMin, etaMax);
+    lego_->GetData()->GetPhiLimits(phiMin, phiMax);
+
+    // Double_t etaScale = legoEtaScale_ * (etaMax - etaMin);
+    // Double_t phiScale = legoPhiScale_ * (phiMax - phiMin);
+    Double_t etaScale = 150.;
+    Double_t phiScale = 150.;
+
+    lego_->RefMainTrans().SetScale(etaScale, phiScale, TMath::Pi()); // not sure what the z-scale is doing here...
+    lego_->ComputeBBox();
+  }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   void EventDisplay::InitScene(){
 
     // Add the actual data containers to the scene.
     AddContainersToScene();
 
     // TODO: Create a unified CaloData container, to use for the viewing.
-    //       The current function is broken!
+    //       The current function is broken! Doing this instead at the Python level.
     // CreateUnifiedCaloDataContainer();
 
-    delphesDisplay_ = new DelphesDisplay;
+    delphesDisplay_ = new ExDelphesDisplay;
     gEve->AddGlobalElement(geometry_);
     delphesDisplay_->ImportGeomRPhi(geometry_);
     delphesDisplay_->ImportGeomRhoZ(geometry_);
@@ -285,15 +446,18 @@ namespace Display{
         gEve->AddGlobalElement(calo3d);
         delphesDisplay_->ImportCaloRPhi(calo3d);
         delphesDisplay_->ImportCaloRhoZ(calo3d);
-        TEveCaloLego *lego = new TEveCaloLego(container);
-        lego->InitMainTrans();
-        //    lego->RefMainTrans().SetScale(TMath::TwoPi(), TMath::TwoPi(), TMath::Pi());
-        lego->RefMainTrans().SetScale(100, 100, TMath::Pi());
-        lego->SetAutoRebin(kFALSE);
-        lego->Set2DMode(TEveCaloLego::kValSizeOutline);
-        delphesDisplay_->ImportCaloLego(lego);
-        // calo3d_.push_back(calo3d);
-        // calo3d_lego_.push_back(lego);
+        lego_ = new TEveCaloLego(container);
+        lego_->InitMainTrans();
+        ScaleLego();
+
+        lego_->SetAutoRebin(kFALSE);
+        lego_->Set2DMode(TEveCaloLego::kValSizeOutline);
+        lego_->SetEndCapPos(tkHalfLength_);
+        delphesDisplay_->ImportCaloLego(lego_);
+
+        // If we have any jet containers, lets draw them in the lego display too.
+        AddJetsToCaloDisplay();
+        // AddRefsToCaloDisplay();
         break; // would like to draw multiple ones, but they don't line up nicely
       }
     }
@@ -334,7 +498,12 @@ namespace Display{
     Double_t radius,
     const enum EColor color){
 
-    if(elements_.find(name) == elements_.end()) AddJetContainer(name,color);
+    if(elements_.find(name) == elements_.end()){
+      AddJetContainer(name,color);
+      jetEta_[name] = {};
+      jetPhi_[name] = {};
+      jetRadius_[name] = 0.;
+    }
     Size_t nElements = E.size();
 
     BranchElement<TEveElementList>* br = dynamic_cast<BranchElement<TEveElementList> *>(elements_[name]);
@@ -354,7 +523,10 @@ namespace Display{
       eveJetCone->SetPickable(kTRUE);
       eveJetCone->AddEllipticCone(vec.Eta(), vec.Phi(), 0.5 * radius, 0.5 * radius); // check if radius or 1/2 radius?
       br->GetContainer()->AddElement(eveJetCone);
+      jetEta_[name].push_back(vec.Eta());
+      jetPhi_[name].push_back(vec.Phi());
     }
+    jetRadius_[name] = radius;
   }
 
   // TODO: Templating?
@@ -364,7 +536,11 @@ namespace Display{
     Double_t radius,
     const enum EColor color){
 
-    if(elements_.find(name) == elements_.end()) AddJetContainer(name,color);
+    if(elements_.find(name) == elements_.end()){
+      AddJetContainer(name,color);
+      jetEta_[name] = {};
+      jetPhi_[name] = {};
+    }
     Size_t nElements = pt.size();
 
     BranchElement<TEveElementList>* br = dynamic_cast<BranchElement<TEveElementList> *>(elements_[name]);
@@ -384,6 +560,8 @@ namespace Display{
       eveJetCone->SetPickable(kTRUE);
       eveJetCone->AddEllipticCone(vec.Eta(), vec.Phi(), 0.5 * radius, 0.5 * radius); // check if radius or 1/2 radius?
       br->GetContainer()->AddElement(eveJetCone);
+      jetEta_[name].push_back(vec.Eta());
+      jetPhi_[name].push_back(vec.Phi());
     }
   }
 
@@ -604,8 +782,8 @@ namespace Display{
     }
   }
 
-  void EventDisplay::AddVertexData(TString name, vector<Double_t> x, vector<Double_t> y, vector<Double_t> z){
-    if(elements_.find(name) == elements_.end()) AddVertexContainer(name);
+  void EventDisplay::AddVertexData(TString name, vector<Double_t> x, vector<Double_t> y, vector<Double_t> z, const enum EColor color){
+    if(elements_.find(name) == elements_.end()) AddVertexContainer(name,color);
     Size_t nElements = x.size();
     BranchElement<TEveElementList>* br = dynamic_cast<BranchElement<TEveElementList> *>(elements_[name]);
     TEvePointSet* pointSet;
@@ -648,6 +826,7 @@ namespace Display{
     }
     elist->SetTrackingVolume(tkRadius_, tkHalfLength_, bz_);
     elements_[name] = elist;
+    jetContainers_.push_back(name);
   }
 
   void EventDisplay::AddTrackContainer(TString name, /*Int_t expectedSize,*/ const enum EColor color, Bool_t truthLevel, Bool_t toMuon){
