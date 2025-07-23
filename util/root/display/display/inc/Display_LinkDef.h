@@ -6,4 +6,5 @@
 
 #pragma link C++ namespace Display;
 #pragma link C++ class Display::CaloData+;
+#pragma link C++ class Display::JetCone+;
 #endif

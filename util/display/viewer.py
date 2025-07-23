@@ -51,7 +51,7 @@ class EventDisplay:
         f = h5.File(self.input_file,'r')
         self.data = {key: f[key][event_index] for key in f.keys()}
         f.close()
-        self.object_names = list(set([key.split('.')[0] for key in self.data.keys()]))
+        self.object_names = sorted(list(set([key.split('.')[0] for key in self.data.keys()])))
 
         self.LoadVertexData()
         self.LoadTrackData()
