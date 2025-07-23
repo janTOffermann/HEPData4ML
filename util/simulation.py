@@ -1,4 +1,5 @@
 
+import re, json
 import numpy as np
 from util.config import Configurator
 from util.delphes.delphes import DelphesWrapper
@@ -40,6 +41,8 @@ class DelphesSimulator(DetectorSimulator):
         self.SetLogfile(logfile)
         self.mode = None
 
+        self.delphes_card_text = {}
+
     def SetMode(self,mode:str):
         self.mode = mode.lower()
 
@@ -75,3 +78,30 @@ class DelphesSimulator(DetectorSimulator):
             )
             self.output_files.append(delphes_file)
         return
+
+    def FetchDelphesCard(self):
+        if(self.delphes_card is not None):
+            with open(self.delphes_card,'r') as f:
+                lines = f.readlines()
+            lines = ''.join(lines)
+            self.delphes_card_text[self.delphes_card.split('/')[-1]] = lines
+
+        # also check for imported tcl files in the delphes card -- if there are any, add them too.
+        pattern_with_capture = r'source\s+(\S*\.tcl)'
+        filenames = re.findall(pattern_with_capture, lines)
+
+        for filename in filenames:
+            card_dir = '/'.join(self.delphes_card.split('/')[:-1])
+            filename_full = '{}/{}'.format(card_dir,filename)
+            with open(filename_full,'r') as f:
+                lines = f.readlines()
+            lines = ''.join(lines)
+            self.delphes_card_text[filename] = lines
+        return
+
+    def GetDelphesCard(self):
+        """
+        Serialize delphes_card_text dictionary with JSON,
+        for putting into HDF5 attributes. (dict not supported)
+        """
+        return json.dumps(self.delphes_card_text)

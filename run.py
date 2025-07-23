@@ -1,4 +1,4 @@
-import sys,os,pathlib,time,datetime,re,shlex,uuid,atexit
+import sys,os,pathlib,time,datetime,re,shlex,uuid
 import argparse as ap
 import subprocess as sub
 from util.generation import PythiaGenerator
@@ -8,6 +8,7 @@ from util.hepmc.hepmc import CompressHepMC
 # from util.hepmc.setup import HepMCSetup
 from util.config import Configurator,GetConfigFileContent, GetConfigDictionary
 from util.args import parse_mc_steps, FloatListAction, none_or_str
+from util.meta import MetaDataHandler
 
 
 def trace_hepmc3_imports():
@@ -23,14 +24,6 @@ def trace_hepmc3_imports():
         return original_import(name, *args, **kwargs)
 
     __builtins__.__import__ = traced_import
-
-def get_git_revision_short_hash(): # see https://stackoverflow.com/a/21901260
-    cwd = os.path.dirname(os.path.abspath(__file__))
-    try:
-        result = sub.check_output(['git', 'rev-parse', '--short', 'HEAD'],cwd=cwd).decode('ascii').strip()
-    except:
-        result = 'NO_GIT_HASH'
-    return result
 
 # Convenience function for file naming
 def float_to_str(value):
@@ -69,6 +62,8 @@ def main(args):
     parser.add_argument('-del_delphes',  '--del_delphes',       type=int,          default=0,                help='Whether or not to delete DELPHES/ROOT files.')
 
     args = vars(parser.parse_args())
+
+    metadata_handler = MetaDataHandler()
 
     start_time = time.time()
 
@@ -172,6 +167,15 @@ def main(args):
     sub.check_call(comm)
 
     #=========================
+    # STEP 0: Metadata
+    #=========================
+    # We can now stash some things away in the metadata handler.
+    metadata_handler.AddElement('pythia_random_seed',pythia_rng)
+    metadata_handler.AddElement('command_line_arguments'," ".join(map(shlex.quote, sys.argv[1:])))
+    metadata_handler.AddElement('config_file','\n'.join(GetConfigFileContent(config_file)))
+    metadata_handler.AddElement('pythia_config',configurator.GetPythiaConfigFileContents(pythia_config))
+
+    #=========================
     # STEP 1: Generation
     #=========================
 
@@ -267,6 +271,10 @@ def main(args):
             sim_logfile = '{}/delphes.log'.format(outdir)
             simulator = DelphesSimulator(configurator,outdir,logfile=sim_logfile)
 
+            # Fetch the Delphes card and any dependencies of it, and add these to metadata.
+            simulator.FetchDelphesCard()
+            metadata_handler.AddElement('delphes_card',simulator.GetDelphesCard())
+
         if(simulator is not None):
             simulator.SetInputs(hepmc_files)
             simulator.Process()
@@ -339,15 +347,8 @@ def main(args):
 
         # Now, add some metadata to the file -- we use the HDF5 file attributes to store lists of metadata, and create columns that reference these lists.
         # This is handled correctly by metadata.
-        AddMetaDataWithReference(h5_file,cwd=outdir,value=pythia_rng,                                                 key='pythia_random_seed'    ) # Add the Pythia8 RNG seed. Storing this way doesn't really save space -- it's just an int -- but we'll do this for consistency with how metadata is handled.
-        AddMetaDataWithReference(h5_file,cwd=outdir,value=" ".join(map(shlex.quote, sys.argv[1:])),                   key='command_line_arguments') # Add the command line arguments.
-        AddMetaDataWithReference(h5_file,cwd=outdir,value='\n'.join(GetConfigFileContent(config_file)),               key='config_file'           ) # Add the full config file a string.
-        AddMetaDataWithReference(h5_file,cwd=outdir,value=start_time,                                                 key='timestamp'             ) # Add the epoch time for the start of generation.
-        AddMetaDataWithReference(h5_file,cwd=outdir,value=time.strftime('%Y-%m-%d %H:%M:%S',time.gmtime(start_time)), key='timestamp_string_utc'  ) # Add the epoch time for the start of generation, as a string.
-        AddMetaDataWithReference(h5_file,cwd=outdir,value=unique_id,                                                  key='unique_id'             ) # A unique random string to identify this dataset.
-        AddMetaDataWithReference(h5_file,cwd=outdir,value=unique_id_short,                                            key='unique_id_short'       ) # A unique random string to identify this dataset. (A shorter one, at the risk of increased likelihood of collisions)
-        AddMetaDataWithReference(h5_file,cwd=outdir,value=get_git_revision_short_hash(),                              key='git_hash'              ) # Git hash for the data generation code.
-        AddMetaDataWithReference(h5_file,cwd=outdir,value=configurator.GetPythiaConfigFileContents(pythia_config),    key='pythia_config'         ) # Pythia configuration (except for "\hat{p_T}", which is handled externally)
+        for key,val in metadata_handler.GetMetaData().items():
+            AddMetaDataWithReference(h5_file,cwd=outdir,value=val,key=key)
 
         # TODO: Might want to think about offering the ability to split the HepMC3 and Delphes files too?
         #       Before splitting those, we'd want to effectively join them together first, they are currently
