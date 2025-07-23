@@ -31,6 +31,7 @@
 #include <display/BranchElement.h>
 #include <display/CaloData.h>
 #include <display/ExDelphesDisplay.h>
+#include <display/JetCone.h>
 
 #include <algorithm>
 #include <cassert>
@@ -46,7 +47,7 @@
 // #include "TEveElement.h"
 #include "TEveEventManager.h"
 #include "TEveGeoNode.h"
-#include "TEveJetCone.h"
+// #include "TEveJetCone.h"
 #include "TEveManager.h"
 #include "TEveTrack.h"
 #include "TEvePointSet.h"
@@ -186,6 +187,7 @@ namespace Display{
 
       BranchElement<TEveTrackList> *item_v1 = dynamic_cast<BranchElement<TEveTrackList> *>(element->second);
       BranchElement<TEveElementList> *item_v2 = dynamic_cast<BranchElement<TEveElementList> *>(element->second);
+
       if(item_v1) gEve->AddElement(item_v1->GetContainer());
       if(item_v2) gEve->AddElement(item_v2->GetContainer());
       addedContainers_.push_back(name);
@@ -272,33 +274,39 @@ namespace Display{
     for(TString jetContainerName : jetContainers_){
 
       Int_t nJets = jetEta_[jetContainerName].size();
-      for(Int_t i = 0; i < nJets; i++){
-          // Create a thin cylinder
-          Float_t radius = jetRadius_[jetContainerName];
-          Double_t dz = 0.01 * (0.4 / radius);
-          radius = ConvertRadiusToCaloLego(radius);
-          TGeoTube* tube = new TGeoTube(0.95 * radius, radius, dz);  // Very thin height // TODO: need to get radius!
-          TGeoVolume* vol = new TGeoVolume("JetProjection", tube);
-          vol->SetLineColor(kRed);
-          vol->SetTransparency(50);
 
-          TEveGeoShape* shape = new TEveGeoShape("Jet Circle");
-          BranchElement<TEveElementList>* br = dynamic_cast<BranchElement<TEveElementList> *>(elements_[jetContainerName]);
-          shape->SetFillColor(br->GetColor());
-          shape->SetLineColor(br->GetColor());
-          shape->SetShape(tube);
+      BranchElement<TEveElementList>* br = dynamic_cast<BranchElement<TEveElementList> *>(elements_[jetContainerName]);
+      TEveElementList* elist = br->GetContainer();
 
-          Double_t eta = jetEta_[jetContainerName].at(i);
-          Double_t phi = jetPhi_[jetContainerName].at(i);
+      Int_t i = 0;
 
-          // shape->RefMainTrans() = lego_->RefMainTrans();
-          shape->RefMainTrans().SetTrans(lego_->RefMainTrans());
 
-          // lego_->RefMainTrans().Print();
+      // for(Int_t i = 0; i < nJets; i++){
+      for (TEveElement::List_i it = elist->BeginChildren(); it != elist->EndChildren(); ++it) {
+        // Create a thin cylinder
+        Float_t radius = jetRadius_[jetContainerName];
+        Double_t dz = 0.01 * (0.4 / radius);
+        radius = ConvertRadiusToCaloLego(radius);
+        TGeoTube* tube = new TGeoTube(0.95 * radius, radius, dz);  // Very thin height // TODO: need to get radius!
+        TGeoVolume* vol = new TGeoVolume("JetProjection", tube);
+        vol->SetLineColor(kRed);
+        vol->SetTransparency(50);
 
-          vector<Double_t> visualCoordinates = ConvertEtaPhiToCaloLego(eta,phi);
-          shape->RefMainTrans().SetPos(visualCoordinates.at(0), visualCoordinates.at(1), 0.0);
-          caloScene->AddElement(shape);
+        TEveGeoShape* shape = new TEveGeoShape("Jet Circle");
+        shape->SetFillColor(br->GetColor());
+        shape->SetLineColor(br->GetColor());
+        shape->SetShape(tube);
+        shape->RefMainTrans().SetTrans(lego_->RefMainTrans());
+
+        Double_t eta = jetEta_[jetContainerName].at(i);
+        Double_t phi = jetPhi_[jetContainerName].at(i);
+        vector<Double_t> visualCoordinates = ConvertEtaPhiToCaloLego(eta,phi);
+        shape->RefMainTrans().SetPos(visualCoordinates.at(0), visualCoordinates.at(1), 0.0);
+        JetCone* jet = dynamic_cast<JetCone*>(*it);
+        jet->SetJetCircle(shape);
+        jet->SetCaloScene(caloScene);
+        caloScene->AddElement(jet->GetJetCircle());
+        i++;
       }
     }
   }
@@ -398,21 +406,6 @@ namespace Display{
   }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
   void EventDisplay::InitScene(){
 
     // Add the actual data containers to the scene.
@@ -443,7 +436,9 @@ namespace Display{
         TEveCalo3D *calo3d = new TEveCalo3D(container);
         calo3d->SetBarrelRadius(tkRadius_);
         calo3d->SetEndCapPos(tkHalfLength_);
-        gEve->AddGlobalElement(calo3d);
+        calo3d->SetName("Calorimeter Towers");
+        gEve->AddElement(calo3d);
+        // gEve->AddGlobalElement(calo3d);
         delphesDisplay_->ImportCaloRPhi(calo3d);
         delphesDisplay_->ImportCaloRhoZ(calo3d);
         lego_ = new TEveCaloLego(container);
@@ -507,13 +502,13 @@ namespace Display{
     Size_t nElements = E.size();
 
     BranchElement<TEveElementList>* br = dynamic_cast<BranchElement<TEveElementList> *>(elements_[name]);
-    TEveJetCone *eveJetCone;
+    JetCone *eveJetCone;
     ROOT::Math::PxPyPzEVector vec;
 
     Int_t counter = 0;
     for(Size_t i = 0; i < nElements; i++){
       vec.SetCoordinates(px.at(i),py.at(i),pz.at(i),E.at(i));
-      eveJetCone = new TEveJetCone();
+      eveJetCone = new JetCone();
       eveJetCone->SetTitle(Form("jet [%d]: Pt=%f, Eta=%f, \nPhi=%f, M=%f", counter, vec.Pt(), vec.Eta(), vec.Phi(), vec.M()));
       eveJetCone->SetName(Form("jet [%d]", counter++));
       eveJetCone->SetMainTransparency(60);
@@ -544,13 +539,13 @@ namespace Display{
     Size_t nElements = pt.size();
 
     BranchElement<TEveElementList>* br = dynamic_cast<BranchElement<TEveElementList> *>(elements_[name]);
-    TEveJetCone *eveJetCone;
+    JetCone *eveJetCone;
     ROOT::Math::PtEtaPhiMVector vec;
 
     Int_t counter = 0;
     for(Size_t i = 0; i < nElements; i++){
       vec.SetCoordinates(pt.at(i),eta.at(i),phi.at(i),m.at(i));
-      eveJetCone = new TEveJetCone();
+      eveJetCone = new JetCone();
       eveJetCone->SetTitle(Form("jet [%d]: Pt=%f, Eta=%f, \nPhi=%f, M=%f", counter, vec.Pt(), vec.Eta(), vec.Phi(), vec.M()));
       eveJetCone->SetName(Form("jet [%d]", counter++));
       eveJetCone->SetMainTransparency(60);

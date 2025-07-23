@@ -9,6 +9,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(EventDisplay
     display/BranchElement.h
     display/CaloData.h
     display/TestUtils.h
+    display/JetCone.h
   SOURCES
     src/DisplayInterface.cxx
     src/EventDisplay.cxx
@@ -16,6 +17,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(EventDisplay
     src/BranchElement.cxx
     src/CaloData.cxx
     src/TestUtils.cxx
+    src/JetCone.cxx
   LINKDEF
     Display_LinkDef.h
   DEPENDENCIES
