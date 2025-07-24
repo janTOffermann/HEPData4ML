@@ -249,17 +249,11 @@ def main(args):
             pileup_handler.SetInputDirectory(outdir)
             pileup_handler.SetOutputDirectory(outdir)
 
-            hep_files_with_pileup = pileup_handler.Process(hepmc_files)
-            # for i,hep_file in enumerate(hepmc_files):
-            #     output_file = 'events_{}.pileup.{}'.format(i,hepmc_extension)
-            #     _ = pileup_handler(hep_file)
-            # ls    hep_files_with_pileup.append(output_file)
+            if(pileup_handler.GetRNGSeed() < 0): # use the Pythia rng seed
+                pileup_handler.SetRNGSeed(pythia_rng)
 
-            # # Now, we want to replace the original hepmc_files with the ones including pileup.
-            # for i,file in enumerate(hep_files_with_pileup):
-            #     hep_file = hepmc_files[i]
-            #     os.unlink(hep_file)
-            #     sub.check_call(['mv',file,hep_file])
+            hep_files_with_pileup = pileup_handler.Process(hepmc_files)
+
 
     #===============================
     # STEP 3: Simulation (optional)

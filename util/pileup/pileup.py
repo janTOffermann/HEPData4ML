@@ -50,8 +50,7 @@ class PileupOverlay:
         self.event_mask = np.full(self.n_total,True,dtype=bool)
         self.selected_indices = None # transient storage for indices selected for a particular event
 
-        self.rng_seed = rng_seed
-        self.rng = np.random.default_rng(self.rng_seed)
+        self.SetRNGSeed(rng_seed)
         self.beam_spot_sigma = None # will store the beam spot size
         self.SetBeamSpotSigma() # sets some sensible defaults
 
@@ -72,6 +71,15 @@ class PileupOverlay:
 
         # for particle charge lookup
         self.pdg_database = DatabasePDG()
+
+    def GetRNGSeed(self):
+        return self.rng_seed
+
+    def SetRNGSeed(self,rng_seed:int):
+        if(rng_seed < 0):
+            rng_seed = 0
+        self.rng_seed = rng_seed
+        self.rng = np.random.default_rng(self.rng_seed)
 
     def SetVerbosity(self,val:int):
         self.verbosity = val

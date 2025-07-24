@@ -76,3 +76,27 @@ def GetGitBranch():
     result = sub.check_output(command).decode('utf-8')
     result = result.replace('\n','')
     return result
+
+def FetchRequirements(entries=None,require_cvmfs=False, blacklist_file=None):
+    requirements = []
+    if(entries is not None):
+        if(isinstance(entries,str)):
+            requirements += entries.split(' ')
+        else:
+            requirements += entries
+
+    blacklist = []
+    if(blacklist_file is not None):
+        with open(blacklist_file,'r') as f:
+            blacklist= f.readlines()
+    blacklist = [x.strip().strip('\n') for x in blacklist]
+
+    if(require_cvmfs):
+        requirements.append("HAS_CVMFS =?= TRUE")
+    requirements += ["machine != \"{}\"".format(x) for x in blacklist]
+
+    if(len(requirements) > 0):
+        requirements = "(" + " && ".join(requirements) + ")"
+    else:
+        requirements = ""
+    return requirements
