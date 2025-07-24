@@ -25,6 +25,7 @@ def main(args):
     parser.add_argument('-config',           '--config',          type=str, help='Path to Python config file, for run.py .', default=None)
     parser.add_argument('-template',         '--template',        type=str, help="Template condor submission file. Templates are in util/condor_templates.", default=None)
     parser.add_argument('-requirements',     '--requirements',    type=str, help='Requirements string for condor workers.',default=None)
+    parser.add_argument('-blacklist',        '--blacklist',       type=str, help='Blacklist file for condor workers.',default=None)
     args = vars(parser.parse_args())
 
     nevents = args['nevents']
@@ -48,6 +49,7 @@ def main(args):
     config_file = args['config']
     condor_template = args['template']
     requirements = args['requirements']
+    blacklist = args['blacklist']
 
     rundir = str(pathlib.Path(rundir).absolute())
     outdir = str(pathlib.Path(outdir).absolute())
@@ -162,10 +164,10 @@ def main(args):
     if(batch_name is not None): batch_line = batch_line.format(batch_name)
     else: batch_line = '#' + batch_line
 
-    if(requirements is None):
-        requirements_string = ''
-    else:
-        requirements_string = 'requirements            = {}'.format(requirements)
+    requirements_string = condor_utils.FetchRequirements(requirements,blacklist_file=blacklist)
+    if(requirements_string is not None):
+        if(len(requirements_string) > 0):
+            requirements_string = 'requirements            = {}'.format(requirements_string)
 
     for i,line in enumerate(condor_submit_lines):
         condor_submit_lines[i] = condor_submit_lines[i].replace("$BATCH_NAME",batch_line + '\n')
@@ -192,6 +194,8 @@ def main(args):
     print('Prepared jobs. Using RNG seeds:')
     print('\tstart = {}'.format(rng_seed))
     print('\t  end = {}'.format(rng))
+
+
 
 if(__name__=='__main__'):
     main(sys.argv)
