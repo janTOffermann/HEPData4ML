@@ -171,16 +171,14 @@ def main(args):
     # STEP 0: Metadata
     #=========================
     # We can now stash some things away in the metadata handler.
-    metadata_handler.AddElement('Metadata.Generation.PythiaRandomSeed',pythia_rng)
     metadata_handler.AddElement('Metadata.CommandLineArguments'," ".join(map(shlex.quote, sys.argv[1:])))
     metadata_handler.AddElement('Metadata.ConfigurationFile','\n'.join(GetConfigFileContent(config_file)))
-    metadata_handler.AddElement('Metadata.Generation.PythiaConfiguration',configurator.GetPythiaConfigFileContents(pythia_config))
 
     #=========================
     # STEP 1: Generation
     #=========================
-
     if('generation' in steps):
+
         if(verbose):
             print('\n=================================')
             print('Running Pythia8 event generation.')
@@ -202,17 +200,19 @@ def main(args):
     else:
         pythia_rng = -1 # TODO: Make this better -- currently this means seed is unknown!
 
+    # Stash some stuff in metadata.
+    # TODO: Would be nice to do this within the PythiaGenerator()?
+    metadata_handler.AddElement('Metadata.Generation.PythiaRandomSeed',pythia_rng)
+    metadata_handler.AddElement('Metadata.Generation.PythiaConfiguration',configurator.GetPythiaConfigFileContents(pythia_config))
+
     print()
     for i in range(nbins):
-        # Generate a HepMC file containing our events. The generation already performs filtering
-        # before writing, so that we just save final-state particles & some selected truth particles.
-
+        # Generate a HepMC file containing our events.
         # If the user has opted not to do generation, the HepMC3 files must already exist (and have the right names).
         # TODO: Make the no-generation option more flexible, to pick up any existing HepMC3 files in the cwd.
         pt_min = pt_bin_edges[i]
         pt_max = pt_bin_edges[i+1]
 
-        #TODO: Toggle ROOT vs. ASCII
         hepmc_extension = 'hepmc'
         if(configurator.GetHepMCFormat().lower() == 'root'):
             hepmc_extension = 'root'
@@ -220,18 +220,14 @@ def main(args):
         hep_file = 'events_{}.{}'.format(i,hepmc_extension)
 
         generator = PythiaGenerator(pt_min,pt_max, configurator, pythia_rng,pythia_config_file=pythia_config)
-        # generator.SetEventFilter(configurator.GetEventFilter())
-        # generator.SetEventFilterFlag(configurator.GetEventFilterFlag())
 
         generator.SetOutputDirectory(outdir)
         generator.SetFilename(hep_file, rename_extra_files=False)
         generator.SetProgressBar(progress_bar)
 
         hepfile_exists = pathlib.Path('{}/{}'.format(outdir,hep_file)).exists()
-        generate = True
-        if(not 'generation' in steps):
-            generate = False
-        elif(hepfile_exists and not force):
+        generate = 'generation' in steps
+        if(hepfile_exists and not force):
             print('\tHepMC3 file {}/{} already found, skipping its generation.'.format(outdir,hep_file))
             generate = False
 
@@ -276,13 +272,11 @@ def main(args):
             delphes_files = simulator.GetOutputFiles()
 
     #======================================================
-    # STEP 3: Conversion + Reconstruction + Post-processing
+    # STEP 4: HDF5 conversion + Reconstruction/Post-processing
     #======================================================
     if('reconstruction' in steps):
-        # Now put everything into an HDF5 file.
-        # We can optionally package things into separate HDF5 files, one per pT-hat bin, and then concatenate those later.
-        # This could be useful for certain use cases.
-        if(verbose): print('\nRunning jet clustering and producing final HDF5 output.\n')
+        # Do reco and put everything into an HDF5 file. # TODO: Support formats other than HDF5? Consider ROOT ntuple output.
+        if(verbose): print('\nRunning recoonstruction and producing final HDF5 output.\n')
         processor = Processor(configurator)
         processor.SetNentriesPerChunk(100) # the larger this is, the larger the chunks in memory (and higher the memory usage)
         processor.SetDelphesFiles(delphes_files)
@@ -340,14 +334,15 @@ def main(args):
         print('\tRemoving any failed events from file {}.'.format('/'.join((outdir,h5_file))))
         RemoveFailedFromHDF5(h5_file,cwd=outdir)
 
+        #======================================================
+        # STEP 4.5: Metadata (into HDF5).
+        #======================================================
         # Now, add some metadata to the file -- we use the HDF5 file attributes to store lists of metadata, and create columns that reference these lists.
         # This is handled correctly by metadata.
         for key,val in metadata_handler.GetMetaData().items():
             AddMetaDataWithReference(h5_file,cwd=outdir,value=val,key=key)
 
-        # TODO: Might want to think about offering the ability to split the HepMC3 and Delphes files too?
-        #       Before splitting those, we'd want to effectively join them together first, they are currently
-        #       split by pT bin.
+        # TODO: Might want to think about offering the ability to split upstream files too? Could be complicated...
         if(split_files):
             # Now split the HDF5 file into training, testing and validation samples.
             split_ratio = (train_frac,val_frac,test_frac)
