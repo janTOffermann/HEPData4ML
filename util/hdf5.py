@@ -11,9 +11,6 @@ def ConcatenateH5(input_file_patterns,output_file,cwd=None,delete_inputs=False,c
 
         if(cwd is not None):
             pattern = '{}/{}'.format(cwd,pattern)
-
-        print('Checking pattern = ',pattern)
-
         if(',' in pattern):
             input_files += [x.strip() for x in pattern.split(',')]
         elif('*' in pattern or '[' in pattern):
@@ -22,9 +19,11 @@ def ConcatenateH5(input_file_patterns,output_file,cwd=None,delete_inputs=False,c
             input_files += [pattern]
 
     input_files.sort()
-    print('Concatenating files:')
-    for j,file in enumerate(input_files):
-        print('\t{}: {}'.format(j,file))
+
+    if(verbose):
+        print('Concatenating files:')
+        for j,file in enumerate(input_files):
+            print('\t{}: {}'.format(j,file))
     infiles = [h5.File(x,'r') for x in input_files]
 
     # Determine the keys -- we assume they are the same for all files!
