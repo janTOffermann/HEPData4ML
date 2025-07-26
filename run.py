@@ -3,12 +3,13 @@ import argparse as ap
 import subprocess as sub
 from util.generation import PythiaGenerator
 from util.simulation import DelphesSimulator
-from util.conversion import Processor, RemoveFailedFromHDF5, SplitH5, AddEventIndices, ConcatenateH5, MergeH5, AddConstantValue, AddMetaDataWithReference
+from util.conversion import Processor
+from util.hdf5 import RemoveFailedFromHDF5, SplitH5, AddEventIndices, ConcatenateH5
 from util.hepmc.hepmc import CompressHepMC
 # from util.hepmc.setup import HepMCSetup
 from util.config import Configurator,GetConfigFileContent, GetConfigDictionary
 from util.args import parse_mc_steps, FloatListAction, none_or_str
-from util.meta import MetaDataHandler
+from util.meta import MetaDataHandler, AddMetaDataWithReference
 
 
 def trace_hepmc3_imports():
@@ -55,7 +56,7 @@ def main(args):
     parser.add_argument('-ds',           '--delete_stats',      type=int,          default=1,                help='Whether or not to delete the full stats file. This file\'s info is merged into HDF5 dataset, but the file may be useful in some advanced use cases.')
     parser.add_argument('-co',           '--compression_opts',  type=int,          default=7,                help='Compression option for final HDF5 file (0-9). Higher value means more compression.')
     parser.add_argument('-pc',           '--pythia_config',     type=none_or_str,  default=None,             help='Path to Pythia configuration template (for setting the process).')
-    parser.add_argument('-index_offset', '--index_offset',      type=int,          default=0,                help='Offset for event_idx.')
+    parser.add_argument('-index_offset', '--index_offset',      type=int,          default=0,                help='Offset for Event.Index.')
     parser.add_argument('-config',       '--config',            type=str,          default=None,             help='Path to configuration Python file. Default will use config/config.py .')
 
     # DELPHES-related arguments
@@ -170,10 +171,10 @@ def main(args):
     # STEP 0: Metadata
     #=========================
     # We can now stash some things away in the metadata handler.
-    metadata_handler.AddElement('pythia_random_seed',pythia_rng)
-    metadata_handler.AddElement('command_line_arguments'," ".join(map(shlex.quote, sys.argv[1:])))
-    metadata_handler.AddElement('config_file','\n'.join(GetConfigFileContent(config_file)))
-    metadata_handler.AddElement('pythia_config',configurator.GetPythiaConfigFileContents(pythia_config))
+    metadata_handler.AddElement('Metadata.Generation.PythiaRandomSeed',pythia_rng)
+    metadata_handler.AddElement('Metadata.CommandLineArguments'," ".join(map(shlex.quote, sys.argv[1:])))
+    metadata_handler.AddElement('Metadata.ConfigurationFile','\n'.join(GetConfigFileContent(config_file)))
+    metadata_handler.AddElement('Metadata.Generation.PythiaConfiguration',configurator.GetPythiaConfigFileContents(pythia_config))
 
     #=========================
     # STEP 1: Generation
@@ -314,8 +315,8 @@ def main(args):
             h5_file_individual = '/'.join((outdir,h5_file_individual))
             h5_files.append(h5_file_individual)
 
-        print('\n\tConcatenating HDF5 files. Will drop the "event_idx" key, \n\tthis was used internally for any post-processing steps.\n\tIndices will be recomputed and added at the end.')
-        ConcatenateH5(h5_files,'/'.join((outdir,h5_file)),copts=compression_opts,delete_inputs=delete_individual_h5,ignore_keys=['event_idx'],verbose=True,silent_drop=True)
+        # print('\n\tConcatenating HDF5 files. Will drop the "Event.Index" key, \n\tthis was used internally for any post-processing steps.\n\tIndices will be recomputed and added at the end.')
+        ConcatenateH5(h5_files,'/'.join((outdir,h5_file)),copts=compression_opts,delete_inputs=delete_individual_h5,ignore_keys=['Event.Index'],verbose=False,silent_drop=True)
 
         if(simulation_type == 'delphes'):
             if(delete_delphes):
@@ -331,7 +332,7 @@ def main(args):
         # Add some event indices to our dataset.
         if(index_offset < 0): index_offset = 0
         print('\tAdding event indices to file {}.'.format('/'.join((outdir,h5_file))))
-        print('\t\tStarting at event_idx = {}.'.format(index_offset))
+        print('\t\tStarting at Event.Index = {}.'.format(index_offset))
         AddEventIndices(h5_file,cwd=outdir,copts=compression_opts,offset=index_offset)
 
         # Remove any failed events (e.g. detector-level events with no jets passing cuts).
