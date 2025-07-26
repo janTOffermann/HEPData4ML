@@ -1,11 +1,13 @@
 # The purpose of this code is to apply the Johns Hopkins top tagger (arXiv:0806.0848 [hep-ph])
 # to the jets in the dataset.
+import json
 import numpy as np
 import h5py as h5
-from typing import Dict, Any, Tuple, Optional, List # experimenting with typing
+from typing import Any, Optional, List # experimenting with typing
 from util.fastjet.jetfinderbase import JetFinderBase
 from util.qol_utils.progress_bar import printProgressBarColor
 from util.buffer import Buffer
+from util.meta import AddMetaDataWithReference, GetMetadata
 
 import util.post_processing.utils.ghost_association as ghost_assoc
 import util.post_processing.utils.softdrop as softdrop
@@ -238,9 +240,22 @@ class JetFinder(JetFinderBase):
         """
         This function simply finishes the writing of our data buffer
         to the output file, by doing a final flush.
+        It also writes some metadata to the output file.
         """
         self.buffer.flush()
+        self._writeMetadata()
         return
+
+    def _writeMetadata(self):
+        key = 'Metadata.JetCollections.InputCollections'
+        metadata = GetMetadata(self.h5_file,key=key)
+        if(metadata is None):
+            metadata = {}
+        else:
+            metadata = json.loads(metadata[0])
+        metadata[self.jet_name] = [x.replace('.Pmu','') for x in self.input_collections]
+        metadata = json.dumps(metadata)
+        AddMetaDataWithReference(self.h5_file,value=metadata,key=key,overwrite=True)
 
     # Using a generic signature -- should consider making the various post-processors inherit from a single parent class!
     def __call__(self,hepmc_file,h5_file,output_file=None,verbose=None, copts=9, key=None):
