@@ -23,6 +23,7 @@
 #define BranchElement_h
 
 #include "CaloData.h" // if "display/CaloData.h", works during build but breaks when loading header with gInterpeter in PyROOT... -Jan
+#include "JetElementList.h"
 
 //standard library includes
 #include <exception>
@@ -52,6 +53,7 @@ namespace Display{
     // const char *GetType() const { return branch_ ? branch_->GetClass()->GetName() : "None"; }
     virtual const char *GetClassName() = 0;
     enum EColor GetColor() const { return color_; }
+    void SetColor(const enum EColor color){color_ = color;}
     virtual void Reset() = 0;
     virtual void SetTrackingVolume(Float_t r, Float_t l, Float_t Bz = 0.)
     {
@@ -72,11 +74,11 @@ namespace Display{
     TString name_;
     Float_t maxPt_;
     // TClonesArray *branch_;
-    const enum EColor color_;
+    enum EColor color_;
     Float_t tkRadius_, tkHalfLength_, tk_Bz_;
   };
 
-  // concrete implementations. EveContainer can be a TrackList, ElementList or CaloData.
+  // concrete implementations. EveContainer can be a TrackList, ElementList, JetElementList or CaloData.
   template <typename EveContainer>
   class BranchElement: public BranchBase
   {
@@ -153,6 +155,17 @@ namespace Display{
   // void BranchElement<TEveElementList>::ReadBranch();
   // template <>
   // std::vector<TLorentzVector> BranchElement<TEveElementList>::GetVectors();
+
+  // special case for jet element lists
+  template <>
+  BranchElement<JetElementList>::BranchElement(const char *name, const enum EColor color, Float_t maxPt);
+  template <>
+  void BranchElement<JetElementList>::Reset();
+  // template <>
+  // void BranchElement<TEveElementList>::ReadBranch();
+  // template <>
+  // std::vector<TLorentzVector> BranchElement<TEveElementList>::GetVectors();
+
 
   // special case for track lists
   template <>

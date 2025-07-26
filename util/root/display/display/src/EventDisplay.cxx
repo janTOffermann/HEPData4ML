@@ -80,6 +80,7 @@
 // #include "display/DelphesDisplay.h"
 #include "display/DelphesHtmlSummary.h"
 #include "display/DelphesPlotSummary.h"
+#include "display/Utils.h"
 
 #include "classes/DelphesClasses.h"
 #include "external/ExRootAnalysis/ExRootConfReader.h"
@@ -100,6 +101,8 @@ namespace Display{
     delphesDisplay_ = 0;
     etaAxis_ = 0;
     phiAxis_ = 0;
+
+    jetColors_ = GetRainbowColorsCustom(20);
   }
 
   EventDisplay::~EventDisplay(){
@@ -158,6 +161,9 @@ namespace Display{
 
     // build the detector
     BuildDetector(det3D);
+
+    jetColors_ = GetRainbowColorsCustom(20);
+
   }
 
   void EventDisplay::Display(Int_t eventNumber){
@@ -185,13 +191,24 @@ namespace Display{
       auto it = find(addedContainers_.begin(), addedContainers_.end(), name);
       if (it!=addedContainers_.end()) continue;
 
+      // TODO: Some nastiness here, JetElementList is a child class of TEveElementList,
+      //       I think bad things happen if it's cast as TEveElementList and added? - Jan
       BranchElement<TEveTrackList> *item_v1 = dynamic_cast<BranchElement<TEveTrackList> *>(element->second);
-      BranchElement<TEveElementList> *item_v2 = dynamic_cast<BranchElement<TEveElementList> *>(element->second);
+      BranchElement<JetElementList> *item_v2 = dynamic_cast<BranchElement<JetElementList> *>(element->second);
+      BranchElement<TEveElementList> *item_v3 = dynamic_cast<BranchElement<TEveElementList> *>(element->second);
 
       if(item_v1) gEve->AddElement(item_v1->GetContainer());
-      if(item_v2) gEve->AddElement(item_v2->GetContainer());
+      else if(item_v2 )gEve->AddElement(item_v2->GetContainer());
+      else if(item_v3) gEve->AddElement(item_v3->GetContainer());
       addedContainers_.push_back(name);
     }
+
+    // // We also take the opportunity to generate unique colors for all jets, which we might use.
+    // Int_t nJetsMax = 0;
+    // for(map<TString, vector<Float_t>>::iterator element = jetEta_.begin(); element != jetEta_.end(); ++element){
+    //   if(element->second.size() > nJetsMax) nJetsMax = element->second.size();
+    // }
+    // jetColors_ = GetRainbowColorsCustom(nJetsMax);
   }
 
   CaloData* CombineCaloData(const std::vector<CaloData*>& caloObjects) {
@@ -239,28 +256,14 @@ namespace Display{
       return combined;
   }
 
-  // void EventDisplay::CreateUnifiedCaloDataContainer(){
-  //   vector<CaloData*> caloDataVec = {};
-  //   for(map<TString, BranchBase *>::iterator data = elements_.begin(); data != elements_.end(); ++data){
-  //     if(TString(data->second->GetClassName()).Contains("CaloData")){
-  //       caloDataVec.push_back(dynamic_cast<BranchElement<CaloData> *>((data->second))->GetContainer());
-  //     }
-  //   }
-  //   caloDataVec.clear();
-  //   CaloData* combinedCaloData = CombineCaloData(caloDataVec);
-
-  //   TString name = "UnifiedCaloData";
-  //   BranchElement<CaloData> *clist = new BranchElement<CaloData>(combinedCaloData, name, kBlack);
-  //   // clist->GetContainer()->SetEtaBins(etaAxis_);
-  //   // clist->GetContainer()->SetPhiBins(phiAxis_);
-  //   elements_[name] = clist;
-
-  //   // BranchElement<CaloData>* br = dynamic_cast<BranchElement<CaloData> *>(elements_[name]);
-  //   // br->SetContainer(combinedCaloData);
-  //   return;
-  // }
+  enum EColor EventDisplay::FetchJetColor(){
+    enum EColor color = jetColors_.at(jetColorIndex_ % jetColors_.size());
+    jetColorIndex_++;
+    return color;
+  }
 
   void EventDisplay::AddJetsToCaloDisplay(){
+    ResetJetColor();
     TEveScene* caloScene = delphesDisplay_->GetLegoCaloScene();
 
     // Determine the eta and phi boundaries of our Lego display
@@ -275,12 +278,10 @@ namespace Display{
 
       Int_t nJets = jetEta_[jetContainerName].size();
 
-      BranchElement<TEveElementList>* br = dynamic_cast<BranchElement<TEveElementList> *>(elements_[jetContainerName]);
-      TEveElementList* elist = br->GetContainer();
+      BranchElement<JetElementList>* br = dynamic_cast<BranchElement<JetElementList> *>(elements_[jetContainerName]);
+      JetElementList* elist = br->GetContainer();
 
       Int_t i = 0;
-
-
       // for(Int_t i = 0; i < nJets; i++){
       for (TEveElement::List_i it = elist->BeginChildren(); it != elist->EndChildren(); ++it) {
         // Create a thin cylinder
@@ -293,8 +294,11 @@ namespace Display{
         vol->SetTransparency(50);
 
         TEveGeoShape* shape = new TEveGeoShape("Jet Circle");
-        shape->SetFillColor(br->GetColor());
-        shape->SetLineColor(br->GetColor());
+
+        enum EColor color = br->GetColor();
+        if(colorMode_ > 0) color = FetchJetColor();
+        shape->SetFillColor(color);
+        shape->SetLineColor(color);
         shape->SetShape(tube);
         shape->RefMainTrans().SetTrans(lego_->RefMainTrans());
 
@@ -309,6 +313,12 @@ namespace Display{
         i++;
       }
     }
+
+    // // If requested, attempt to draw markers indicating which
+    // if(mode > 0){
+
+    // }
+
   }
 
   Double_t EventDisplay::ConvertRadiusToCaloLego(Double_t radius){
@@ -405,24 +415,8 @@ namespace Display{
     lego_->ComputeBBox();
   }
 
-
-  void EventDisplay::InitScene(){
-
-    // Add the actual data containers to the scene.
-    AddContainersToScene();
-
-    // TODO: Create a unified CaloData container, to use for the viewing.
-    //       The current function is broken! Doing this instead at the Python level.
-    // CreateUnifiedCaloDataContainer();
-
-    delphesDisplay_ = new ExDelphesDisplay;
-    gEve->AddGlobalElement(geometry_);
-    delphesDisplay_->ImportGeomRPhi(geometry_);
-    delphesDisplay_->ImportGeomRhoZ(geometry_);
-    // find the first calo data and use that to initialize the calo display
-    // cout << "Starting check for CaloData containers, for lego view." << endl;
-    for(map<TString, BranchBase *>::iterator data = elements_.begin(); data != elements_.end(); ++data)
-    {
+  void EventDisplay::InitCalorimeters(){
+    for(map<TString, BranchBase *>::iterator data = elements_.begin(); data != elements_.end(); ++data){
 
       // TODO: Find a way to deal with *multiple* CaloData containers.
       if(TString(data->second->GetClassName()).Contains("CaloData")){
@@ -456,6 +450,20 @@ namespace Display{
         break; // would like to draw multiple ones, but they don't line up nicely
       }
     }
+  }
+
+  void EventDisplay::InitScene(){
+    // Mode is currently unused.
+
+    // Add the actual data containers to the scene.
+    AddContainersToScene();
+
+    delphesDisplay_ = new ExDelphesDisplay();
+    gEve->AddGlobalElement(geometry_);
+    delphesDisplay_->ImportGeomRPhi(geometry_);
+    delphesDisplay_->ImportGeomRhoZ(geometry_);
+
+    InitCalorimeters();
   }
 
   void EventDisplay::AddCaloData(TString name,
@@ -493,6 +501,8 @@ namespace Display{
     Double_t radius,
     const enum EColor color){
 
+    // ResetJetColor();
+
     if(elements_.find(name) == elements_.end()){
       AddJetContainer(name,color);
       jetEta_[name] = {};
@@ -501,19 +511,25 @@ namespace Display{
     }
     Size_t nElements = E.size();
 
-    BranchElement<TEveElementList>* br = dynamic_cast<BranchElement<TEveElementList> *>(elements_[name]);
+    BranchElement<JetElementList>* br = dynamic_cast<BranchElement<JetElementList> *>(elements_[name]);
     JetCone *eveJetCone;
     ROOT::Math::PxPyPzEVector vec;
 
     Int_t counter = 0;
     for(Size_t i = 0; i < nElements; i++){
       vec.SetCoordinates(px.at(i),py.at(i),pz.at(i),E.at(i));
+      if(vec.Pt() < jetPtMin_) continue;
+
       eveJetCone = new JetCone();
       eveJetCone->SetTitle(Form("jet [%d]: Pt=%f, Eta=%f, \nPhi=%f, M=%f", counter, vec.Pt(), vec.Eta(), vec.Phi(), vec.M()));
       eveJetCone->SetName(Form("jet [%d]", counter++));
       eveJetCone->SetMainTransparency(60);
-      eveJetCone->SetLineColor(br->GetColor());
-      eveJetCone->SetFillColor(br->GetColor());
+
+      enum EColor color = br->GetColor();
+      if(colorMode_ > 0) color = FetchJetColor();
+
+      eveJetCone->SetLineColor(color);
+      eveJetCone->SetFillColor(color);
       eveJetCone->SetCylinder(tkRadius_ - 10, tkHalfLength_ - 10); // TODO: Why the -10?
       eveJetCone->SetPickable(kTRUE);
       eveJetCone->AddEllipticCone(vec.Eta(), vec.Phi(), 0.5 * radius, 0.5 * radius); // check if radius or 1/2 radius?
@@ -524,7 +540,7 @@ namespace Display{
     jetRadius_[name] = radius;
   }
 
-  // TODO: Templating?
+  // TODO: Templating? Or convert coordinates and then pass to other func
   void EventDisplay::AddJetData_PtEtaPhiM(TString name,
     vector<Double_t> pt, vector<Double_t> eta,
     vector<Double_t> phi, vector<Double_t> m,
@@ -538,19 +554,25 @@ namespace Display{
     }
     Size_t nElements = pt.size();
 
-    BranchElement<TEveElementList>* br = dynamic_cast<BranchElement<TEveElementList> *>(elements_[name]);
+    BranchElement<JetElementList>* br = dynamic_cast<BranchElement<JetElementList> *>(elements_[name]);
     JetCone *eveJetCone;
     ROOT::Math::PtEtaPhiMVector vec;
 
     Int_t counter = 0;
     for(Size_t i = 0; i < nElements; i++){
       vec.SetCoordinates(pt.at(i),eta.at(i),phi.at(i),m.at(i));
+      if(vec.Pt() < jetPtMin_) continue;
+
       eveJetCone = new JetCone();
       eveJetCone->SetTitle(Form("jet [%d]: Pt=%f, Eta=%f, \nPhi=%f, M=%f", counter, vec.Pt(), vec.Eta(), vec.Phi(), vec.M()));
       eveJetCone->SetName(Form("jet [%d]", counter++));
       eveJetCone->SetMainTransparency(60);
-      eveJetCone->SetLineColor(br->GetColor());
-      eveJetCone->SetFillColor(br->GetColor());
+
+      enum EColor color = br->GetColor();
+      if(colorMode_ > 0) color = FetchJetColor();
+
+      eveJetCone->SetLineColor(color);
+      eveJetCone->SetFillColor(color);
       eveJetCone->SetCylinder(tkRadius_ - 10, tkHalfLength_ - 10); // TODO: Why the -10?
       eveJetCone->SetPickable(kTRUE);
       eveJetCone->AddEllipticCone(vec.Eta(), vec.Phi(), 0.5 * radius, 0.5 * radius); // check if radius or 1/2 radius?
@@ -584,6 +606,9 @@ namespace Display{
 
     for(Int_t i = 0; i < nElements; i++){
     vec.SetCoordinates(pt.at(i),eta.at(i),phi.at(i),m.at(i));
+
+    if(vec.Pt() < trackPtMin_) continue;
+
     posVec.SetCoordinates(x.at(i)/10.,y.at(i)/10.,z.at(i)/10.,0.); // note the conversion
       TParticle pb(
         pdgId.at(i), 1, 0, 0, 0, 0,
@@ -701,6 +726,9 @@ namespace Display{
 
     for(Int_t i = 0; i < nElements; i++){
     vec.SetCoordinates(pt.at(i),eta.at(i),phi.at(i),m.at(i));
+
+    if(vec.Pt() < 1.0e-10) continue;
+
       TParticle pb(
        13, 1, 0, 0, 0, 0,
         vec.Px(), vec.Py(), vec.Pz(), vec.E(),
@@ -759,6 +787,9 @@ namespace Display{
       trkProp->SetMaxZ(maxZ);
 
       vec.SetCoordinates(px.at(i),py.at(i),pz.at(i),E.at(i));
+
+      if(vec.Pt() < truthParticlePtMin_) continue;
+
       TParticle pb(
         pdgId.at(i), 1, 0, 0, 0, 0,
         vec.Px(), vec.Py(), vec.Pz(), vec.E(),
@@ -804,6 +835,25 @@ namespace Display{
     }
   }
 
+  void EventDisplay::AddJetConstituentCaloData(TString name,
+    vector<Double_t> etaMin, vector<Double_t> etaMax,
+    vector<Double_t> phiMin, vector<Double_t> phiMax,
+    vector<Double_t> Eem, vector<Double_t> Ehad){
+
+    if(jetMapElements_.find(name) == jetMapElements_.end()) AddJetConstituentCaloContainer(name);
+    Size_t nElements = etaMin.size();
+
+    BranchElement<CaloData>* br = dynamic_cast<BranchElement<CaloData> *>(jetMapElements_[name]);
+
+    for(Size_t i = 0; i < nElements; i++){
+      br->GetContainer()->AddTower(etaMin.at(i),etaMax.at(i),phiMin.at(i),phiMax.at(i));
+      br->GetContainer()->FillSlice(0, Eem.at(i));
+      br->GetContainer()->FillSlice(1, Ehad.at(i));
+      // cout << "Filled eta=(" << etaMin.at(i) << ", " << etaMax.at(i) << "), phi=(" << phiMin.at(i) << ", " << phiMax.at(i) << ") with (" << Eem.at(i) << ", " << Ehad.at(i) << ")" << endl;
+    }
+    br->GetContainer()->DataChanged();
+  }
+
   void EventDisplay::AddCaloContainer(TString name, /*Int_t expectedSize,*/ const enum EColor color){
     // TClonesArray* arr = new TClonesArray(name,expectedSize); // will tuck this away in the BranchElement.
     BranchElement<CaloData> *clist = new BranchElement<CaloData>(name, color);
@@ -814,7 +864,7 @@ namespace Display{
 
   void EventDisplay::AddJetContainer(TString name, /*Int_t expectedSize,*/ const enum EColor color, Bool_t truthLevel){
     // TClonesArray* arr = new TClonesArray(name,expectedSize); // will tuck this away in the BranchElement.
-    BranchElement<TEveElementList> *elist = new BranchElement<TEveElementList>(name, color);
+    BranchElement<JetElementList> *elist = new BranchElement<JetElementList>(name, color);
     if(truthLevel){
       elist->GetContainer()->SetRnrSelf(false);
       elist->GetContainer()->SetRnrChildren(false);
@@ -851,8 +901,21 @@ namespace Display{
     elements_[name] = elist;
   }
 
+  void EventDisplay::AddJetConstituentCaloContainer(TString name, /*Int_t expectedSize,*/ const enum EColor color){
+    // TClonesArray* arr = new TClonesArray(name,expectedSize); // will tuck this away in the BranchElement.
+    BranchElement<CaloData> *clist = new BranchElement<CaloData>(name, color);
+    clist->GetContainer()->SetEtaBins(etaAxis_);
+    clist->GetContainer()->SetPhiBins(phiAxis_);
+    jetMapElements_[name] = clist;
+  }
+
+
   void EventDisplay::ResetContainers(){
     for(map<TString, BranchBase *>::iterator data = elements_.begin(); data != elements_.end(); ++data){
+      data->second->Reset(); // TODO: Check this?
+    }
+
+    for(map<TString, BranchBase *>::iterator data = jetMapElements_.begin(); data != jetMapElements_.end(); ++data){
       data->second->Reset(); // TODO: Check this?
     }
   }

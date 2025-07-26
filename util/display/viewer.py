@@ -1,3 +1,4 @@
+import json, itertools
 import ROOT as rt
 import numpy as np
 import re,pathlib
@@ -17,17 +18,33 @@ class EventDisplay:
         self.setup = DisplaySetup()
         self.setup.Prepare()
         self.delphes_card = None
+        self.mode = 0
 
         self.data = None # dictionary where data from an event is loaded
+        self.metadata = None
         self.object_names = []
 
         # expect to have multiple jet collections, thus have multiple colors to cycle through
         self.jet_colors = [rt.kYellow, rt.kRed, rt.kBlue-7, rt.kSpring, rt.kOrange+1, rt.kMagenta]
 
-    def InitializeDisplay(self,delphes_card):
+    def SetMode(self,mode=0):
+        self.mode = mode
+
+    def SetJetPtMin(self,val):
+        self.display.GetEventDisplay().SetJetPtMin(val)
+
+    def SetTrackPtMin(self,val):
+        self.display.GetEventDisplay().SetTrackPtMin(val)
+
+    def SetTruthParticlePtMin(self,val):
+        self.display.GetEventDisplay().SetTruthParticlePtMin(val)
+
+    def InitializeDisplay(self,delphes_card,mode=0):
 
         self.delphes_card = delphes_card
         self.display = rt.Display.DisplayInterface(self.delphes_card)
+        self.display.GetEventDisplay().SetColorMode(mode)
+        # self.display.SetColorMode(mode)
 
         # this_dir = os.path.dirname(os.path.abspath(__file__))
         # filename = this_dir + '/test_data/atlas.root'
@@ -50,6 +67,7 @@ class EventDisplay:
 
         f = h5.File(self.input_file,'r')
         self.data = {key: f[key][event_index] for key in f.keys()}
+        self.metadata = {key:f.attrs[key] for key in f.attrs.keys()}
         f.close()
         self.object_names = sorted(list(set([key.split('.')[0] for key in self.data.keys()])))
 
@@ -61,6 +79,7 @@ class EventDisplay:
         self.LoadJetData()
         self.LoadMETData()
         self.LoadGenParticleData()
+        self.LoadJetConstituentData()
 
     def LoadTrackData(self):
         for object_name in self.object_names:
@@ -220,4 +239,78 @@ class EventDisplay:
                     self.data['{}.Xmu'.format(object_name)][:nobj,1],
                     self.data['{}.Xmu'.format(object_name)][:nobj,2],
                     self.data['{}.Xmu'.format(object_name)][:nobj,3]
+                )
+
+
+    def LoadJetConstituentData(self):
+        jet_counter = 0
+
+        metadata_index = self.data['Metadata.JetCollections.InputCollections']
+        jet_name_dict = json.loads(self.metadata['Metadata.JetCollections.InputCollections'][metadata_index])
+        print(jet_name_dict)
+
+        for object_name in self.object_names:
+            if('jet' in object_name.lower()):
+                nobj = self.data['{}.N'.format(object_name)]
+                radius = ExtractJetRadius(object_name)
+                if(radius is None): radius = 0.4
+                color = self.jet_colors[jet_counter % len(self.jet_colors)]
+
+                # map the constituents
+                constituent_collections = self.data['{}.Constituents.Collection'.format(object_name)][:nobj]
+                constituent_collection_indices = self.data['{}.Constituents.Collection.Index'.format(object_name)][:nobj]
+
+                # go from constituent_collections to collection names
+                constituent_collection_names = [
+                    [jet_name_dict[object_name][x] for x in y]
+                    for y in constituent_collections
+                ]
+
+                # Now we construct eta and phi edges, and energy deposits, which will
+                # go into a Lego-style calorimeter display.
+                # The caveat is that things like EFlowTrack don't have eta/phi edges!
+                eta_edges = []
+                phi_edges = []
+                e_em = []
+                e_had = []
+                for i in range(nobj):
+                    names = constituent_collection_names[i]
+                    mask = ['{}.Edges.Eta'.format(name) in self.data.keys() for name in names]
+                    names = list(itertools.compress(names,mask))
+                    tower_indices = list(itertools.compress(constituent_collection_indices[i],mask))
+
+                    eta_edges_i = np.array([self.data['{}.Edges.Eta'.format(name)][x] for name,x in zip(names,tower_indices)])
+                    phi_edges_i = np.array([self.data['{}.Edges.Phi'.format(name)][x] for name,x in zip(names,tower_indices)])
+                    eem_i = np.array([self.data['{}.E.EM'.format(name)][x] for name,x in zip(names,tower_indices)])
+                    ehad_i = np.array([self.data['{}.E.Hadronic'.format(name)][x] for name,x in zip(names,tower_indices)])
+
+                    # Add these with some new function
+                    self.display.GetEventDisplay().AddJetConstituentCaloData(
+                        object_name,
+                        eta_edges_i[:nobj,0],
+                        eta_edges_i[:nobj,1],
+                        phi_edges_i[:nobj,0],
+                        phi_edges_i[:nobj,1],
+                        eem_i[:nobj],
+                        ehad_i[:nobj]
+                    )
+
+    def LoadCaloData2(self):
+        """
+        We dump all the calorimeter data into the same collection for the viewer,
+        due to some limitations with how it currently functions.
+        """
+        name = 'UnifiedCaloData'
+        for object_name in self.object_names:
+            if('{}.Edges.Eta'.format(object_name) in self.data.keys()):
+                nobj = self.data['{}.N'.format(object_name)]
+
+                self.display.GetEventDisplay().AddCaloData(
+                    name,
+                    self.data['{}.Edges.Eta'.format(object_name)][:nobj,0],
+                    self.data['{}.Edges.Eta'.format(object_name)][:nobj,1],
+                    self.data['{}.Edges.Phi'.format(object_name)][:nobj,0],
+                    self.data['{}.Edges.Phi'.format(object_name)][:nobj,1],
+                    self.data['{}.E.EM'.format(object_name)][:nobj],
+                    self.data['{}.E.Hadronic'.format(object_name)][:nobj]
                 )

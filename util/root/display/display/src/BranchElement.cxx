@@ -179,6 +179,18 @@ namespace Display{
   //   return output;
   // }
 
+  // special case for jet element lists
+  template <>
+  BranchElement<JetElementList>::BranchElement(const char *name, const enum EColor color, Float_t maxPt) :
+    BranchBase(name, color, maxPt)
+  {
+    data_ = new JetElementList(name);
+    data_->SetMainColor(color_);
+  }
+  template <>
+  void BranchElement<JetElementList>::Reset() { data_->DestroyElements(); }
+
+
   // special case for track lists
   template <>
   BranchElement<TEveTrackList>::BranchElement(const char *name, const enum EColor color, Float_t maxPt) :
