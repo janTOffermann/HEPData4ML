@@ -31,10 +31,17 @@ namespace Display{
     det3D_geom.readFile(delphesCardFilepath_, "ParticlePropagator", "ChargedHadronTrackingEfficiency", "MuonEfficiency", "HCal");
 
     eventDisplay_ = new EventDisplay(det3D_geom);
-
   };
 
   DisplayInterface::~DisplayInterface(){};
+
+  void DisplayInterface::SetMode(Int_t mode){
+    eventDisplay_->SetMode(mode);
+  }
+
+  // void DisplayInterface::SetColorMode(Int_t mode){
+  //   eventDisplay_->SetColorMode(mode);
+  // }
 
   void DisplayInterface::DisplayEvent(TString delphesCardFilepath){
 

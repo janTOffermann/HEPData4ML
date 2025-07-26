@@ -19,9 +19,9 @@ public:
   TEveGeoShape* GetJetCircle(){return fShape;};
   void SetJetCircle(TEveGeoShape* shape){fShape = shape;};
 
-  virtual void ElementChanged(Bool_t update_scenes = kTRUE, Bool_t redraw = kFALSE);
+  virtual void ElementChanged(Bool_t updateScenes = kTRUE, Bool_t redraw = kFALSE);
 
-  // virtual Bool_t SetRnrSelf(Bool_t rnr);
+  virtual Bool_t SetRnrSelf(Bool_t rnr);
 
   void SetCaloScene(TEveScene* scene){fCaloScene = scene;};
 
@@ -32,6 +32,10 @@ protected:
   TGeoTube*     fTube;   // ROOT naming convention with 'f' prefix
   TGeoVolume*   fVol;
   TEveGeoShape* fShape;
+
+  void SyncShapeVisibility();
+
+  virtual void ParentTEvesChanged();
 
 private:
   TEveScene* fCaloScene;

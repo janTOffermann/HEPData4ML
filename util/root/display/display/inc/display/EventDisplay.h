@@ -38,6 +38,7 @@
 #include "TEveElement.h"
 #include "TEveCalo.h"
 #include "TEveTrackPropagator.h"
+#include "TColor.h"
 
 class TAxis;
 class TChain;
@@ -65,7 +66,6 @@ namespace Display{
     ~EventDisplay();
     void EventChanged(Int_t); // *SIGNAL*
 
-
     // Functions for adding data.
     // Note that some (electron, muon) are variations of the AddTrackData() function.
     void AddCaloData(TString name, vector<Double_t> etaMin, vector<Double_t> etaMax, vector<Double_t> phiMin, vector<Double_t> phiMax, vector<Double_t> Eem, vector<Double_t> Ehad);
@@ -85,6 +85,10 @@ namespace Display{
     void AddGenParticleData(TString name,vector<Double_t> E, vector<Double_t> px, vector<Double_t> py, vector<Double_t> pz, vector<Double_t> xProd, vector<Double_t> yProd, vector<Double_t> zProd, vector<Double_t> xDecay, vector<Double_t> yDecay, vector<Double_t> zDecay, vector<Bool_t> stable, vector<Int_t> pdgId); // TODO: Eventually support displaced particle production vertices!
     void AddVertexData(TString name, vector<Double_t> x, vector<Double_t> y, vector<Double_t> z, const enum EColor color = kBlue);
 
+    // Add jet constituent data, in the format of CaloData.
+    // This puts things in a special collection!
+    void AddJetConstituentCaloData(TString name, vector<Double_t> etaMin, vector<Double_t> etaMax, vector<Double_t> phiMin, vector<Double_t> phiMax, vector<Double_t> Eem, vector<Double_t> Ehad);
+
     // Functions for creating data containers.
     // These can be explicitly called, or they will be invoked by the
     // functions for adding data, as needed.
@@ -101,7 +105,16 @@ namespace Display{
     void AddMETContainer(TString name, /*Int_t expectedSize=10,*/ const enum EColor color = kViolet);
     void AddVertexContainer(TString name, /*Int_t expectedSize=10,*/ const enum EColor color = kBlue);
 
+    void AddJetConstituentCaloContainer(TString name, /*Int_t expectedSize=10,*/ const enum EColor color = kBlack);
+
+
     void Display(Int_t eventNumber=-1);
+    void SetMode(Int_t mode){mode_ = mode;};
+    void SetColorMode(Int_t mode){colorMode_ = mode;};
+
+    void SetJetPtMin(Double_t val){jetPtMin_ = val;};
+    void SetTrackPtMin(Double_t val){trackPtMin_ = val;};
+    void SetTruthParticlePtMin(Double_t val){truthParticlePtMin_ = val;};
 
   protected:
     void update_html_summary();
@@ -115,24 +128,28 @@ namespace Display{
     // void CreateUnifiedCaloDataContainer();
     void InitScene();
 
+    void InitCalorimeters();
     void ScaleLego();
     void AddJetsToCaloDisplay();
     void AddRefsToCaloDisplay();
+
+    enum EColor FetchJetColor();
+    void ResetJetColor(){jetColorIndex_ = 0;};
 
     // Need this unfortunate function due to some pretty irritating
     // TEveCaloLego behaviour... - Jan
     vector<Double_t> ConvertEtaPhiToCaloLego(Double_t eta, Double_t phi);
     Double_t ConvertRadiusToCaloLego(Double_t radius);
 
-
-
     // Configuration and global variables.
+    Int_t mode_ = 0;
     Int_t event_id_;
     Int_t event_id_tmp_;
     Double_t tkRadius_, totRadius_, tkHalfLength_, muHalfLength_, bz_;
     TAxis *etaAxis_, *phiAxis_;
     TChain *chain_;
     map<TString, BranchBase *> elements_;
+    map<TString, BranchBase *> jetMapElements_;
     ExDelphesDisplay *delphesDisplay_;
     DelphesHtmlSummary *htmlSummary_;
     TGHtml *gHtml_;
@@ -151,9 +168,13 @@ namespace Display{
     Double_t legoEtaScale_ = 1.;
     Double_t legoPhiScale_ = 1.;
 
+    Int_t colorMode_ = 0;
+    vector<enum EColor> jetColors_ = {};
+    Int_t jetColorIndex_ = 0;
 
-    // vector<TEveCalo3D *> calo3d_ = {};
-    // vector<TEveCaloLego *> calo3d_lego_ = {};
+    Double_t jetPtMin_ = 0.;
+    Double_t trackPtMin_ = 0.;
+    Double_t truthParticlePtMin_ = 0.;
 
 
     // gui controls

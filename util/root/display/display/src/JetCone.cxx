@@ -32,17 +32,46 @@ namespace Display
     if(fShape) fShape = nullptr; // TEve will handle destruction?
   }
 
-  void JetCone::ElementChanged(Bool_t update_scenes, Bool_t redraw){
-      TEveJetCone::ElementChanged(update_scenes, redraw);
+  void JetCone::ElementChanged(Bool_t updateScenes, Bool_t redraw){
+      TEveJetCone::ElementChanged(updateScenes, redraw);
 
       if (fShape) {
+          // Bool_t shouldRender = GetRnrSelf() && GetRnrState();
+          // fShape->SetRnrSelf(shouldRender);
+          // fShape->SetRnrChildren(shouldRender);
           fShape->SetRnrSelf(GetRnrSelf());
           fShape->SetRnrChildren(GetRnrChildren());
 
-          if (update_scenes && fCaloScene) {
+          if (updateScenes && fCaloScene) {
+              fCaloScene->Changed();
+          }
+      }
+      SyncShapeVisibility();
+  }
+
+  Bool_t JetCone::SetRnrSelf(Bool_t rnr){
+      Bool_t result = TEveJetCone::SetRnrSelf(rnr);
+      SyncShapeVisibility();
+      return result;
+  }
+
+  void JetCone::SyncShapeVisibility(){
+      if (fShape) {
+          // Use GetRnrState() which considers parent visibility too
+          Bool_t effective_visibility = GetRnrState();
+          fShape->SetRnrSelf(effective_visibility);
+
+          if (fCaloScene) {
               fCaloScene->Changed();
           }
       }
   }
+
+void JetCone::ParentTEvesChanged()
+{
+    // TEveJetCone::ParentTEvesChanged();
+    SyncShapeVisibility();
+}
+
 
 }
