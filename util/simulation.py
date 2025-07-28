@@ -100,8 +100,5 @@ class DelphesSimulator(DetectorSimulator):
         return
 
     def GetDelphesCard(self):
-        """
-        Serialize delphes_card_text dictionary with JSON,
-        for putting into HDF5 attributes. (dict not supported)
-        """
-        return json.dumps(self.delphes_card_text)
+        return self.delphes_card_text
+        # return json.dumps(self.delphes_card_text)

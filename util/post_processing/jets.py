@@ -254,7 +254,7 @@ class JetFinder(JetFinderBase):
         else:
             metadata = json.loads(metadata[0])
         metadata[self.jet_name] = [x.replace('.Pmu','') for x in self.input_collections]
-        metadata = json.dumps(metadata)
+        # metadata = json.dumps(metadata) # handled within AddMetaDataWithReference
         AddMetaDataWithReference(self.h5_file,value=metadata,key=key,overwrite=True)
 
     # Using a generic signature -- should consider making the various post-processors inherit from a single parent class!
