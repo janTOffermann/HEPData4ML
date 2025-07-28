@@ -5,6 +5,8 @@ import glob,sys,os
 import subprocess as sub
 from util.qol_utils.progress_bar import printProgressBarColor
 from util.qol_utils.pdg import DatabasePDG
+from util.meta import MetaDataHandler
+from util.math.rotations import RotateVector
 
 from util.hepmc.setup import HepMCSetup, prepend_to_pythonpath
 from util.hepmc.readers import ReaderAscii, ReaderRootTree # our wrappers for the HepMC3 reader classes
@@ -34,6 +36,7 @@ class PileupOverlay:
         self._init_hepmc()
 
         self.verbosity = 1
+        self.print_prefix = 'PileupOverlay: '
 
         self.files = None
         self.SetPileupFiles(pileup_files)
@@ -337,8 +340,9 @@ class PileupOverlay:
             return
 
         events = []
-        mode = 'root'
 
+        # technically allows toggling mode from file to file... though one really should stick to ROOT.
+        mode = 'root'
         if(input_file_extension.lower() != 'root'):
             mode = 'ascii'
 
@@ -533,66 +537,6 @@ class PileupOverlay:
 
         return combined_event
 
-    def _copy_event_content(self,source_event: 'hm.GenEvent', target_event: 'hm.GenEvent' = None):
-        """Copy all particles and vertices from source to target event."""
-        from pyHepMC3 import HepMC3 as hm
-
-        if(target_event is None):
-            target_event = hm.GenEvent(source_event.momentum_unit(), source_event.length_unit())
-
-        # Copy main event properties
-        target_event.set_event_number(source_event.event_number())
-        target_event.set_cross_section(source_event.cross_section())
-        # target_event.weights = source_event.weights.copy() # TODO: haven't figured out best way to copy this
-
-        # Create mapping from old vertex objects to new vertex objects using list index
-        vertex_map = {}
-        vertices_list = list(source_event.vertices())
-
-        # Copy vertices first
-        for i, vertex in enumerate(vertices_list):
-            new_vertex = hm.GenVertex(vertex.position())
-            new_vertex.status = vertex.status()
-            target_event.add_vertex(new_vertex)
-            vertex_map[i] = new_vertex
-
-        # Copy particles and establish relationships
-        for particle in source_event.particles():
-            new_particle = hm.GenParticle(
-                particle.momentum(),
-                particle.pid(),
-                particle.status()
-            )
-            new_particle.set_generated_mass(particle.generated_mass())
-
-            # Set production vertex if it exists
-            if particle.production_vertex():
-                # Find the index of the production vertex in the original list
-                try:
-                    vertex_idx = vertices_list.index(particle.production_vertex())
-                    prod_vertex = vertex_map[vertex_idx]
-                    prod_vertex.add_particle_out(new_particle)
-                except ValueError:
-                    pass # expected to be triggered by beam particles
-                    # print(f"Warning: Could not find production vertex for particle {particle.pid}")
-
-            # Set end vertex if it exists
-            if particle.end_vertex():
-                try:
-                    vertex_idx = vertices_list.index(particle.end_vertex())
-                    end_vertex = vertex_map[vertex_idx]
-                    end_vertex.add_particle_in(new_particle)
-                except ValueError:
-                    print(f"Warning: Could not find end vertex for particle {particle.pid}")
-        return target_event
-
-    # def _displace_event(self, target_event: 'hm.GenEvent',
-    #                     dt: float, dx: float, dy: float, dz: float):
-    #     from pyHepMC3 import HepMC3 as hm
-
-    #     target_event.shift_position_by(hm.FourVector(dx,dy,dz,dt)) # signature is (x,y,z,t)
-    #     return
-
     def _add_displaced_event(self,
                             target_event: 'hm.GenEvent',
                             pileup_event: 'hm.GenEvent',
@@ -600,7 +544,11 @@ class PileupOverlay:
         """Add a pileup event to the target event with vertex displacement."""
         from pyHepMC3 import HepMC3 as hm
 
-        # TODO: Consider using hm.GenEvent.shift_position_by() here?
+        # TODO: Consider using hm.GenEvent.shift_position_by() here? Maybe not possible if doing a phi rotation.
+
+        # Add a random rotation in phi to the input pileup event.
+        # (rotate, then translate)
+        phi_rotation_angle = self.rng.uniform(0.,2 * np.pi)
 
         # Create mapping from old vertex objects to new vertex objects using list index
         vertex_map = {}
@@ -609,13 +557,10 @@ class PileupOverlay:
         # Copy vertices with displacement
         for i, vertex in enumerate(vertices_list):
             # Apply displacement to vertex position
-            old_pos = vertex.position()
-            new_position = hm.FourVector(
-                old_pos.x() + dx,
-                old_pos.y() + dy,
-                old_pos.z() + dz,
-                old_pos.t() + dt
-            )
+
+            old_position = np.array([getattr(vertex.position(),method)() for method in ['t','x','y','z']])
+            new_position = RotateVector(old_position,phi_rotation_angle,0.,0.) + np.array([dt,dx,dy,dz])
+            new_position = hm.FourVector(*np.roll(new_position,-1)) # using np.roll to get from (t,x,y,z) to (x,y,z,t) for the constructor
 
             new_vertex = hm.GenVertex(new_position)
             new_vertex.set_status(vertex.status())
@@ -624,8 +569,13 @@ class PileupOverlay:
 
         # Copy particles and establish relationships
         for particle in pileup_event.particles():
+
+            old_momentum = np.array([getattr(particle.momentum(),method)() for method in ['e','px','py','pz']])
+            new_momentum = hm.FourVector(*np.roll(RotateVector(old_momentum,phi_rotation_angle,0.,0.),-1))
+
+            new_momentum = particle.momentum()
             new_particle = hm.GenParticle(
-                particle.momentum(),
+                new_momentum,
                 particle.pid(),
                 particle.status()
             )
@@ -652,6 +602,30 @@ class PileupOverlay:
 
         for i,vtx in vertex_map.items():
             target_event.add_vertex(vtx)
+
+    def FetchMetadata(self):
+
+        pileup_metadata = {}
+        metadata_handler = MetaDataHandler()
+
+        # read in the metadata from all the pileup files
+        for pileup_file in self.files:
+            pileup_file_extension = pileup_file.split('.')[-1]
+            if(pileup_file_extension.lower() != 'root'):
+                self._print('Warning: Cannot read in metadata from pileup file {} .'.format(pileup_file))
+                continue
+            key = pileup_file.split('/')[-1]
+            pileup_metadata[key] = metadata_handler.ReadMetaDataFromROOTFile(pileup_file)
+
+        return pileup_metadata
+
+
+    def _print(self,val):
+        print('{}: {}'.format(self.print_prefix,val))
+        return
+
+
+
 
 class PileupOverlaySingle(PileupOverlay):
 
