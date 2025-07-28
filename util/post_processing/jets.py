@@ -3,7 +3,8 @@
 import json
 import numpy as np
 import h5py as h5
-from typing import Any, Optional, List # experimenting with typing
+from typing import Any, Optional, List, Tuple, Annotated, Union, Literal # experimenting with typing
+from numpy.typing import NDArray
 from util.fastjet.jetfinderbase import JetFinderBase
 from util.qol_utils.progress_bar import printProgressBarColor
 from util.buffer import Buffer
@@ -252,13 +253,17 @@ class JetFinder(JetFinderBase):
         if(metadata is None):
             metadata = {}
         else:
-            metadata = json.loads(metadata[0])
+            metadata = json.loads(metadata[0]) # dictionary information is being stored as keys serialized by JSON library
         metadata[self.jet_name] = [x.replace('.Pmu','') for x in self.input_collections]
-        # metadata = json.dumps(metadata) # handled within AddMetaDataWithReference
         AddMetaDataWithReference(self.h5_file,value=metadata,key=key,overwrite=True)
 
-    # Using a generic signature -- should consider making the various post-processors inherit from a single parent class!
-    def __call__(self,hepmc_file,h5_file,output_file=None,verbose=None, copts=9, key=None):
+    def __call__(self,hepmc_file:str,h5_file:str,output_file:Optional[str]=None,verbose:Optional[bool]=None, copts:int=9, key:Optional[str]=None):
+        """
+        Note that this uses a generic signature, although some arguments may be unused.
+        This is to keep the structure similar between different post-processors.
+        """
+        # should consider making the various post-processors inherit from a single parent class!
+
         if(verbose is not None): self.SetVerbosity(verbose)
         self.SetH5EventFile(h5_file)
         self.Process()
@@ -305,7 +310,7 @@ class JetFinder(JetFinderBase):
             self.constituent_indices_dict[i] = constituent_indices
         return
 
-    def _writeToBuffer(self,event_index=None):
+    def _writeToBuffer(self,event_index:Optional[int]=None):
 
         if(event_index is None):
             event_index = self._i
@@ -343,11 +348,11 @@ class JetFinder(JetFinderBase):
     #       These will be member functions that return self, so you can do "constructor().function()" instead of just "constructor()"
     #       and in this way chain together a complex configuration without the constructor having to take a huge number of args.
 
-    def PtFilter(self,pt_min=15.):
+    def PtFilter(self,pt_min:Annotated[float,"GeV"]=15.):
         self.processors.append(jet_filter.PtFilter(pt_min))
         return self
 
-    def EtaFilter(self,eta_max=2.):
+    def EtaFilter(self,eta_max:float=2.):
         self.processors.append(jet_filter.EtaFilter(eta_max))
         return self
 
@@ -367,7 +372,7 @@ class JetFinder(JetFinderBase):
         self.processors.append(ghost_assoc.GhostAssociator(truth_key,truth_indices,mode,tag_name))
         return self
 
-    def Softdrop(self,z_cut,beta):
+    def Softdrop(self,z_cut:float,beta:float):
         """
         This function performs the softdrop algorithm.
 
@@ -376,7 +381,7 @@ class JetFinder(JetFinderBase):
         self.processors.append(softdrop.Softdrop(z_cut,beta))
         return self
 
-    def IteratedSoftdrop(self,z_cut,beta,dR_cut,max_depth=10,mode='tag'):
+    def IteratedSoftdrop(self,z_cut:float,beta:float,dR_cut:float,max_depth:int=10,mode:str='tag'):
         """
         This function performs the iterated softdrop algorithm.
 
@@ -385,7 +390,7 @@ class JetFinder(JetFinderBase):
         self.processors.append(softdrop.IteratedSoftdrop(z_cut,beta,dR_cut,max_depth,mode))
         return self
 
-    def JohnsHopkinsTagger(self,delta_p=0.1,delta_r=0.19,cos_theta_W_max=0.7,top_mass_range=(150.,200.),W_mass_range=(65.,95.), mode='filter',tag_name=None):
+    def JohnsHopkinsTagger(self,delta_p:float=0.1,delta_r:float=0.19,cos_theta_W_max:float=0.7,top_mass_range:Annotated[Tuple[float,float],"GeV"]=(150.,200.),W_mass_range:Annotated[Tuple[float,float],"GeV"]=(65.,95.), mode:str='filter',tag_name:Optional[str]=None):
         """
         This function performs top-tagging via
         the Johns Hopkins top tagger.
@@ -399,7 +404,7 @@ class JetFinder(JetFinderBase):
         self.processors.append(jhtagger.JohnsHopkinsTagger(delta_p,delta_r,cos_theta_W_max,top_mass_range,W_mass_range,mode,tag_name))
         return self
 
-    def Containment(self,truth_key,truth_indices,delta_r=None,use_rapidity=True, mode='tag',tag_name=None):
+    def Containment(self,truth_key:str,truth_indices:Union[int,List[int],NDArray],delta_r:Optional[float]=None,use_rapidity:bool=True, mode:str='tag',tag_name:Optional[str]=None):
         """
         This function performs "containment tagging", by checking
         the DeltaR between the jet and the particle(s) belonging
@@ -417,7 +422,7 @@ class JetFinder(JetFinderBase):
         return self
 
 
-    def TrackCountingBTag(self,track_key,track_pt_min=1., delta_r=0.3, track_ip_max=2., sig_min=6.5, ntracks=3, use_3d=False, mode='tag',tag_name=None):
+    def TrackCountingBTag(self,track_key:str,track_pt_min:Annotated[float,"GeV"]=1., delta_r:float=0.3, track_ip_max:Annotated[float,"mm"]=2., sig_min:float=6.5, ntracks:int=3, use_3d:bool=False, mode:str='tag',tag_name:Optional[str]=None):
         """
         This function performs a simple b-tagging algorithm,
         taken from Delphes' TrackCountingBTagging module.
