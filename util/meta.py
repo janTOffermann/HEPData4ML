@@ -1,13 +1,16 @@
-import os, uuid, time
+import os, uuid, time, pathlib, json
 import subprocess as sub
 import numpy as np
 import h5py as h5
+import ROOT as rt
+from typing import Union, List
 
 class MetaDataHandler:
 
     def __init__(self):
 
         self.metadata = {}
+        self.print_prefix = 'MetaDataHandler: '
         self.Initialize()
 
     def AddElement(self,key,val):
@@ -31,6 +34,122 @@ class MetaDataHandler:
         except:
             result = 'NO_GIT_HASH'
         return result
+
+    def AddMetaDataToROOTFiles(self,root_file:Union[List[str],str], cwd=None, tree_name:str='hepmc3_tree'):
+        """
+        This utility function adds the existing metadata (in self.metadata)
+        to the "UserInfo" of a TTree in the input ROOT file.
+        This is a convenient way to stash the metadata into a HepMC3/ROOT file,
+        for example -- which may be handy in use cases such as creating input
+        pileup files, where we want to store the metadata but don't have a final
+        HDF5 output.
+        """
+        if(isinstance(root_file,list)):
+            for entry in root_file:
+                self.AddMetaDataToROOTFiles(entry,cwd,tree_name)
+                return
+
+        if(cwd is not None):
+            root_file = '{}/{}'.format(cwd,root_file)
+
+        if(not pathlib.Path(root_file).exists()):
+            self._print('Input file {} does not exist.'.format(root_file))
+            return
+
+        # acting on a single file
+        f = rt.TFile(root_file,'UPDATE')
+        keys = [x.GetName() for x in f.GetListOfKeys()]
+        if(tree_name not in keys):
+            self._print('Input file {} does not contain tree {}.'.format(root_file,tree_name))
+            self._print('Available keys in file:')
+            for key in keys:
+                print('\t{}'.format(key))
+            f.Close()
+            return
+
+        t = f.Get(tree_name)
+        self._add_to_ttree(t)
+        f.Close()
+        return
+
+    def _add_to_ttree(self,tree:rt.TTree):
+        """
+        We store the information in a TMap, within the TTree's UserInfo
+        (which is a TList). For dictionary-type information, we serialize
+        using the json package.
+        """
+
+        user_info = tree.GetUserInfo()
+
+        for key, value in self.metadata.items():
+            if isinstance(value, int):
+                # TParameter<int> for ints
+                param = rt.TParameter(int)(key, value)
+                user_info.Add(param)
+            elif isinstance(value, float):
+                # TParameter<double> for floats
+                param = rt.TParameter(float)(key, value)
+                user_info.Add(param)
+            elif isinstance(value, str):
+                # TNamed for strings (name=key, title=value)
+                param = rt.TNamed(key, value)
+                user_info.Add(param)
+            elif isinstance(value, dict):
+                # Convert dict to JSON string and store as TNamed
+                json_str = json.dumps(value)
+                param = rt.TNamed(key, json_str)
+                # Add a marker to identify this as JSON
+                param.SetUniqueID(999)  # Custom marker for JSON data, to tell it apartfrom the basic string
+                user_info.Add(param)
+        return
+
+    def _read_from_ttree(self,tree:rt.TTree):
+        user_info = tree.GetUserInfo()
+        metadata = {}
+
+        for i in range(user_info.GetEntries()):
+            obj = user_info.At(i)
+            key = obj.GetName()
+
+            if obj.InheritsFrom("TParameter<int>"):
+                metadata[key] = obj.GetVal()
+            elif obj.InheritsFrom("TParameter<double>"):
+                metadata[key] = obj.GetVal()
+            elif obj.InheritsFrom("TNamed"):
+                value = obj.GetTitle()
+                # Check if this was originally a dictionary
+                if obj.GetUniqueID() == 999:
+                    metadata[key] = json.loads(value)
+                else:
+                    metadata[key] = value
+        return metadata
+
+    def ReadMetaDataFromROOTFile(self,root_file:str, cwd=None, tree_name:str='hepmc3_tree'):
+        if(cwd is not None):
+            root_file = '{}/{}'.format(cwd,root_file)
+
+        if(not pathlib.Path(root_file).exists()):
+            self._print('Input file {} does not exist.'.format(root_file))
+            return None
+
+        f = rt.TFile(root_file,'READ')
+        keys = [x.GetName() for x in f.GetListOfKeys()]
+        if(tree_name not in keys):
+            self._print('Input file {} does not contain tree {}.'.format(root_file,tree_name))
+            self._print('Available keys in file:')
+            for key in keys:
+                print('\t{}'.format(key))
+            f.Close()
+            return
+
+        t = f.Get(tree_name)
+        metadata = self._read_from_ttree(t)
+        f.Close()
+        return metadata
+
+    def _print(self,val):
+        print('{}: {}'.format(self.print_prefix,val))
+        return
 
 def AddMetaData(h5_file,cwd=None,value='',key='metadata'):
     """
@@ -58,6 +177,11 @@ def AddMetaDataWithReference(h5_file,cwd=None,value='',key='metadata',overwrite=
     check_key = list(f.keys())[0]
     nevents = f[check_key].shape[0]
     metadata = f.attrs
+
+    # Dictionaries are not supported in HDF5, but we can convert to JSON.
+    if(isinstance(value,dict)):
+        value = json.dumps(value)
+
     if((key not in metadata.keys()) or overwrite): f.attrs[key] = [value]
     else: f.attrs[key] = list(f.attrs[key]) + [value] # I think the list <-> array stuff should be OK here
     idx = len(f.attrs[key]) - 1

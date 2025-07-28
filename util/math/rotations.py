@@ -1,6 +1,8 @@
 import numpy as np
+from numpy.typing import NDArray
+from typing import Literal, Annotated
 
-def GetRotationMatrix(alpha,beta,gamma):
+def GetRotationMatrix(alpha:float,beta:float,gamma:float)->Annotated[NDArray[np.float64], "Shape: (3, 3)"]:
     """
     Given yaw (x-y), pitch (x-z) and roll (y-z),
     determine the rotation matrix.
@@ -26,7 +28,7 @@ def GetRotationMatrix(alpha,beta,gamma):
     R = np.dot(R_alpha, np.dot(R_beta,R_gamma))
     return R
 
-def RotateVector(v, alpha,beta,gamma):
+def RotateVector(v:Annotated[NDArray[np.float64], "Shape: (4,)"], alpha:float,beta:float,gamma:float):
     """
     Rotate 4-vector v with the given (yaw,pitch,roll).
     Using convention v = (E, px, py, pz).
@@ -59,7 +61,7 @@ def GetRelRotationMatrix(vec1, vec2):
     U = np.dot(Finv,np.dot(G,F))
     return U
 
-def DetermineRotation(vec1, vec2):
+def DetermineRotation(vec1:Annotated[NDArray[np.float64], "Shape: (4,)"], vec2:Annotated[NDArray[np.float64], "Shape: (4,)"]):
     """
     Return the rotation matrix necessary to rotate the vectors
     such that vec1 is along the +x-axis, and vec2 is in the x-y

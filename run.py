@@ -236,6 +236,18 @@ def main(args):
         filter_flag_files.append(generator.GetEventFilterFlagFilename())
         hepmc_files.append(hep_file)
 
+    #===================================
+    # STEP 1.5: Metadata for HepMC3/ROOT
+    #===================================
+    # If HepMC3/ROOT files were generated, we stash the metadata in them too.
+    # This is particularly helpful for the pileup step, as it can read this metadata
+    # if using these files in another run.
+    # Note that if plaintext HepMC3 was used, this feature is unavailable, and it may
+    # make the final dataset harder to reproduce (since you won't directly have info on
+    # how the pileup_handlers' input files were created!).
+    if(hepmc_extension == 'root'):
+        metadata_handler.AddMetaDataToROOTFiles(hepmc_files,cwd=outdir)
+
     #===============================
     # STEP 2: Pileup (optional)
     #===============================
@@ -251,6 +263,9 @@ def main(args):
 
             hep_files_with_pileup = pileup_handler.Process(hepmc_files)
 
+            # Try to add the pileup files' metadata to the output metadata.
+            pileup_metadata = pileup_handler.FetchMetadata()
+            metadata_handler.AddElement('Metadata.Pileup.Metadata',pileup_metadata)
 
     #===============================
     # STEP 3: Simulation (optional)
