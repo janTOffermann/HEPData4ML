@@ -59,10 +59,11 @@ class PileupOverlay:
 
         # Set up the distribution for # of interactions per crossing
         self.mu_file = mu_file
-        self.mu_values = None
-        self.mu_probs = None
+        self.available_mu_values = None
+        self.mu_probabilities = None
         self._init_mu_distribution()
         self.mu = None # transient storage for the current value of mu
+        self.mu_values = {} # will store a list of all used mu values
 
         self.pileup_events = None # transient storage for pileup events
 
@@ -177,12 +178,12 @@ class PileupOverlay:
         n = self.mu_distribution.GetNbinsX()
         mu_min = self.mu_distribution.GetXaxis().GetBinLowEdge(1)
         mu_max = self.mu_distribution.GetXaxis().GetBinLowEdge(n+1)
-        self.mu_values = np.arange(mu_min,mu_max)
-        self.mu_probs = np.array([self.mu_distribution.GetBinContent(i+1) for i in range(n)],dtype=float)
-        self.mu_probs /= np.sum(self.mu_probs)
+        self.available_mu_values = np.arange(mu_min,mu_max)
+        self.mu_probabilities = np.array([self.mu_distribution.GetBinContent(i+1) for i in range(n)],dtype=float)
+        self.mu_probabilities /= np.sum(self.mu_probabilities)
 
     def _sample_mu_distribution(self):
-        self.mu = int(self.rng.choice(self.mu_values,p=self.mu_probs))
+        self.mu = int(self.rng.choice(self.available_mu_values,p=self.mu_probabilities))
 
     def _pick_event_indices(self, update_mask=False):
         self._sample_mu_distribution()
@@ -340,6 +341,7 @@ class PileupOverlay:
             return
 
         events = []
+        self.mu_values[output_file] = []
 
         # technically allows toggling mode from file to file... though one really should stick to ROOT.
         mode = 'root'
@@ -365,8 +367,9 @@ class PileupOverlay:
                 #     printProgressBarColor(nevents,nevents,'Adding pileup:',decimals=2)
                 break
 
-            self._pick_event_indices()
+            self._pick_event_indices() # sets self.mu
             pileup_events = self._fetch_events(self.selected_indices)
+            self.mu_values[output_file].append(self.mu)
 
             # overlay pileup on this event
             # for now, use automatic displacement -- will use self.beam_spot_sigma
@@ -604,7 +607,6 @@ class PileupOverlay:
             target_event.add_vertex(vtx)
 
     def FetchMetadata(self):
-
         pileup_metadata = {}
         metadata_handler = MetaDataHandler()
 
@@ -619,6 +621,8 @@ class PileupOverlay:
 
         return pileup_metadata
 
+    def FetchMuValueDictionary(self):
+        return self.mu_values
 
     def _print(self,val):
         print('{}: {}'.format(self.print_prefix,val))

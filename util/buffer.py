@@ -192,7 +192,7 @@ class Buffer:
     automatically flushes data when the buffer fills up.
     """
 
-    def __init__(self, buffer_size: int = 100, filename=None, flush_handler: Optional[BufferFlushHandler] = None):
+    def __init__(self, buffer_size: int = 100, filename:Optional[str]=None, flush_handler: Optional[BufferFlushHandler] = None):
         """
         Initialize the buffer.
 

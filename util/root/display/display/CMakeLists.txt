@@ -10,6 +10,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(EventDisplay
     display/CaloData.h
     display/TestUtils.h
     display/Utils.h
+    display/Track.h
     display/JetCone.h
     display/JetElementList.h
   SOURCES
@@ -20,6 +21,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(EventDisplay
     src/CaloData.cxx
     src/TestUtils.cxx
     src/Utils.cxx
+    src/Track.cxx
     src/JetCone.cxx
     src/JetElementList.cxx
   LINKDEF

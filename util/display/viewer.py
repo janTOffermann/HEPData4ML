@@ -61,6 +61,10 @@ class EventDisplay:
 
         self.display.DisplayEvent(self.delphes_card)
 
+    def FindObjectNames(self):
+        self.object_names = sorted(list(set([key.split('.')[0] for key in self.data.keys()])))
+
+
     def LoadData(self,event_index):
         assert self.input_file is not None
         assert pathlib.Path(self.input_file).exists()
@@ -69,7 +73,8 @@ class EventDisplay:
         self.data = {key: f[key][event_index] for key in f.keys()}
         self.metadata = {key:f.attrs[key] for key in f.attrs.keys()}
         f.close()
-        self.object_names = sorted(list(set([key.split('.')[0] for key in self.data.keys()])))
+
+        self.FindObjectNames()
 
         self.LoadVertexData()
         self.LoadTrackData()
@@ -261,6 +266,11 @@ class EventDisplay:
                 constituent_collection_indices = self.data['{}.Constituents.Collection.Index'.format(object_name)][:nobj]
 
                 # go from constituent_collections to collection names
+                print('object_name = {}, constituent_collections = '.format(object_name))
+                for entry in constituent_collections:
+                    print('\t',entry)
+                print('jet_name_dict[object_name] = ',jet_name_dict[object_name])
+
                 constituent_collection_names = [
                     [jet_name_dict[object_name][x] for x in y]
                     for y in constituent_collections
