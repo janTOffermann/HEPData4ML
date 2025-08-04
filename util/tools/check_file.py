@@ -126,8 +126,10 @@ def _check_event(filename,idx=0):
 def main(args):
     parser = ap.ArgumentParser()
     parser.add_argument('-i','--inputFile',type=str,required=True)
+    parser.add_argument('-ei','--eventIndex',type=int,default=0)
     args = vars(parser.parse_args())
     input_file = args['inputFile']
+    event_index = args['eventIndex']
 
     # First check that the file exists
     if(not _check_file(input_file)):
@@ -137,8 +139,8 @@ def main(args):
     _print_keys(input_file)
 
     # Check a single event
-    print('Checking first event.')
-    _check_event(input_file)
+    print('Checking event #{}.'.format(event_index))
+    _check_event(input_file,event_index)
     return
 
 if(__name__=='__main__'):

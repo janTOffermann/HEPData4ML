@@ -88,7 +88,7 @@ namespace Display{
       0.4
     );
 
-    vector<Track> tracks = generateRandomTracks(5);
+    vector<TrackVector> tracks = generateRandomTracks(5);
 
     eventDisplay_->AddTrackData("TestTracks",
       extractValues(tracks, [](const auto& t) { return t.pt;}),
@@ -101,7 +101,7 @@ namespace Display{
       extractValuesInt(tracks, [](const auto& t) { return t.pdgId;})
     );
 
-    vector<Track> electrons = generateRandomElectrons(2);
+    vector<TrackVector> electrons = generateRandomElectrons(2);
 
     eventDisplay_->AddElectronData("TestElectrons",
       extractValues(electrons, [](const auto& t) { return t.pt;}),
@@ -114,7 +114,7 @@ namespace Display{
       extractValues(electrons, [](const auto& t) { return t.pdgId > 0 ? -1. : 1.;})
     );
 
-    vector<Track> muons = generateRandomElectrons(1);
+    vector<TrackVector> muons = generateRandomElectrons(1);
     eventDisplay_->AddMuonData("TestMuons",
       extractValues(muons, [](const auto& t) { return t.pt;}),
       extractValues(muons, [](const auto& t) { return t.eta;}),

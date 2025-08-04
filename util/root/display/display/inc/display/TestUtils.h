@@ -39,7 +39,7 @@ namespace Display{
   };
 
   // Structure to hold track components
-  struct Track {
+  struct TrackVector {
       Double_t pt;
       Double_t eta;
       Double_t phi;
@@ -49,16 +49,16 @@ namespace Display{
       Double_t z;
       Int_t pdgId;
 
-      Track(Double_t pt_, Double_t eta_, Double_t phi_, Double_t m_, Double_t x_, Double_t y_, Double_t z_, Int_t pdgId_)
+      TrackVector(Double_t pt_, Double_t eta_, Double_t phi_, Double_t m_, Double_t x_, Double_t y_, Double_t z_, Int_t pdgId_)
           : pt(pt_), eta(eta_), phi(phi_), m(m_), x(x_), y(y_), z(z_), pdgId(pdgId_) {}
   };
 
   std::vector<JetFourVector> generateRandomJets(Int_t nJets = 10, UInt_t seed = 0);
   std::vector<ROOT::Math::PtEtaPhiMVector> generateRandomJetVecs(Int_t nJets = 10, UInt_t seed = 0);
 
-  std::vector<Track> generateRandomTracks(Int_t nTracks = 20, UInt_t seed = 0, std::vector<std::pair<Int_t, Double_t>> particleTypes={});
-  std::vector<Track> generateRandomElectrons(Int_t nTracks = 20, UInt_t seed = 0);
-  std::vector<Track> generateRandomMuons(Int_t nTracks = 20, UInt_t seed = 0);
+  std::vector<TrackVector> generateRandomTracks(Int_t nTracks = 20, UInt_t seed = 0, std::vector<std::pair<Int_t, Double_t>> particleTypes={});
+  std::vector<TrackVector> generateRandomElectrons(Int_t nTracks = 20, UInt_t seed = 0);
+  std::vector<TrackVector> generateRandomMuons(Int_t nTracks = 20, UInt_t seed = 0);
   template<typename Container, typename Func>
   std::vector<Double_t> extractValues(const Container& objects, Func extractor){
       std::vector<Double_t> result;

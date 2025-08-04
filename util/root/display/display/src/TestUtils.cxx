@@ -75,9 +75,9 @@ namespace Display{
     return jets;
   }
 
-  std::vector<Track> generateRandomTracks(Int_t nTracks, UInt_t seed, std::vector<std::pair<Int_t, Double_t>> particleTypes) {
+  std::vector<TrackVector> generateRandomTracks(Int_t nTracks, UInt_t seed, std::vector<std::pair<Int_t, Double_t>> particleTypes) {
     TRandom3 rng(seed);
-    std::vector<Track> tracks;
+    std::vector<TrackVector> tracks;
     tracks.reserve(nTracks);
 
     // Particle types and their relative probabilities
@@ -187,11 +187,11 @@ namespace Display{
     return tracks;
   }
 
-  std::vector<Track> generateRandomElectrons(Int_t nTracks, UInt_t seed) {
+  std::vector<TrackVector> generateRandomElectrons(Int_t nTracks, UInt_t seed) {
     return generateRandomTracks(nTracks, seed, {{11,   1.0}});
   }
 
-  std::vector<Track> generateRandomMuons(Int_t nTracks, UInt_t seed){
+  std::vector<TrackVector> generateRandomMuons(Int_t nTracks, UInt_t seed){
     return generateRandomTracks(nTracks, seed, {{13,   1.0}});
   };
 }

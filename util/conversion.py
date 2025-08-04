@@ -449,6 +449,10 @@ class Processor:
                 if(h5_files is not None): h5_file = '{}/{}'.format(self.outdir,h5_files[i])
                 hepmc_file = '{}/{}'.format(self.outdir,hepmc_files[i])
                 post_proc(hepmc_file,h5_file,h5_file)
+
+        #TODO: Perform some special post-processing if things like JetFinder.Leading() were used,
+        #      to strip down an unnecessary dimension.
+
         return
 
     def MergeEventFilterFlag(self,h5_file,event_filter_flag_files,copts=9):

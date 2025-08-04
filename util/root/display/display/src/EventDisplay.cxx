@@ -32,32 +32,31 @@
 #include <display/CaloData.h>
 #include <display/ExDelphesDisplay.h>
 #include <display/JetCone.h>
+#include <display/Track.h>
 
 #include <algorithm>
 #include <cassert>
 #include <iostream>
 #include <utility>
 
-#include "TAxis.h"
-#include "TCanvas.h"
-#include "TChain.h"
-#include "TClonesArray.h"
+
 #include "TEveArrow.h"
 #include "TEveBrowser.h"
-// #include "TEveElement.h"
 #include "TEveEventManager.h"
 #include "TEveGeoNode.h"
-// #include "TEveJetCone.h"
 #include "TEveManager.h"
 #include "TEveTrack.h"
 #include "TEvePointSet.h"
 #include "TEveScene.h"
-
-#include "TGeoTube.h"
-#include "TEveGeoShape.h"
-// #include "TEveTrackPropagator.h"
 #include "TEveTrans.h"
 #include "TEveViewer.h"
+#include "TEveGeoShape.h"
+
+#include "TAxis.h"
+#include "TCanvas.h"
+#include "TChain.h"
+#include "TClonesArray.h"
+#include "TGeoTube.h"
 #include "TGButton.h"
 #include "TGHtml.h"
 #include "TGNumberEntry.h"
@@ -70,6 +69,7 @@
 #include "TMath.h"
 #include "TRootBrowser.h"
 #include "TRootEmbeddedCanvas.h"
+#include "TParticlePDG.h"
 #include "TSystem.h"
 
 #include "Math/Vector4D.h"
@@ -185,8 +185,7 @@ namespace Display{
   }
 
   void EventDisplay::AddContainersToScene(){
-    for(map<TString, BranchBase *>::iterator element = elements_.begin(); element != elements_.end(); ++element)
-    {
+    for(map<TString, BranchBase *>::iterator element = elements_.begin(); element != elements_.end(); ++element){
       TString name = element->first;
       auto it = find(addedContainers_.begin(), addedContainers_.end(), name);
       if (it!=addedContainers_.end()) continue;
@@ -286,7 +285,7 @@ namespace Display{
       for (TEveElement::List_i it = elist->BeginChildren(); it != elist->EndChildren(); ++it) {
         // Create a thin cylinder
         Float_t radius = jetRadius_[jetContainerName];
-        Double_t dz = 0.01 * (0.4 / radius);
+        Double_t dz = 0.02 * (0.4 / radius);
         radius = ConvertRadiusToCaloLego(radius);
         TGeoTube* tube = new TGeoTube(0.95 * radius, radius, dz);  // Very thin height // TODO: need to get radius!
         TGeoVolume* vol = new TGeoVolume("JetProjection", tube);
@@ -305,7 +304,7 @@ namespace Display{
         Double_t eta = jetEta_[jetContainerName].at(i);
         Double_t phi = jetPhi_[jetContainerName].at(i);
         vector<Double_t> visualCoordinates = ConvertEtaPhiToCaloLego(eta,phi);
-        shape->RefMainTrans().SetPos(visualCoordinates.at(0), visualCoordinates.at(1), 0.0);
+        shape->RefMainTrans().SetPos(visualCoordinates.at(0), visualCoordinates.at(1), dz);
         JetCone* jet = dynamic_cast<JetCone*>(*it);
         jet->SetJetCircle(shape);
         jet->SetCaloScene(caloScene);
@@ -730,7 +729,7 @@ namespace Display{
     if(vec.Pt() < 1.0e-10) continue;
 
       TParticle pb(
-       13, 1, 0, 0, 0, 0,
+       22, 1, 0, 0, 0, 0,
         vec.Px(), vec.Py(), vec.Pz(), vec.E(),
         0., 0., 0., 0.
       );
@@ -746,6 +745,7 @@ namespace Display{
       br->GetContainer()->AddElement(eveTrack);
       eveTrack->SetLineColor(br->GetColor());
       eveTrack->MakeTrack();
+
     }
   }
 
@@ -763,7 +763,7 @@ namespace Display{
     ROOT::Math::PxPyPzEVector vec;
     ROOT::Math::XYZTVector productionVec;
     ROOT::Math::XYZTVector decayVec;
-    TEveTrack *eveTrack;
+    Track *eveTrack;
     TEveTrackPropagator *trkProp;// = new TEveTrackPropagator(br->GetContainer()->GetPropagator());
 
     for(Int_t i = 0; i < nElements; i++){
@@ -795,12 +795,19 @@ namespace Display{
         vec.Px(), vec.Py(), vec.Pz(), vec.E(),
         productionVec.X(), productionVec.Y(), productionVec.Z(), productionVec.T()
       );
-      eveTrack = new TEveTrack(&pb, i, trkProp);
+      eveTrack = new Track(&pb, i, trkProp);
       eveTrack->SetName(Form("%s [%d]", pb.GetName(), i));
       eveTrack->SetIndex(i);
+      eveTrack->SetCharge(pb.GetPDG()->Charge() / 3.); // NOTE: Seems like things like b quarks get charge set to zero by TEveTrack, hence the use of  Note division by 3 for conversion from |e|/3 to units of |e| (which TEveTrack uses).
       eveTrack->SetStdTitle();
       eveTrack->SetAttLineAttMarker(br->GetContainer());
-      if(eveTrack->GetCharge() == 0) eveTrack->SetLineStyle(7);
+      if(eveTrack->GetCharge() == 0){
+        eveTrack->SetLineStyle(7);
+        // Unfortunately TEveTrack only supports integer charges, in units of |e| -- so things like quarks can be treated as neutral.
+        // This is in practice fine since they won't actually make long tracks, but messes up the visualization that attempts to label
+        // the neutrals differently.
+        // if(pb.GetPdgCode() > 6) eveTrack->SetLineStyle(7);
+      }
       br->GetContainer()->AddElement(eveTrack);
       eveTrack->SetLineColor(br->GetColor());
       eveTrack->MakeTrack();
