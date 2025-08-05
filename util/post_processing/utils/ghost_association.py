@@ -7,6 +7,9 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING: # Only imported during type checking -- avoids circular imports we'd otherwise get, since jets imports this file
     from util.post_processing.jets import JetFinder
 
+# TODO: Something seems broken, ghost is (occasionally?) throwing off <jet_name>.Constituents.Collection.
+#       Appears at end of Constituents.Pmu, but not end of that branch.
+
 class GhostAssociator():
     """
     Ghost-associates jets with particles labeled by `key`,
@@ -102,15 +105,21 @@ class GhostAssociator():
             # For the jets with ghosts, modify them to remove the ghost --
             # we don't want to pass it to any further steps.
             if(self.tags[i]):
+
+                self._print('Removing ghosts from jet {} of collection {}'.format(i,obj.jet_name))
+                self._print('Ghost mask = ')
+                for j,entry in enumerate(ghost_mask):
+                    print('\t[{}]\t'.format(j),entry)
+
                 obj.jets_dict[i] = fj.join([x for x in list(itertools.compress(list(jet.constituents()),~ghost_mask))])
 
         if(self.mode=='filter'):
-
             obj.jet_ordering = [key for key in obj.jet_ordering if self.tags[key]]
             obj._updateJetDictionary()
             # Refresh vectors and constituents -- always need to do this if we filter jets_dict.
             obj._jetsToVectors()
             obj._fetchJetConstituents()
+
         # else:
         #     for i,entry in enumerate(self.tags):
         #         self._addFlagToBuffer(obj,i,entry)
