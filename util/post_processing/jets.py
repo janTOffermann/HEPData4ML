@@ -289,6 +289,9 @@ class JetFinder(JetFinderBase):
         return
 
     def _computeConstituentIndices(self):
+
+        self._print('_computeConstituentIndices: starting for {}'.format(self.jet_name))
+
         # Precompute collection boundaries once
         n_per_collection = [len(self.input_collection_arrays[key][self._i]) for key in self.input_collections]
         cumulative_lengths = np.cumsum([0] + n_per_collection)
@@ -296,18 +299,25 @@ class JetFinder(JetFinderBase):
         self.constituent_indices_dict = {}
 
         for i, jet in self.jets_dict.items():
-            raw_indices = [pj.user_index() for pj in jet.constituents()]
+            raw_indices = np.array([pj.user_index() for pj in jet.constituents()])
 
             # Vectorized conversion for all indices at once
-            raw_indices_array = np.array(raw_indices)
-            collection_indices = np.searchsorted(cumulative_lengths[1:], raw_indices_array, side='right')
-            local_indices = raw_indices_array - cumulative_lengths[collection_indices]
+            collection_indices = np.searchsorted(cumulative_lengths[1:], raw_indices, side='right')
+            local_indices = raw_indices - cumulative_lengths[collection_indices]
 
             # Combine into pairs
             constituent_indices = np.array(list(zip(collection_indices, local_indices)))
 
             # Store the results
             self.constituent_indices_dict[i] = constituent_indices
+
+            print('[jet {}]\t'.format(i))
+            for j,entry in enumerate(constituent_indices):
+                if(entry[0] > 2):
+                    print('\t[const. {}\t]'.format(j),entry,'\t<----------')
+                else:
+                    print('\t[const. {}\t]'.format(j),entry)
+
         return
 
     def _writeToBuffer(self,event_index:Optional[int]=None):
@@ -355,6 +365,11 @@ class JetFinder(JetFinderBase):
     def EtaFilter(self,eta_max:float=2.):
         self.processors.append(jet_filter.EtaFilter(eta_max))
         return self
+
+    def Leading(self):
+        self.processors.append(jet_filter.Leading())
+        return self
+
 
     def GhostAssociation(self,truth_key,truth_indices,mode='filter',tag_name=None):
         """
@@ -420,7 +435,6 @@ class JetFinder(JetFinderBase):
 
         self.processors.append(containment.ContainmentTagger(truth_key,truth_indices,delta_r,mode,use_rapidity,tag_name))
         return self
-
 
     def TrackCountingBTag(self,track_key:str,track_pt_min:Annotated[float,"GeV"]=1., delta_r:float=0.3, track_ip_max:Annotated[float,"mm"]=2., sig_min:float=6.5, ntracks:int=3, use_3d:bool=False, mode:str='tag',tag_name:Optional[str]=None):
         """

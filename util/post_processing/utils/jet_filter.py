@@ -88,3 +88,47 @@ class EtaFilter:
     def _print(self,val):
         print('{}: {}'.format(self.print_prefix,val))
         return
+
+class Leading:
+    """
+    Removes all jets except the highest-pT one.
+    """
+
+    # TODO: Implement some functionality to trim down the dimensionality
+    #       of the jet branches at the end?
+
+    def __init__(self):
+        self.print_prefix = '\n\t\tLeading'
+
+    def ModifyInitialization(self,obj):
+        return
+
+    def ModifyInputs(self,obj):
+        return
+
+    def ModifyJets(self, obj):
+        """
+        This function apply the leading (highest-pT) cut.
+        """
+        tags = {i:False for i in obj.jets_dict.keys()}
+
+        jet_pt = np.array([jet.pt() for jet in obj.jets_dict.values()])
+        tags[list(obj.jets_dict.keys())[np.argmax(jet_pt)]] = True
+
+        obj.jet_ordering = [key for key in obj.jet_ordering if tags[key]]
+        obj._updateJetDictionary()
+        # Refresh vectors and constituents -- always need to do this if we filter jets_dict.
+        obj._ptSort()
+        obj._jetsToVectors()
+        obj._fetchJetConstituents()
+        return
+
+    def ModifyWrite(self,obj):
+        return # does nothing
+
+    def ModifyConstituents(self, obj):
+        return
+
+    def _print(self,val):
+        print('{}: {}'.format(self.print_prefix,val))
+        return
