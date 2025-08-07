@@ -252,7 +252,6 @@ class EventDisplay:
 
         metadata_index = self.data['Metadata.JetCollections.InputCollections']
         jet_name_dict = json.loads(self.metadata['Metadata.JetCollections.InputCollections'][metadata_index])
-        print(jet_name_dict)
 
         for object_name in self.object_names:
             if('jet' in object_name.lower()):
@@ -266,11 +265,6 @@ class EventDisplay:
                 constituent_collection_indices = self.data['{}.Constituents.Collection.Index'.format(object_name)][:nobj]
 
                 # go from constituent_collections to collection names
-                print('object_name = {}, constituent_collections = '.format(object_name))
-                for entry in constituent_collections:
-                    print('\t',entry)
-                print('jet_name_dict[object_name] = ',jet_name_dict[object_name])
-
                 constituent_collection_names = [
                     [jet_name_dict[object_name][x] for x in y]
                     for y in constituent_collections
