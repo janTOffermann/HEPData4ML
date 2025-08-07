@@ -17,8 +17,8 @@ config = {
     },
 
     'pileup' : {
-        # 'handler':None,
-        'handler': pu.PileupOverlay("/Users/jan/tmp/pileup/part0/events_0.root",rng_seed=1) # For example, you can overlay pileup events from some pre-existing HepMC3 files (ideally in ROOT format!), which you can generate with this package too.
+        'handler':None,
+        # 'handler': pu.PileupOverlay("/Users/jan/tmp/pileup/part0/events_0.root",rng_seed=1) # For example, you can overlay pileup events from some pre-existing HepMC3 files (ideally in ROOT format!), which you can generate with this package too.
     },
 
     'simulation' : {
