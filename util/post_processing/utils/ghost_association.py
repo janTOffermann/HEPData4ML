@@ -71,13 +71,17 @@ class GhostAssociator():
     def ModifyInputs(self,obj : 'JetFinder'):
         """
         Puts the ghost vectors corresponding with `key`
-        on the top of obj.input_vecs.
+        on the bottom of obj.input_vecs.
         """
+        # Putting the ghosts on the bottom to avoid causing issues with fasjet.Pseudojet.user_index().
         ghost_vecs = obj.input_collection_arrays[self.ghost_key][obj._i] # ith event
-        obj.input_vecs = np.vstack([ghost_vecs,obj.input_vecs])
+
+        original_input_length = len(obj.input_vecs)
+
+        obj.input_vecs = np.vstack([obj.input_vecs,ghost_vecs])
 
         for i in range(len(obj.input_vecs)):
-            ghost_dict = {'GhostAssociation:Ghost':(i < len(ghost_vecs))}
+            ghost_dict = {'GhostAssociation:Ghost':(i >= original_input_length)}
             obj.AddUserInfo(i,ghost_dict) # TODO: Fetch existing UserInfo first, and add this instead? Don't want to accidentally overwrite something else.
         return
 
@@ -105,12 +109,6 @@ class GhostAssociator():
             # For the jets with ghosts, modify them to remove the ghost --
             # we don't want to pass it to any further steps.
             if(self.tags[i]):
-
-                self._print('Removing ghosts from jet {} of collection {}'.format(i,obj.jet_name))
-                self._print('Ghost mask = ')
-                for j,entry in enumerate(ghost_mask):
-                    print('\t[{}]\t'.format(j),entry)
-
                 obj.jets_dict[i] = fj.join([x for x in list(itertools.compress(list(jet.constituents()),~ghost_mask))])
 
         if(self.mode=='filter'):
@@ -119,10 +117,6 @@ class GhostAssociator():
             # Refresh vectors and constituents -- always need to do this if we filter jets_dict.
             obj._jetsToVectors()
             obj._fetchJetConstituents()
-
-        # else:
-        #     for i,entry in enumerate(self.tags):
-        #         self._addFlagToBuffer(obj,i,entry)
 
         return
 

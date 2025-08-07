@@ -7,9 +7,9 @@ config = {
     'generation' : {
         'proc' : 'Top_Wqq', # Filename. Can also correspond to a card name in the util/pythia_templates subdirectory.
         'hadronization' : True, # Pythia8 hadronization flag
-        'mpi' : False, # Pythia8 multi-parton interactions flag
-        'isr' : False, # Pythia8 initial-state radiation flag
-        'fsr' : False, # Pythia8 final-state radiation flag
+        'mpi' : True, # Pythia8 multi-parton interactions flag
+        'isr' : True, # Pythia8 initial-state radiation flag
+        'fsr' : True, # Pythia8 final-state radiation flag
         'rng' : 1, # Pythia8 RNG seed
         'verbose' : False,
         'hepmc_dir': None, # Directory containing the HepMC3 installation. If None, will build in a local directory "external/hepmc". Note that we currently use a custom fork of HepMC3, so you probably want to leave this as None.
@@ -17,8 +17,8 @@ config = {
     },
 
     'pileup' : {
-        'handler':None,
-        # 'handler': pu.PileupOverlay("/Users/jan/tmp/pileup/part0/events_0.root",rng_seed=1) # For example, you can overlay pileup events from some pre-existing HepMC3 files (ideally in ROOT format!), which you can generate with this package too.
+        # 'handler':None,
+        'handler': pu.PileupOverlay("/Users/jan/tmp/pileup/part0/events_0.root",rng_seed=1) # For example, you can overlay pileup events from some pre-existing HepMC3 files (ideally in ROOT format!), which you can generate with this package too.
     },
 
     'simulation' : {
@@ -28,6 +28,7 @@ config = {
         'delphes_output' : ['EFlowPhoton','EFlowNeutralHadron','EFlowTrack','Electron','Muon','Photon','GenMissingET','MissingET','GenVertex','Vertex'] # Which output objects from Delphes to propagate to the final HDF5 file -- this is also what will be available to the post-processors; other information will be dropped. Some details for the vertex-type objects may still need some ironing out.
     },
 
+    # NOTE: Object names (keys) should not have periods (".") in them. These are used internally to indicate objects' properties ("leaves" in ROOT-speak), and including these in names may break stuff down-the-line (such as in the visualization scripts).
     'reconstruction' : {
         'n_stable' : 200, # max number of stable truth-level particles to save per event (HDF5 doesn't support jagged arrays)
         'n_delphes': [200], # max number of Delphes objects to save per event -- list corresponding to entries in 'delphes_output'. If single value, will be broadcast to appropriate shape.
@@ -36,7 +37,7 @@ config = {
         'event_filter' : None, # Deprecated.
         'event_filter_flag': None, # Deprecated.
         'particle_selection' : { # Here, you can specify collections of truth-level particles to save, using various (provided) particle selection algorithms. These typically search for particles matching some PdgID and/or generator status.
-            'TruthParticles':
+            'TruthParticlesTopAndChildren':
             parsel.MultiSelection(
                 [
                     parsel.FirstSelector(22, 6), # top quark
@@ -45,15 +46,29 @@ config = {
                     parsel.AlgoSelection(algos.SelectFinalStateDaughters(parsel.FirstSelector(22,24)),n=120) # up to 120 stable daughters of W
                 ]
             ),
+            'TruthParticlesAntiTopAndChildren':
+            parsel.MultiSelection(
+                [
+                    parsel.FirstSelector(22, -6), # top anti-quark
+                    parsel.FirstSelector(23, -5), # bottom anti-quark
+                    parsel.FirstSelector(22,-24), # W boson
+                    parsel.AlgoSelection(algos.SelectFinalStateDaughters(parsel.FirstSelector(22,-24)),n=120) # up to 120 stable daughters of W
+                ]
+            )
         },
         'signal_flag' : 1, # What to provide as the "SignalFlag" for these events. Relevant if combining multiple samples, so as to bookkeep what is what.
         'split_seed' : 1, # RNG seed to be used for splitting the dataset into train/test/validation samples.
         'post_processing': [ # What post-processing algorithms to run -- this includes jet clustering! You can queue up multiple separate post-processors.
-            # cluster jets
-            # jets.JetFinder('StableTruthParticles',jet_algorithm='anti_kt',radius=0.4,jet_name='AntiKt04GenJets').PtFilter(15.), # some truth jets, with at least 15 GeV in pT
-            jets.JetFinder(['EFlowPhoton','EFlowNeutralHadron','EFlowTrack'],jet_algorithm='anti_kt',radius=0.4,jet_name='AntiKt04RecoJets').PtFilter(15.).GhostAssociation('TruthParticles',0,mode='tag'), # some reco-level jets -- incl. a tag for whether or not they're ghost-associated with the bottom quark selected above
-            jets.JetFinder(['EFlowPhoton','EFlowNeutralHadron','EFlowTrack'],jet_algorithm='anti_kt',radius=0.8,jet_name='AntiKt08RecoJets').PtFilter(15.), # some reco-level jets -- larger radius
 
+            # Cluster large-radius jets, ghost associated to the top and antitop. Enforce some pt and eta cuts.
+            jets.JetFinder(['EFlowPhoton','EFlowNeutralHadron','EFlowTrack'],jet_algorithm='anti_kt',radius=0.8,jet_name='AntiKt08RecoJetsAssociatedTop').PtFilter(25.).EtaFilter(4.).GhostAssociation('TruthParticlesTopAndChildren',    0,mode='filter'),
+            jets.JetFinder(['EFlowPhoton','EFlowNeutralHadron','EFlowTrack'],jet_algorithm='anti_kt',radius=0.8,jet_name='AntiKt08RecoJetsAssociatedAntiTop').PtFilter(25.).EtaFilter(4.).GhostAssociation('TruthParticlesAntiTopAndChildren',0,mode='filter'),
+
+            # Cluster small-radius jets, near the ghost-associated jets above.
+            jets.JetFinder(['EFlowPhoton','EFlowNeutralHadron','EFlowTrack'],jet_algorithm='anti_kt',radius=0.4,jet_name='AntiKt04RecoJetsAssociatedTop').Containment('AntiKt08RecoJetsAssociatedTop',0,0.4,mode='filter'),
+            jets.JetFinder(['EFlowPhoton','EFlowNeutralHadron','EFlowTrack'],jet_algorithm='anti_kt',radius=0.4,jet_name='AntiKt04RecoJetsAssociatedAntiTop').Containment('AntiKt08RecoJetsAssociatedAntiTop',0,0.4,mode='filter')
+
+            # jets.JetFinder(['EFlowPhoton','EFlowNeutralHadron','EFlowTrack'],jet_algorithm='anti_kt',radius=0.4,jet_name='AntiKt04RecoJetLeading').PtFilter(25.).EtaFilter(4.).Leading() # leading jet
             # jets.JetFinder('StableTruthParticles',jet_algorithm='anti_kt',radius=0.8,jet_name='AntiKt08GenJets').PtFilter(15.).EtaFilter(2.).JohnsHopkinsTagger(mode='tag')
             # jets.JetFinder('StableTruthParticles',jet_algorithm='anti_kt',radius=0.4,jet_name='AntiKt04GenJets_bGhostAssociated').GhostAssociation('TruthParticles',0,mode='tag'),
             # jets.JetFinder('StableTruthParticles',jet_algorithm='anti_kt',radius=0.8,jet_name='AntiKt08GenJets').JohnsHopkinsTagger(mode='tag')

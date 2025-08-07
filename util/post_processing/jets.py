@@ -290,17 +290,13 @@ class JetFinder(JetFinderBase):
 
     def _computeConstituentIndices(self):
 
-        self._print('_computeConstituentIndices: starting for {}'.format(self.jet_name))
-
         # Precompute collection boundaries once
         n_per_collection = [len(self.input_collection_arrays[key][self._i]) for key in self.input_collections]
         cumulative_lengths = np.cumsum([0] + n_per_collection)
 
         self.constituent_indices_dict = {}
-
         for i, jet in self.jets_dict.items():
             raw_indices = np.array([pj.user_index() for pj in jet.constituents()])
-
             # Vectorized conversion for all indices at once
             collection_indices = np.searchsorted(cumulative_lengths[1:], raw_indices, side='right')
             local_indices = raw_indices - cumulative_lengths[collection_indices]
@@ -310,13 +306,6 @@ class JetFinder(JetFinderBase):
 
             # Store the results
             self.constituent_indices_dict[i] = constituent_indices
-
-            print('[jet {}]\t'.format(i))
-            for j,entry in enumerate(constituent_indices):
-                if(entry[0] > 2):
-                    print('\t[const. {}\t]'.format(j),entry,'\t<----------')
-                else:
-                    print('\t[const. {}\t]'.format(j),entry)
 
         return
 
