@@ -42,3 +42,4 @@ pip-delete-this-directory.txt
 test.sh
 test*.sh
 test*.py
+test
