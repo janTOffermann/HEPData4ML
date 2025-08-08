@@ -2,7 +2,8 @@ import itertools
 import ROOT as rt
 import h5py as h5
 import numpy as np
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional, Union
+# from numpy.typing import NDArray
 
 if TYPE_CHECKING: # Only imported during type checking -- avoids circular imports we'd otherwise get, since jets imports this file
     from util.post_processing.jets import JetFinder
@@ -18,7 +19,7 @@ class GhostAssociator():
     See: https://arxiv.org/abs/0802.1188 [JHEP 04 (2008) 005]
     """
 
-    def __init__(self,key,indices,mode='filter',tag_name=None):
+    def __init__(self,key:str,indices,mode:str='filter',tag_name:Optional[str]=None):
 
         self.key = key
         self.vec_key = '{}.Pmu_cyl'.format(key)
@@ -31,7 +32,7 @@ class GhostAssociator():
         self.tags = None
         self.print_prefix = '\n\t\tGhostAssociator'
 
-    def _makeGhosts(self,vecs, a=1.0e-10):
+    def _makeGhosts(self,vecs:Union[list,np.ndarray], a:float=1.0e-10):
 
         result = np.zeros(vecs.shape)
         for i,vec in enumerate(vecs):
@@ -39,12 +40,14 @@ class GhostAssociator():
             result[i] = np.array([v.E(),v.Px(),v.Py(),v.Pz()])
         return result
 
-    def ModifyInitialization(self,obj : 'JetFinder'):
+    def ModifyInitialization(self,obj:'JetFinder'):
         """
         This function will modify the initialization so that
         the ghost vectors are generated and loaded into memory.
         """
-        # self._initialize_fastjet()
+
+        obj.single_jet = True
+
         self.indices = np.atleast_1d(self.indices)
 
         # Fetch the 4-vector key, and make sure its data is loaded.

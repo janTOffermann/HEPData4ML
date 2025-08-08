@@ -35,6 +35,10 @@ class JetFinder(JetFinderBase):
         self.n_jets_max = n_jets_max # max number of jets to save per event (will be pt-ordered)
         self.n_constituents_max = 200 # max number of constituents to save per jet
 
+        self.single_jet = False # if true, self.n_jets_max = 1 & will remove the "number of jets" dimension (dim 1). Accessed by certain post-processors.
+        if(self.n_jets_max == 1):
+            self.single_jet = True # turn on if there's only 1 jet saved per event -- no real need for the extra dimension then
+
         self.fastjet_dir = fastjet_dir
         self.fastjet_init_flag = False
 
@@ -154,11 +158,11 @@ class JetFinder(JetFinderBase):
         }
         self.nevents = f[self.input_collections[0]].shape[0]
 
-        # With nevents defined, we can initialize the buffer.
-        self._initializeBuffer()
-
         # Optional modification of initialize. May be harnessed by some special configurations.
         self._modifyInitialization()
+
+        # With nevents defined, we can initialize the buffer.
+        self._initializeBuffer()
 
         self.status = True
         f.close()
@@ -196,6 +200,9 @@ class JetFinder(JetFinderBase):
 
                 # Optional modification of constituents. May be harnessed by some special configurations.
                 self._modifyConstituents()
+
+            # Pt-sort the jets, and truncate to fixed length given by self.n_jets_max
+            self._ptSort(truncate=True)
 
             # now write to buffer
             # TODO: Will turn the buffer into a more complex object, that outwardly looks like a dictionary
@@ -271,25 +278,38 @@ class JetFinder(JetFinderBase):
         return self.h5_file
 
     def _initializeBuffer(self):
+
+        shape0 = (self.n_jets_max,)
+        shape1 = (self.n_jets_max,4)
+        shape2 = (self.n_jets_max,self.n_constituents_max)
+        shape3 = (self.n_jets_max,self.n_constituents_max,4)
+
+        if(self.single_jet): # eliminate the "number of jets" dimension
+            shape0 = ()
+            shape1 = (4,)
+            shape2 = (self.n_constituents_max,)
+            shape3 = (self.n_constituents_max,4)
+
         self.buffer.SetNEvents(self.nevents)
         self.buffer.create_array('{}.N'.format(self.jet_name),dtype=np.dtype('i4'))
-        self.buffer.create_array('{}.Pmu'.format(self.jet_name),shape=(self.n_jets_max,4),dtype=np.dtype('f8'))
-        self.buffer.create_array('{}.Pmu_cyl'.format(self.jet_name),shape=(self.n_jets_max,4),dtype=np.dtype('f8'))
+        self.buffer.create_array('{}.Pmu'.format(self.jet_name),shape=shape1,dtype=np.dtype('f8'))
+        self.buffer.create_array('{}.Pmu_cyl'.format(self.jet_name),shape=shape1,dtype=np.dtype('f8'))
         if(self.constituents_flag):
-            self.buffer.create_array('{}.Constituents.N'.format(self.jet_name),shape=(self.n_jets_max,),dtype=np.dtype('i4'))
-            self.buffer.create_array('{}.Constituents.Pmu'.format(self.jet_name),shape=(self.n_jets_max,self.n_constituents_max,4),dtype=np.dtype('f8'))
-            self.buffer.create_array('{}.Constituents.Pmu_cyl'.format(self.jet_name),shape=(self.n_jets_max,self.n_constituents_max,4),dtype=np.dtype('f8'))
+            self.buffer.create_array('{}.Constituents.N'.format(self.jet_name),shape=shape0,dtype=np.dtype('i4'))
+            self.buffer.create_array('{}.Constituents.Pmu'.format(self.jet_name),shape=shape3,dtype=np.dtype('f8'))
+            self.buffer.create_array('{}.Constituents.Pmu_cyl'.format(self.jet_name),shape=shape3,dtype=np.dtype('f8'))
 
             # Also create buffers corresponding to jet constituents' indices w.r.t. the collections they were pulled from.
-            # Note that a jet may have used multiple collections -- so we'll keep track of the index of the collection that a constituent came from,
-            # as well as its index *within* that collection.
-            self.buffer.create_array('{}.Constituents.Collection'.format(self.jet_name),shape=(self.n_jets_max,self.n_constituents_max),dtype=np.dtype('i4'))
-            self.buffer.create_array('{}.Constituents.Collection.Index'.format(self.jet_name),shape=(self.n_jets_max,self.n_constituents_max),dtype=np.dtype('i4'))
+            # Note that a jet may have used multiple collections -- so we'll keep track of the index of the collection that
+            # a constituent came from, as well as its index *within* that collection.
+            self.buffer.create_array('{}.Constituents.Collection'.format(self.jet_name),shape=shape2,dtype=np.dtype('i4'))
+            self.buffer.create_array('{}.Constituents.Collection.Index'.format(self.jet_name),shape=shape2,dtype=np.dtype('i4'))
+
+        # self._print('Done with _initializeBuffer(). shape0 = ',shape0)
 
         return
 
     def _computeConstituentIndices(self):
-
         # Precompute collection boundaries once
         n_per_collection = [len(self.input_collection_arrays[key][self._i]) for key in self.input_collections]
         cumulative_lengths = np.cumsum([0] + n_per_collection)
@@ -319,27 +339,44 @@ class JetFinder(JetFinderBase):
 
         # Fill jet information in the buffer.
         self.buffer.set('{}.N'.format(self.jet_name),event_index,len(self.jet_vectors))
-        self.buffer.set('{}.Pmu'.format(self.jet_name),event_index,np.vstack([self.jet_vectors[i] for i in self.jet_ordering]))
-        self.buffer.set('{}.Pmu_cyl'.format(self.jet_name),event_index,np.vstack([self.jet_vectors_cyl[i] for i in self.jet_ordering]))
 
-        # fill jet constituents
+        # TODO: Clean this up a bit? Have to deal with special case of "single_jet = True".
+        if(self.single_jet):
+            idx = self.jet_ordering[0]
+            self.buffer.set('{}.Pmu'.format(self.jet_name),event_index,self.jet_vectors[idx])
+            self.buffer.set('{}.Pmu_cyl'.format(self.jet_name),event_index,self.jet_vectors_cyl[idx])
+
+        else:
+            self.buffer.set('{}.Pmu'.format(self.jet_name),event_index,np.vstack([self.jet_vectors[i] for i in self.jet_ordering]))
+            self.buffer.set('{}.Pmu_cyl'.format(self.jet_name),event_index,np.vstack([self.jet_vectors_cyl[i] for i in self.jet_ordering]))
+
+        # Fill the jet constituent information.
         if(self.constituents_flag):
+            if(self.single_jet):
+                idx = self.jet_ordering[0]
+                self.buffer.set('{}.Constituents.N'.format(self.jet_name),event_index,len(self.constituent_vectors[idx]))
 
-            self.buffer.set('{}.Constituents.N'.format(self.jet_name),event_index,[len(self.constituent_vectors[i]) for i in self.jet_ordering])
+                # Figure out the collections and indices of the constituents
+                self._computeConstituentIndices()
 
-            # Figure out the collections and indices of the constituents
-            self._computeConstituentIndices()
+                self.buffer.set('{}.Constituents.Pmu'.format(self.jet_name),event_index,self.constituent_vectors[idx])
+                self.buffer.set('{}.Constituents.Pmu_cyl'.format(self.jet_name),event_index,self.constituent_vectors_cyl[idx])
+                self.buffer.set('{}.Constituents.Collection'.format(self.jet_name),event_index,self.constituent_indices_dict[idx][:,0])
+                self.buffer.set('{}.Constituents.Collection.Index'.format(self.jet_name),event_index,self.constituent_indices_dict[idx][:,1])
 
-            # for key,val in self.constituent_indices_dict.items():
-            #     print(key,val)
+            else:
+                self.buffer.set('{}.Constituents.N'.format(self.jet_name),event_index,[len(self.constituent_vectors[i]) for i in self.jet_ordering])
 
-            # Now we loop, as we're embedding what is really jagged information.
-            # TODO: Is there another way? I suspect this slows down things a bit.
-            for i,j in enumerate(self.jet_ordering):
-                self.buffer.set('{}.Constituents.Pmu'.format(self.jet_name),(event_index,i),self.constituent_vectors[j])
-                self.buffer.set('{}.Constituents.Pmu_cyl'.format(self.jet_name),(event_index,i),self.constituent_vectors_cyl[j])
-                self.buffer.set('{}.Constituents.Collection'.format(self.jet_name),(event_index,i),self.constituent_indices_dict[j][:,0])
-                self.buffer.set('{}.Constituents.Collection.Index'.format(self.jet_name),(event_index,i),self.constituent_indices_dict[j][:,1])
+                # Figure out the collections and indices of the constituents
+                self._computeConstituentIndices()
+
+                # Now we loop, as we're embedding what is really jagged information.
+                # TODO: Is there another way? I suspect this slows down things a bit.
+                for i,j in enumerate(self.jet_ordering):
+                    self.buffer.set('{}.Constituents.Pmu'.format(self.jet_name),(event_index,i),self.constituent_vectors[j])
+                    self.buffer.set('{}.Constituents.Pmu_cyl'.format(self.jet_name),(event_index,i),self.constituent_vectors_cyl[j])
+                    self.buffer.set('{}.Constituents.Collection'.format(self.jet_name),(event_index,i),self.constituent_indices_dict[j][:,0])
+                    self.buffer.set('{}.Constituents.Collection.Index'.format(self.jet_name),(event_index,i),self.constituent_indices_dict[j][:,1])
         return
 
     # NOTE: Will define various functions for performing some modifications to clustering or post-processing of results.
@@ -441,4 +478,8 @@ class JetFinder(JetFinderBase):
             delta_r = self.radius * 0.75
 
         self.processors.append(simple_btag.TrackCountingBTagging(mode,track_key,track_pt_min,delta_r,track_ip_max,sig_min,ntracks, use_3d, tag_name))
+        return self
+
+    def Leading(self):
+        self.processors.append(jet_filter.Leading())
         return self

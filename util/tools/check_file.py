@@ -87,16 +87,21 @@ def _check_event(filename,idx=0):
         if('Pmu' in key):
             if('Constituents' in key):
                 try:
+
                     lkey1 = key.replace('Constituents.Pmu_cyl','N')
                     lkey1 = lkey1.replace('Constituents.Pmu','N')
 
                     lkey2 = key.replace('Pmu_cyl','N')
                     lkey2 = lkey2.replace('Pmu','N')
 
-                    l1 = f[lkey1][idx] + 1 # add one, to check the zero-padding
-                    l2 = np.max(f[lkey2][idx] + 1) # add one, to check the zero-padding
+                    if(len(f[lkey2].shape) == 1):
+                        l2 = np.max(f[lkey2][idx] + 1) # add one, to check the zero-padding
+                        data = f[key][idx,:l2]
 
-                    data = f[key][idx,:l1,:l2]
+                    else:
+                        l1 = f[lkey1][idx] + 1 # add one, to check the zero-padding
+                        l2 = np.max(f[lkey2][idx] + 1) # add one, to check the zero-padding
+                        data = f[key][idx,:l1,:l2]
                 except:
                     pass
 

@@ -293,7 +293,7 @@ def main(args):
         # Do reco and put everything into an HDF5 file. # TODO: Support formats other than HDF5? Consider ROOT ntuple output.
         if(verbose): print('\nRunning recoonstruction and producing final HDF5 output.\n')
         processor = Processor(configurator)
-        processor.SetNentriesPerChunk(100) # the larger this is, the larger the chunks in memory (and higher the memory usage)
+        processor.SetNentriesPerChunk(10) # the larger this is, the larger the chunks in memory (and higher the memory usage)
         processor.SetDelphesFiles(delphes_files)
         processor.SetOutputDirectory(outdir)
 

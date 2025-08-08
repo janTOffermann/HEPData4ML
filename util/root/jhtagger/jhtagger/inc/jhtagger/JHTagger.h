@@ -9,13 +9,15 @@
 // #include "Math/VectorUtil.h"
 #endif
 
-// Fastjet includes
-#include "fastjet/ClusterSequence.hh"
-#include "fastjet/tools/JHTopTagger.hh"
-#include "fastjet/PseudoJet.hh"
-
 // standard lib includes
 #include <vector>
+
+// // forward declarations for fastjet -- these won't work as-is
+namespace fastjet{
+  class JHTopTagger;
+  class PseudoJet;
+  class JetDefinition;
+}
 
 using namespace std;
 namespace JHTagger{
@@ -59,7 +61,7 @@ namespace JHTagger{
       void InitializeCamAachAlgo();
       void CreateTagger(); // Construct the internal JH tagger. The various tagger settings need to have already been set!
 
-      void TagJet(fastjet::PseudoJet jet); // Tag an input jet (which should have been clustered using the Cambridge-Aachen algorithm.)
+      void TagJet(fastjet::PseudoJet* jet); // Tag an input jet (which should have been clustered using the Cambridge-Aachen algorithm.)
       void TagJet(std::vector<Double_t> E, std::vector<Double_t> px, std::vector<Double_t> py, std::vector<Double_t> pz);
 
     private:
@@ -67,8 +69,8 @@ namespace JHTagger{
       // Get a vector of the W candidate's constituents.
       // We'll want other simpler methods for extracting the candidate info
       // via the PyROOT interface, since using this on the Python side seems to cause issues.
-      void GetWCandidateConstituents(){_vec_constituents = _vec->constituents();};
-      void ResetWCandidateConstituents(){_vec_constituents.clear();};
+      void GetWCandidateConstituents();
+      void ResetWCandidateConstituents(); // TODO Fix this for memory leak issues?
 
       Double_t _delta_p = 0.1;
       Double_t _delta_r = 0.19;
@@ -76,7 +78,7 @@ namespace JHTagger{
       Bool_t _status = kFALSE;
       fastjet::JHTopTagger* _tagger = 0;
       fastjet::PseudoJet* _vec = 0;
-      std::vector<fastjet::PseudoJet> _vec_constituents = {};
+      std::vector<fastjet::PseudoJet*> _vec_constituents = {};
 
       Double_t _R = 0.8;
       fastjet::JetDefinition* _jetdef = 0;

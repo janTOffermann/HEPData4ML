@@ -50,8 +50,8 @@ class Processor:
         self.data = {}
 
         # Various integers for buffer size, number of particles read into memory from HepMC, number saved to file, etc.
-        self.nevents_per_chunk = int(1e1) # Can be configured. Affects memory footprint.
-        self.nparticles_max = int(2e3) # TODO: This is some hardcoded max number of particles to be read in from HepMC. Should be plenty.
+        self.nevents_per_chunk = 100 # Can be configured. Affects memory footprint.
+        self.nparticles_max = int(1e4) # TODO: This is some hardcoded max number of particles to be read in from HepMC. Should be plenty.
         self.nparticles_stable = self.configurator.GetNPars()['n_stable']
         self.nparticles_truth_selected = self.configurator.GetNPars()['n_truth']
         self.n_delphes = self.configurator.GetNPars()['n_delphes']
@@ -452,6 +452,7 @@ class Processor:
 
         #TODO: Perform some special post-processing if things like JetFinder.Leading() were used,
         #      to strip down an unnecessary dimension.
+
 
         return
 
