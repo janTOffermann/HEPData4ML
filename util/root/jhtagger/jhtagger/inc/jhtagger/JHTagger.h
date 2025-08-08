@@ -12,7 +12,7 @@
 // standard lib includes
 #include <vector>
 
-// // forward declarations for fastjet -- these won't work as-is
+// // forward declarations for fastjet
 namespace fastjet{
   class JHTopTagger;
   class PseudoJet;
@@ -24,10 +24,10 @@ namespace JHTagger{
 
   class JohnnyTagger{
     public:
-      JohnnyTagger(){};
-      JohnnyTagger(Double_t delta_p, Double_t delta_r, Double_t cos_theta_w_max);
+      JohnnyTagger();
+      // JohnnyTagger(Double_t delta_p, Double_t delta_r, Double_t cos_theta_w_max);
       JohnnyTagger(Double_t delta_p, Double_t delta_r, Double_t cos_theta_w_max, Double_t top_mass_min, Double_t top_mass_max, Double_t W_mass_min, Double_t W_mass_max);
-      ~JohnnyTagger();
+      virtual ~JohnnyTagger();
 
       // Setters.
       void SetJetDeltaR(Double_t value){_R = value;};
@@ -61,8 +61,10 @@ namespace JHTagger{
       void InitializeCamAachAlgo();
       void CreateTagger(); // Construct the internal JH tagger. The various tagger settings need to have already been set!
 
-      void TagJet(fastjet::PseudoJet* jet); // Tag an input jet (which should have been clustered using the Cambridge-Aachen algorithm.)
+      void TagJet(fastjet::PseudoJet* jet); // Tag an input jet (which should have been (re)clustered using the Cambridge-Aachen algorithm.)
       void TagJet(std::vector<Double_t> E, std::vector<Double_t> px, std::vector<Double_t> py, std::vector<Double_t> pz);
+
+      ClassDef(JohnnyTagger, 1);
 
     private:
 
@@ -88,9 +90,6 @@ namespace JHTagger{
       Double_t _top_mass_max = 200.; // GeV
       Double_t _W_mass_min = 65.; // GeV
       Double_t _W_mass_max = 95.; // GeV
-
-
-
   };
 }
 

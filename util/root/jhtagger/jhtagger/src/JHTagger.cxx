@@ -10,12 +10,16 @@ using namespace std;
 
 namespace JHTagger{
 
-  JohnnyTagger::JohnnyTagger(Double_t delta_p, Double_t delta_r, Double_t cos_theta_w_max){
-    SetDeltaP(delta_p);
-    SetDeltaR(delta_r);
-    SetCosThetaWMax(cos_theta_w_max);
-    _vec = new fastjet::PseudoJet(0.,0.,0.,0.);
-    return;
+  // JohnnyTagger::JohnnyTagger(Double_t delta_p, Double_t delta_r, Double_t cos_theta_w_max){
+  //   SetDeltaP(delta_p);
+  //   SetDeltaR(delta_r);
+  //   SetCosThetaWMax(cos_theta_w_max);
+  //   _vec = new fastjet::PseudoJet(0.,0.,0.,0.);
+  //   return;
+  // }
+
+  JohnnyTagger::JohnnyTagger(){
+
   }
 
   JohnnyTagger::JohnnyTagger(Double_t delta_p, Double_t delta_r, Double_t cos_theta_w_max,Double_t top_mass_min, Double_t top_mass_max, Double_t W_mass_min, Double_t W_mass_max){
@@ -48,9 +52,9 @@ namespace JHTagger{
   };
 
   void JohnnyTagger::ResetWCandidateConstituents(){
-    for(auto entry: _vec_constituents){
-      delete entry;
-    }
+    // for(auto entry: _vec_constituents){
+    //   delete entry;
+    // }
     _vec_constituents.clear();
   }
 

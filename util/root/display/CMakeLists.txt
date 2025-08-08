@@ -11,12 +11,6 @@ project(
   VERSION 1.0
   LANGUAGES C CXX)
 
-# # Set C++ standard to match ROOT/Delphes.
-# # NOTE: Not sure if it should be 17 or 20 -- I think the latter for LCG?
-# #       Would be nice to match ROOT.
-# set(CMAKE_CXX_STANDARD 20)
-# set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
 # Define the path to this repository -- relative to this CMake file.
 # NOTE: If this executable is made into a separate git submodule,
 #       some of this will likely have to change.
