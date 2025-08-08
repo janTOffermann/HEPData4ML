@@ -161,15 +161,26 @@ class EventDisplay:
 
                 color = self.jet_colors[jet_counter % len(self.jet_colors)]
 
-                self.display.GetEventDisplay().AddJetData_EPxPyPz(
-                    object_name,
-                    self.data['{}.Pmu'.format(object_name)][:nobj,0],
-                    self.data['{}.Pmu'.format(object_name)][:nobj,1],
-                    self.data['{}.Pmu'.format(object_name)][:nobj,2],
-                    self.data['{}.Pmu'.format(object_name)][:nobj,3],
-                    radius,
-                    color
-                )
+                if(nobj != 1):
+                    self.display.GetEventDisplay().AddJetData_EPxPyPz(
+                        object_name,
+                        self.data['{}.Pmu'.format(object_name)][:nobj,0],
+                        self.data['{}.Pmu'.format(object_name)][:nobj,1],
+                        self.data['{}.Pmu'.format(object_name)][:nobj,2],
+                        self.data['{}.Pmu'.format(object_name)][:nobj,3],
+                        radius,
+                        color
+                    )
+                else:
+                    self.display.GetEventDisplay().AddJetData_EPxPyPz(
+                        object_name,
+                        np.atleast_1d(self.data['{}.Pmu'.format(object_name)][0]),
+                        np.atleast_1d(self.data['{}.Pmu'.format(object_name)][1]),
+                        np.atleast_1d(self.data['{}.Pmu'.format(object_name)][2]),
+                        np.atleast_1d(self.data['{}.Pmu'.format(object_name)][3]),
+                        radius,
+                        color
+                    )
                 jet_counter += 1
 
     def LoadPhotonData(self):
@@ -261,60 +272,63 @@ class EventDisplay:
                 color = self.jet_colors[jet_counter % len(self.jet_colors)]
 
                 # map the constituents
-                constituent_collections = self.data['{}.Constituents.Collection'.format(object_name)][:nobj]
-                constituent_collection_indices = self.data['{}.Constituents.Collection.Index'.format(object_name)][:nobj]
-
-                # go from constituent_collections to collection names
-                constituent_collection_names = [
-                    [jet_name_dict[object_name][x] for x in y]
-                    for y in constituent_collections
-                ]
+                if(nobj != 1):
+                    constituent_collections = self.data['{}.Constituents.Collection'.format(object_name)][:nobj]
+                    constituent_collection_indices = self.data['{}.Constituents.Collection.Index'.format(object_name)][:nobj]
+                    # go from constituent_collections to collection names
+                    constituent_collection_names = [
+                        [jet_name_dict[object_name][x] for x in y]
+                        for y in constituent_collections
+                    ]
+                else:
+                    constituent_collections = self.data['{}.Constituents.Collection'.format(object_name)]
+                    constituent_collection_indices = self.data['{}.Constituents.Collection.Index'.format(object_name)]
+                    constituent_collection_names = [jet_name_dict[object_name][x] for x in constituent_collections]
 
                 # Now we construct eta and phi edges, and energy deposits, which will
                 # go into a Lego-style calorimeter display.
                 # The caveat is that things like EFlowTrack don't have eta/phi edges!
-                eta_edges = []
-                phi_edges = []
-                e_em = []
-                e_had = []
-                for i in range(nobj):
-                    names = constituent_collection_names[i]
+
+                if(nobj != 1):
+                    for i in range(nobj):
+                        names = constituent_collection_names[i]
+                        mask = ['{}.Edges.Eta'.format(name) in self.data.keys() for name in names]
+                        names = list(itertools.compress(names,mask))
+                        tower_indices = list(itertools.compress(constituent_collection_indices[i],mask))
+
+                        eta_edges_i = np.array([self.data['{}.Edges.Eta'.format(name)][x] for name,x in zip(names,tower_indices)])
+                        phi_edges_i = np.array([self.data['{}.Edges.Phi'.format(name)][x] for name,x in zip(names,tower_indices)])
+                        eem_i = np.array([self.data['{}.E.EM'.format(name)][x] for name,x in zip(names,tower_indices)])
+                        ehad_i = np.array([self.data['{}.E.Hadronic'.format(name)][x] for name,x in zip(names,tower_indices)])
+
+                        # Add these with some new function
+                        self.display.GetEventDisplay().AddJetConstituentCaloData(
+                            object_name,
+                            eta_edges_i[:nobj,0],
+                            eta_edges_i[:nobj,1],
+                            phi_edges_i[:nobj,0],
+                            phi_edges_i[:nobj,1],
+                            eem_i[:nobj],
+                            ehad_i[:nobj]
+                        )
+                else:
+                    names = constituent_collection_names
                     mask = ['{}.Edges.Eta'.format(name) in self.data.keys() for name in names]
                     names = list(itertools.compress(names,mask))
-                    tower_indices = list(itertools.compress(constituent_collection_indices[i],mask))
+                    tower_indices = list(itertools.compress(constituent_collection_indices,mask))
 
                     eta_edges_i = np.array([self.data['{}.Edges.Eta'.format(name)][x] for name,x in zip(names,tower_indices)])
                     phi_edges_i = np.array([self.data['{}.Edges.Phi'.format(name)][x] for name,x in zip(names,tower_indices)])
                     eem_i = np.array([self.data['{}.E.EM'.format(name)][x] for name,x in zip(names,tower_indices)])
                     ehad_i = np.array([self.data['{}.E.Hadronic'.format(name)][x] for name,x in zip(names,tower_indices)])
 
-                    # Add these with some new function
+                    # TODO: Check this?
                     self.display.GetEventDisplay().AddJetConstituentCaloData(
                         object_name,
-                        eta_edges_i[:nobj,0],
-                        eta_edges_i[:nobj,1],
-                        phi_edges_i[:nobj,0],
-                        phi_edges_i[:nobj,1],
-                        eem_i[:nobj],
-                        ehad_i[:nobj]
+                        eta_edges_i[0],
+                        eta_edges_i[1],
+                        phi_edges_i[0],
+                        phi_edges_i[1],
+                        eem_i,
+                        ehad_i
                     )
-
-    def LoadCaloData2(self):
-        """
-        We dump all the calorimeter data into the same collection for the viewer,
-        due to some limitations with how it currently functions.
-        """
-        name = 'UnifiedCaloData'
-        for object_name in self.object_names:
-            if('{}.Edges.Eta'.format(object_name) in self.data.keys()):
-                nobj = self.data['{}.N'.format(object_name)]
-
-                self.display.GetEventDisplay().AddCaloData(
-                    name,
-                    self.data['{}.Edges.Eta'.format(object_name)][:nobj,0],
-                    self.data['{}.Edges.Eta'.format(object_name)][:nobj,1],
-                    self.data['{}.Edges.Phi'.format(object_name)][:nobj,0],
-                    self.data['{}.Edges.Phi'.format(object_name)][:nobj,1],
-                    self.data['{}.E.EM'.format(object_name)][:nobj],
-                    self.data['{}.E.Hadronic'.format(object_name)][:nobj]
-                )

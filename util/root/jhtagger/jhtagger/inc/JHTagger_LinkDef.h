@@ -5,5 +5,6 @@
 #pragma link off all functions;
 
 #pragma link C++ namespace JHTagger;
+// #pragma link C++ class fastjet::JHTopTagger+;
 
 #endif

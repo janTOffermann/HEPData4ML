@@ -57,12 +57,19 @@ class ContainmentTagger:
         vecs = obj.input_collection_arrays[self.vec_key][obj._i] # reminder: using cylindrical
         jet_vec = obj.jet_vectors_cyl[key]
 
-        # compute distances
-        for i,vec in enumerate(vecs):
-            distance2 = self._compute_distance2(jet_vec,vec)
+        # Compute distances. Deal with cases of "vecs" being multiple vectors, or a single one.
+
+        if(vecs.ndim == 1):
+            distance2 = self._compute_distance2(jet_vec,vecs)
             if(distance2 > self.radius2):
                 status = False
-                break
+        else:
+
+            for i,vec in enumerate(vecs):
+                distance2 = self._compute_distance2(jet_vec,vec)
+                if(distance2 > self.radius2):
+                    status = False
+                    break
 
         self.tag_status = status
         return
@@ -73,7 +80,8 @@ class ContainmentTagger:
         the necessary input vectors are loaded into memory, if
         not already present.
         """
-        self.indices = np.atleast_1d(self.indices)
+        if(self.indices is not None):
+            self.indices = np.atleast_1d(self.indices)
 
         # Fetch the 4-vector key, and make sure its data is loaded.
         # Note the use of cylindrical coordinates!
@@ -82,7 +90,16 @@ class ContainmentTagger:
             f = h5.File(obj.h5_file,'r')
 
             # Cylindrical coordinates four-momenta
-            vecs = f[self.vec_key][:][:,self.indices] # only loads the data needed -- indexing already done here
+            if(self.indices is not None):
+
+                data = f[self.vec_key][:]
+                if(data.ndim == 2):
+                    self._print('Warning: indices != None, but branch {} has ndim = {}. Setting indices -> None.'.format(self.vec_key,data.ndim))
+                    self.indices = None
+                else:
+                    vecs = f[self.vec_key][:][:,self.indices] # only loads the data needed -- indexing already done here
+            if(self.indices is None):
+                vecs = f[self.vec_key][:]
 
             obj.input_collection_arrays[self.vec_key] = vecs # NOTE: This won't affect jet clustering, as we don't modify obj.input_collections
             f.close()

@@ -1,4 +1,9 @@
 import numpy as np
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING: # Only imported during type checking -- avoids circular imports we'd otherwise get, since jets imports this file
+    from util.post_processing.jets import JetFinder
+
 
 class PtFilter:
     """
@@ -12,10 +17,10 @@ class PtFilter:
     def ModifyInitialization(self,obj):
         return
 
-    def ModifyInputs(self,obj):
+    def ModifyInputs(self,obj:'JetFinder'):
         return
 
-    def ModifyJets(self, obj):
+    def ModifyJets(self, obj:'JetFinder'):
         """
         This function apply the pt filter.
         """
@@ -33,10 +38,10 @@ class PtFilter:
         obj._fetchJetConstituents()
         return
 
-    def ModifyWrite(self,obj):
+    def ModifyWrite(self,obj:'JetFinder'):
         return # does nothing
 
-    def ModifyConstituents(self, obj):
+    def ModifyConstituents(self, obj:'JetFinder'):
         return
 
     def _print(self,val):
@@ -55,7 +60,7 @@ class EtaFilter:
         self.eta_max = eta_max
         self.print_prefix = '\n\t\tEtaFilter'
 
-    def ModifyInitialization(self,obj):
+    def ModifyInitialization(self,obj:'JetFinder'):
         return
 
     def ModifyInputs(self,obj):
@@ -79,10 +84,10 @@ class EtaFilter:
         obj._fetchJetConstituents()
         return
 
-    def ModifyWrite(self,obj):
+    def ModifyWrite(self,obj:'JetFinder'):
         return # does nothing
 
-    def ModifyConstituents(self, obj):
+    def ModifyConstituents(self, obj:'JetFinder'):
         return
 
     def _print(self,val):
@@ -94,19 +99,17 @@ class Leading:
     Removes all jets except the highest-pT one.
     """
 
-    # TODO: Implement some functionality to trim down the dimensionality
-    #       of the jet branches at the end?
-
     def __init__(self):
         self.print_prefix = '\n\t\tLeading'
 
-    def ModifyInitialization(self,obj):
+    def ModifyInitialization(self,obj:'JetFinder'):
+        obj.single_jet = True
         return
 
-    def ModifyInputs(self,obj):
+    def ModifyInputs(self,obj:'JetFinder'):
         return
 
-    def ModifyJets(self, obj):
+    def ModifyJets(self, obj:'JetFinder'):
         """
         This function apply the leading (highest-pT) cut.
         """
@@ -123,10 +126,10 @@ class Leading:
         obj._fetchJetConstituents()
         return
 
-    def ModifyWrite(self,obj):
+    def ModifyWrite(self,obj:'JetFinder'):
         return # does nothing
 
-    def ModifyConstituents(self, obj):
+    def ModifyConstituents(self, obj:'JetFinder'):
         return
 
     def _print(self,val):

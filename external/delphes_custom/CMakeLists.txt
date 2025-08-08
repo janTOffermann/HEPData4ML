@@ -136,7 +136,6 @@ if(NOT DELPHES_EXT_INCLUDE_DIR)
     endif()
 endif()
 
-
 find_library(DELPHES_LIBRARIES
     NAMES Delphes libDelphes
     PATHS
