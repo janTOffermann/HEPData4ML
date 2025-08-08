@@ -1,0 +1,3 @@
+[submodule "util/qol_utils"]
+	path = util/qol_utils
+	url = git@github.com:janTOffermann/QolUtils.git

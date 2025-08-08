@@ -1,0 +1,13 @@
+! ZNuNu
+WeakSingleBoson:ffbar2gmZ = on
+WeakZ0:gmZmode = 2
+
+Beams:idA = 2212
+Beams:idB = 2212
+Beams:eCM = 13000.
+
+! Force Z decay to neutrinos only
+23:onMode = off
+23:onIfMatch = 12 -12
+23:onIfMatch = 14 -14
+23:onIfMatch = 16 -16

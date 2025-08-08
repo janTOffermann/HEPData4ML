@@ -1,38 +1,155 @@
-import sys,os,glob
 import ROOT as rt
+import uproot as ur
 import numpy as np
-import pyhepmc as hep
-import pythia8 as pyth8
+import glob,sys,os
+import subprocess as sub
+from util.qol_utils.progress_bar import printProgressBarColor
+from util.qol_utils.pdg import DatabasePDG
+from util.meta import MetaDataHandler
+from util.math.rotations import RotateVector
 
-class SimplePileup:
+from util.hepmc.setup import HepMCSetup, prepend_to_pythonpath
+from util.hepmc.readers import ReaderAscii, ReaderRootTree # our wrappers for the HepMC3 reader classes
+from typing import List, Union, Tuple, Optional, TYPE_CHECKING
 
-    def __init__(self, pileup_hepmc3,rng_seed=1,mu_file=None):
-        self.files = sorted(glob.glob(pileup_hepmc3))
+if(TYPE_CHECKING):
+    setup = HepMCSetup(verbose=False)
+    setup.PrepHepMC() # will download/install if necessary
+    python_dir = setup.GetPythonDirectory()
+    if(python_dir not in sys.path):
+        sys.path = [setup.GetPythonDirectory()] + sys.path # prepend, to make sure we pick this one up first
+    from pyHepMC3 import HepMC3 as hm
+
+class PileupOverlay:
+    """
+    This class performs on-the-fly mixing, to mix in events from some pileup HepMC3 file(s)
+    into "main events" (from some other HepMC file).
+    It creates mixed events, which are output to a new file.
+
+    In practice, you might want to use this to create pileup events for "pre-mixing",
+    like what is done in Monte Carlo sample preparation for the CMS experiment.
+    """
+
+    def __init__(self, pileup_files:Optional[Union[str,list]]=None,rng_seed:int=1,mu_file:str=None):
+
+        # Upon start, make sure that hepmc is set up
+        self._init_hepmc()
+
+        self.verbosity = 1
+        self.print_prefix = 'PileupOverlay: '
+
+        self.files = None
+        self.SetPileupFiles(pileup_files)
+
+        self.files = sorted(glob.glob(pileup_files))
 
         # determine the total number of events in these files
         self.n_dict = {}
         self.first_idx = {}
         self.n_total = 0
-        for file in self.files:
-            with open(file,'r') as f:
-                n =  len([x for x in f.readlines() if 'E ' in x])
-                self.first_idx[file] = self.n_total
-                self.n_dict[file] = n
-                self.n_total += n
+        self._index_files()
 
         self.event_indices = np.arange(self.n_total)
         self.event_mask = np.full(self.n_total,True,dtype=bool)
-        self.selected_indices = None # temporary storage for indices selected for a particular event
+        self.selected_indices = None # transient storage for indices selected for a particular event
 
-        self.rng_seed = rng_seed
-        self.rng = np.random.default_rng(self.rng_seed)
+        self.SetRNGSeed(rng_seed)
+        self.beam_spot_sigma = None # will store the beam spot size
+        self.SetBeamSpotSigma() # sets some sensible defaults
 
         # Set up the distribution for # of interactions per crossing
         self.mu_file = mu_file
-        self.InitializeMuDistibution()
-        self.mu = None # store the current value of mu
+        self.available_mu_values = None
+        self.mu_probabilities = None
+        self._init_mu_distribution()
+        self.mu = None # transient storage for the current value of mu
+        self.mu_values = {} # will store a list of all used mu values
 
-    def InitializeMuDistibution(self):
+        self.pileup_events = None # transient storage for pileup events
+
+        self.event_buffer_size = 10 # how many combined events to store in memory, before flushing to output file
+        #TODO: Need to fix buffer behavior -- the HepMC writers overwrite the output_file each time they're initialized, as opposed to appending
+
+        self.indir = None
+        self.outdir = None
+
+        # for particle charge lookup
+        self.pdg_database = DatabasePDG()
+
+    def GetRNGSeed(self):
+        return self.rng_seed
+
+    def SetRNGSeed(self,rng_seed:int):
+        if(rng_seed < 0):
+            rng_seed = 0
+        self.rng_seed = rng_seed
+        self.rng = np.random.default_rng(self.rng_seed)
+
+    def SetVerbosity(self,val:int):
+        self.verbosity = val
+
+    def SetInputDirectory(self,val:str):
+        self.indir = val
+
+    def SetOutputDirectory(self,val:str):
+        self.outdir = val
+
+    def _init_hepmc(self):
+        setup = HepMCSetup(verbose=False)
+        python_dir = setup.GetPythonDirectory()
+        prepend_to_pythonpath(python_dir)
+
+        # now can do "from pyHepMC3 import HepMC3 as hm"
+
+    def SetPileupFiles(self,files:Union[str,list]=None):
+        if(files is None):
+            return
+        if(isinstance(files,str)):
+            self.files = glob.glob(files)
+        else:
+            self.files = files
+        self.files = sorted(self.files)
+        return
+
+    def _index_ascii(self,file):
+        with open(file,'r') as f:
+            n =  len([x for x in f.readlines() if 'E ' in x])
+            self.first_idx[file] = self.n_total
+            self.n_dict[file] = n
+            self.n_total += n
+        return
+
+    def _index_root(self,file):
+        f = rt.TFile(file,"READ")
+        t = f.Get("hepmc3_tree")
+        n = t.GetEntries()
+        f.Close()
+        self.first_idx[file] = self.n_total
+        self.n_dict[file] = n
+        self.n_total += n
+        return
+
+    def _index_files(self):
+        for file in self.files:
+
+            # indexing for ascii
+            if(file.split('.')[-1].lower() != 'root'):
+                self._index_ascii(file)
+
+            # indexing for ROOT
+            else:
+                self._index_root(file)
+
+    def SetBeamSpotSigma(self,dt:float=0.16,dx:float=0.01,dy:float=0.01,dz:float=35.):
+        """
+        Sets the size of the beamspot (standard deviation) in (t,x,y,z), in nanoseconds or millimeters (as appropriate).
+        The default spatial values are based on ATLAS Run 2: https://twiki.cern.ch/twiki/bin/view/AtlasPublic/BeamSpotPublicResults#Run_2_25ns_pp_Collisions_s_13_Te .
+        The default time value is based on the Delphes ATLAS detector card (with pileup).
+        """
+        self.beam_spot_sigma = (dt,dx,dy,dz)
+
+    def _init_mu_distribution(self):
+        # print('Running InitializeMuDistibution')
         hist_name = 'SimplePileup_mu'
 
         if(self.mu_file is None):
@@ -53,68 +170,475 @@ class SimplePileup:
                 self.mu_distribution.SetDirectory(0)
                 f.Close()
             except:
-                print("Error: SimplePileup failed to open file {}.".format(self.mu_file))
+                print("Error: SimplePileup failed to read histogram {} from file {}.".format(hist_name,self.mu_file))
                 print("Falling back on default mu distribution.")
                 self.mu_file = None
-                self.InitializeMuDistibution()
+                self._init_mu_distribution()
 
-    def SampleMuDistribution(self):
         n = self.mu_distribution.GetNbinsX()
         mu_min = self.mu_distribution.GetXaxis().GetBinLowEdge(1)
         mu_max = self.mu_distribution.GetXaxis().GetBinLowEdge(n+1)
-        mu_values = np.arange(mu_min,mu_max)
-        mu_probs = np.array([self.mu_distribution.GetBinContent(i+1) for i in range(n)],dtype=float)
-        mu_probs /= np.sum(mu_probs)
-        self.mu = int(self.rng.choice(mu_values,p=mu_probs))
+        self.available_mu_values = np.arange(mu_min,mu_max)
+        self.mu_probabilities = np.array([self.mu_distribution.GetBinContent(i+1) for i in range(n)],dtype=float)
+        self.mu_probabilities /= np.sum(self.mu_probabilities)
 
-    def PickEventIndices(self, update_mask=False):
-        self.SampleMuDistribution()
-        print('mu = {}'.format(self.mu))
+    def _sample_mu_distribution(self):
+        self.mu = int(self.rng.choice(self.available_mu_values,p=self.mu_probabilities))
+
+    def _pick_event_indices(self, update_mask=False):
+        self._sample_mu_distribution()
         self.selected_indices = self.rng.choice(self.event_indices[self.event_mask],size=self.mu)
-        if(update_mask): self.UpdateMask()
+        if(update_mask): self._update_mask()
 
-    def UpdateMask(self,indices=None):
+        # print('self.selected_indices = ', self.selected_indices)
+
+    def _update_mask(self,indices=None):
         """
         Remove "indices" from pileup event indices that can be sampled from in the future.
-        Used to achieve sampling without replacement, but having this function separated
-        allows us to reuse the indices in some cases (e.g. pileup events were selected
-        but that event was then thrown out by some generation-level cut).
+        Can be used to achieve sampling without replacement.
         """
         if(indices is None): indices = self.selected_indices # use currently selected indices
         self.event_mask[self.selected_indices] = False
 
-    def FetchEvent(self,idx):
-        file_idx = np.where(idx < np.array(list(self.first_idx.values()),dtype=int))[0][0]
-        filename = self.files[file_idx]
-        idx_in_file = idx - self.first_idx[filename]
+    def _fetch_event_single_file_ascii(self,filename:str,indices:Union[int,list,np.ndarray]):
+        # NOTE: With ASCII, we require iterating through the whole file
+        # and that will scale quite poorly as these files get large.
 
-        # TODO: Would be nice to find alternative, but for now we have to iterate through
-        #       the given HepMC3 file since pyhepmc treats files as iterable but does
-        #       not have any way to just fetch the i'th event. This will scale poorly
-        #       with large HepMC3 files.
-        event = 0
-        with hep.io.ReaderAscii(filename) as f:
-            for i,evt in enumerate(f):
-                while(i != idx_in_file): continue
-                event = evt
+        from pyHepMC3 import HepMC3 as hm
 
-        print(event)
+        if(isinstance(indices,int)):
+            indices = np.atleast_1d(int)
+        indices = sorted(indices)
 
-    def __call__(self,pythia_wrapper):
-        print("Called SimplePileup.")
-        # determine indices of events to add
-        self.PickEventIndices()
+        events = [hm.GenEvent()] * len(indices)
+        counter = 0
+        write_counter = 0
 
-        for i,idx in enumerate(self.selected_indices):
-            if(i > 0): break
-            self.FetchEvent(idx)
+        reader = ReaderAscii(filename)
 
+        while(not reader.failed()):
+
+            if(write_counter == len(indices)):
+                break
+
+            # immediately skip to the 1st event of interest -- hopefully give some speedup.
+            if(counter == 0):
+                reader.skip(indices[0])
+                counter += indices[0]
+
+            evt = hm.GenEvent()
+            reader.read_event(evt)
+            if(reader.failed): break
+
+            if(counter == indices[0]): # maybe faster than "counter in indices"? Requires the roll below
+                indices = np.roll(indices,-1)
+                events[write_counter] = evt
+                write_counter += 1
+            counter += 1
+        reader.close()
+        return events
+
+    def _fetch_event_single_file_root(self,filename:str,indices:Union[int,list,np.ndarray]):
+        # NOTE: Leverages functions currently only available in our custom fork of HepMC3,
+        #       for accessing non-sequential events from a ROOT file.
+
+        from pyHepMC3 import HepMC3 as hm
+
+        if(isinstance(indices,int)):
+            indices = np.atleast_1d(int)
+        indices = sorted(indices)
+
+        indices = np.array([x - self.first_idx[filename] for x in indices],dtype=int) # adjust from global indexing, to indexing iwthin this file
+
+        events = [hm.GenEvent()] * len(indices)
+        # counter = 0
+        # write_counter = 0
+
+        reader = ReaderRootTree(filename)
+
+        for i,idx in enumerate(indices):
+            evt = hm.GenEvent()
+            status = reader.read_event_at_index(evt,idx)
+            if(reader.failed() or (not status)):
+                assert False
+            events[i] = evt
+
+        reader.close()
+        return events
+
+    def _fetch_event_single_file(self,filename:str,indices:Union[int,list,np.ndarray]):
+        # NOTE: Will not work nicely with ASCII, since that requires iterating
+        # through the whole file and that will scale quite poorly as these files get large.
+        # NOTE: For HepMC3/ROOT, random file access is in principle supported, but it is not
+        #       clear to me how to actually accomplish this with the existing ReaderRootTree
+        #       methods. Maybe we need to write something custom, and make sure it interfaces
+        #       nicely in Python? - Jan
+
+        from pyHepMC3 import HepMC3 as hm
+        # from pyHepMC3.rootIO.pyHepMC3rootIO.HepMC3 import ReaderRootTree
+
+        if(isinstance(indices,int)):
+            indices = np.atleast_1d(int)
+        indices = sorted(indices)
+
+        # events = [hm.GenEvent()] * len(indices)
+        # counter = 0
+        # write_counter = 0
+
+        if(filename.split('.')[-1].lower() == 'root'):
+            return self._fetch_event_single_file_root(filename,indices)
+        else:
+            return self._fetch_event_single_file_ascii(filename,indices)
+
+    def _fetch_events(self,indices:Union[int,list,np.ndarray]):
+        if(isinstance(indices,int)):
+            indices = np.atleast_1d(int)
+
+        # determine which files we'll have to pull pileup events from
+        file_indices = {}
+        for idx in indices:
+            file_idx_1 = np.where(idx >= np.array(list(self.first_idx.values()),dtype=int))[0]
+            file_idx_2 = np.where(idx < np.array(list(self.first_idx.values())) + np.array(list(self.n_dict.values()),dtype=int))[0]
+            file_idx = np.intersect1d(file_idx_1,file_idx_2)[0]
+
+            if(file_idx not in file_indices.keys()):
+                file_indices[file_idx] = []
+
+            file_indices[file_idx].append(idx)
+
+        events = []
+        for key,val in file_indices.items():
+            events += self._fetch_event_single_file(self.files[key],val)
+
+        return events
+
+    def _get_nevents_root(self,filename:str):
+        f = ur.open(filename)
+        t = f['hepmc3_tree']
+        n = t.num_entries
+        f.close()
+        return n
+
+    def __call__(self,input_file:str,output_file:Optional[str]=None):
+        from pyHepMC3 import HepMC3 as hm
+
+        input_file_extension = input_file.split('.')[-1]
+
+        if(self.indir is not None):
+            input_file = '{}/{}'.format(self.indir,input_file)
+
+        if(output_file is None):
+            output_file = input_file.replace('.{}'.format(input_file_extension),'_mixed.{}'.format(input_file_extension))
+        elif(self.outdir is not None):
+            output_file = '{}/{}'.format(self.outdir,output_file)
+
+        # buffer file is only actually relevant for the ASCII mode
+        # TODO: Have to check how ROOT writing works -- appends to existing file, or erases it?
+        buffer_file = output_file.replace('.{}'.format(input_file_extension),'_buffer.{}'.format(input_file_extension))
+
+        if((self.files is None) or len(self.files) == 0):
+            print('Error: No pileup files for PileupOverlay.')
+            return
+
+        events = []
+        self.mu_values[output_file] = []
+
+        # technically allows toggling mode from file to file... though one really should stick to ROOT.
+        mode = 'root'
+        if(input_file_extension.lower() != 'root'):
+            mode = 'ascii'
+
+        nevents = None
+        if(mode=='root'):
+            nevents = self._get_nevents_root(input_file)
+
+        if(mode=='root'):
+            reader = ReaderRootTree(input_file)
+        else:
+            reader = ReaderAscii(input_file)
+
+        i = 0
+        while(not reader.failed()):
+
+            evt = hm.GenEvent()
+            reader.read_event(evt)
+            if(reader.failed()):
+                # if(self.verbosity > 0 and nevents is not None):
+                #     printProgressBarColor(nevents,nevents,'Adding pileup:',decimals=2)
+                break
+
+            self._pick_event_indices() # sets self.mu
+            pileup_events = self._fetch_events(self.selected_indices)
+            self.mu_values[output_file].append(self.mu)
+
+            # overlay pileup on this event
+            # for now, use automatic displacement -- will use self.beam_spot_sigma
+            evt = self._combine_event_with_pileup(evt,pileup_events)
+
+            # store the combined event in memory
+            events.append(evt)
+
+            # flush events from memory as needed
+            if(len(events) >= self.event_buffer_size):
+
+                # write to output file.
+                # TODO: Is append functionality supported by hepmc writers?
+                self._flush_to_file(events,output_file)
+
+            i += 1
+
+            if(self.verbosity > 0 and nevents is not None):
+                printProgressBarColor(i,nevents,'Adding pileup:',decimals=2)
+
+        # one last flush for any stragglers
+        if(len(events) > 0):
+            self._flush_to_file(events,output_file)
+
+        try:
+            # delete the buffer file
+            os.unlink(buffer_file)
+        except:
+            pass
+
+        return output_file
+
+    def Process(self,inputs,outputs=None):
+        replace_inputs = False
+        if(outputs is None):
+            replace_inputs = True
+            final_outputs = []
+            outputs = [] # temporary filenames
+            for input in inputs:
+                file_extension = input.split('.')[-1]
+                basename = '.'.join(input.split('.')[:-1])
+                outputs.append('{}.pileup.{}'.format(basename,file_extension))
+
+        for (input,output) in zip(inputs,outputs):
+            self.__call__(input,output)
+
+            if(replace_inputs):
+                input_fullpath = input
+                if(self.indir is not None):
+                    input_fullpath = '{}/{}'.format(self.indir,input)
+                output_old = output
+                output_new = input
+                if(self.outdir is not None):
+                    output_old = '{}/{}'.format(self.outdir,output)
+                    output_new = '{}/{}'.format(self.outdir,input)
+
+                os.unlink(input_fullpath)
+                command = ['mv',output_old,output_new]
+                sub.check_call(command)
+                final_outputs.append(input) # TODO: a little messy in terms of code
+
+        if(replace_inputs):
+            return final_outputs
+        return outputs
+
+    def _flush_to_file(self,events:List['hm.GenEvent'],output_file:str,buffername:str=None):
+        from pyHepMC3 import HepMC3 as hm
+        from pyHepMC3.rootIO.pyHepMC3rootIO.HepMC3 import WriterRootTree
+
+        if(output_file.split('.')[-1].lower() == 'root'):
+            writer = WriterRootTree(output_file, True) # uses our custom HepMC3 functionality for "append mode"
+        else:
+            assert False # for now, we dont't support ASCII output since there isn't (yet) append functionality
+
+        for evt in events:
+            writer.write_event(evt)
+
+        writer.close()
+        events.clear()
+        return
 
     def _gaussian(self,x,mu,sig,A=None):
         if(A is None): A = 1. / (np.sqrt(2.0 * np.pi))
-        return A * np.exp(-np.power((x - mu) / sig, 2.0) / 2)
+        return A * np.exp(-np.square((x - mu) / sig) / 2)
+
+    def _sumpt2(self,evt:'hm.GenEvent'):
+        """
+        Compute the sum of pt2 of charged particles in the event.
+        Used for scaling the x/y displacement of the primary vertex,
+        see https://github.com/delphes/delphes/blob/d256775e652525b0c35929e72a8bf20252328696/modules/PileUpMerger.cc#L181.
+        """
+
+        sumpt2 = 0.
+        for i,particle in enumerate(evt.particles()):
+            charge = self.pdg_database.GetCharge(particle.pid()) # charge is in units of |e|/3
+            if(np.abs(charge) > 1.0e-9): # abs might not be needed based on the above
+                sumpt2 += np.square(particle.momentum().px()) + np.square(particle.momentum().py())
+        return sumpt2
+
+    def _combine_event_with_pileup(self,
+        main_event: 'hm.GenEvent',
+        pileup_events: Union['hm.GenEvent', List['hm.GenEvent']],
+        pileup_displacements: Optional[Union[Tuple[float, float, float, float],
+                                        List[Tuple[float, float, float, float]]]] = None,
+        auto_displace: bool = True,
+        beam_spot_sigma: Optional[Tuple[float,float,float,float]] = None
+    ) -> 'hm.GenEvent':
+        """
+        Combine a main event with pileup events, applying vertex displacements.
+
+        Parameters:
+        -----------
+        main_event : hm.GenEvent
+            The primary hard-scatter event
+        pileup_events : hm.GenEvent or List[hm.GenEvent]
+            Single pileup event or list of pileup events to overlay
+        pileup_displacements : tuple or list of tuples, optional
+            (t, x, y, z) displacements for each pileup event in mm/ns units
+            If None and auto_displace=True, random displacements are generated
+        auto_displace : bool
+            If True, automatically generate random displacements when none provided
+        beam_spot_sigma : tuple, optional
+            Standard deviation for random displacement generation (mm/ns), in (t,x,y,z).
+            Defaults to self.beam_spot_sigma (preferred use).
+
+        Returns:
+        --------
+        hm.GenEvent
+            Combined event with displaced pileup vertices
+        """
+
+        from pyHepMC3 import HepMC3 as hm
+
+        # Ensure pileup_events is a list
+        if isinstance(pileup_events, hm.GenEvent):
+            pileup_events = [pileup_events]
+
+        # Generate or validate displacements
+        if pileup_displacements is None:
+            pileup_displacements = np.zeros((len(pileup_events),4))
+            if auto_displace:
+                if(beam_spot_sigma is None):
+                    beam_spot_sigma = self.beam_spot_sigma
+                beam_spot_sigma = list(beam_spot_sigma)
+                beam_spot_sigma[0] *= 1.0e6 / rt.TMath.C() # convert from ns to mm/c
+                pileup_displacements = np.random.normal(0,beam_spot_sigma,(len(pileup_events),4))
+
+        if len(pileup_displacements) != len(pileup_events):
+            raise ValueError("Number of displacements ({}) must match number of pileup events ({})".format(len(pileup_displacements),len(pileup_events)))
+
+        # We displace the main event as well.
+        # NOTE: Based on the approach taken in Delphes (https://github.com/delphes/delphes/blob/d256775e652525b0c35929e72a8bf20252328696/modules/PileUpMerger.cc#L181),
+        # it looks like we should scale the x/y displacement by the sum of pT^2 of the event.
+        # Note that there, the vertex position is basically some sort of pt2-weighted average of attached particles' "positions",
+        # though it's not a perfect average since all particles contribute to the numerator (regardless of charge) but only
+        # charged particles contribute to the denominator. I don't know how well-motivated this really is. - Jan
+        combined_event = main_event
+
+        main_event_displacement = np.random.normal(0,beam_spot_sigma,4)
+        sumpt2 = self._sumpt2(main_event)
+        main_event_displacement[1:3] /= sumpt2 # adjust the x- and y-displacements, to make them smaller based on sum of pt2 of charged particles. A little unclear on units/scale here...
+        combined_event.shift_position_by(hm.FourVector(*np.roll(main_event_displacement,-1))) # using np.roll to get from (t,x,y,z) to (x,y,z,t)
+        # self._displace_event(combined_event,*main_event_displacement)
+
+        # Add each pileup event with displacement
+        for pileup_event, (dt, dx, dy, dz) in zip(pileup_events, pileup_displacements):
+            self._add_displaced_event(combined_event, pileup_event, dt, dx, dy, dz)
+
+        return combined_event
+
+    def _add_displaced_event(self,
+                            target_event: 'hm.GenEvent',
+                            pileup_event: 'hm.GenEvent',
+                            dt: float, dx: float, dy: float, dz: float):
+        """Add a pileup event to the target event with vertex displacement."""
+        from pyHepMC3 import HepMC3 as hm
+
+        # TODO: Consider using hm.GenEvent.shift_position_by() here? Maybe not possible if doing a phi rotation.
+
+        # Add a random rotation in phi to the input pileup event.
+        # (rotate, then translate)
+        phi_rotation_angle = self.rng.uniform(0.,2 * np.pi)
+
+        # Create mapping from old vertex objects to new vertex objects using list index
+        vertex_map = {}
+        vertices_list = list(pileup_event.vertices())
+
+        # Copy vertices with displacement
+        for i, vertex in enumerate(vertices_list):
+            # Apply displacement to vertex position
+
+            old_position = np.array([getattr(vertex.position(),method)() for method in ['t','x','y','z']])
+            new_position = RotateVector(old_position,phi_rotation_angle,0.,0.) + np.array([dt,dx,dy,dz])
+            new_position = hm.FourVector(*np.roll(new_position,-1)) # using np.roll to get from (t,x,y,z) to (x,y,z,t) for the constructor
+
+            new_vertex = hm.GenVertex(new_position)
+            new_vertex.set_status(vertex.status())
+            # target_event.add_vertex(new_vertex)
+            vertex_map[i] = new_vertex
+
+        # Copy particles and establish relationships
+        for particle in pileup_event.particles():
+
+            old_momentum = np.array([getattr(particle.momentum(),method)() for method in ['e','px','py','pz']])
+            new_momentum = hm.FourVector(*np.roll(RotateVector(old_momentum,phi_rotation_angle,0.,0.),-1))
+
+            new_momentum = particle.momentum()
+            new_particle = hm.GenParticle(
+                new_momentum,
+                particle.pid(),
+                particle.status()
+            )
+            new_particle.set_generated_mass(particle.generated_mass())
+
+            # Set production vertex if it exists
+            if particle.production_vertex():
+                try:
+                    vertex_idx = vertices_list.index(particle.production_vertex())
+                    prod_vertex = vertex_map[vertex_idx]
+                    prod_vertex.add_particle_out(new_particle)
+                except ValueError:
+                    pass # expected to be triggered, by beam particles
+                    # print(f"Warning: Could not find production vertex for particle {particle.pid}")
+
+            # Set end vertex if it exists
+            if particle.end_vertex():
+                try:
+                    vertex_idx = vertices_list.index(particle.end_vertex())
+                    end_vertex = vertex_map[vertex_idx]
+                    end_vertex.add_particle_in(new_particle)
+                except ValueError:
+                    print("Warning: Could not find end vertex for particle {}".format(particle.pid))
+
+        for i,vtx in vertex_map.items():
+            target_event.add_vertex(vtx)
+
+    def FetchMetadata(self):
+        pileup_metadata = {}
+        metadata_handler = MetaDataHandler()
+
+        # read in the metadata from all the pileup files
+        for pileup_file in self.files:
+            pileup_file_extension = pileup_file.split('.')[-1]
+            if(pileup_file_extension.lower() != 'root'):
+                self._print('Warning: Cannot read in metadata from pileup file {} .'.format(pileup_file))
+                continue
+            key = pileup_file.split('/')[-1]
+            pileup_metadata[key] = metadata_handler.ReadMetaDataFromROOTFile(pileup_file)
+
+        return pileup_metadata
+
+    def FetchMuValueDictionary(self):
+        return self.mu_values
+
+    def _print(self,val):
+        print('{}: {}'.format(self.print_prefix,val))
+        return
 
 
 
 
+class PileupOverlaySingle(PileupOverlay):
 
+    """
+    An extension of the PileupOverlay class, that just picks
+    a single event to overlay. In practice, this can be used
+    for "pre-mixing", where this class is sampling from some
+    pre-formed pileup events. This may be faster than on-the-fly
+    mixing, as it allows one to pre-compute the full pileup.
+    """
+    def _sample_mu_distribution(self):
+        self.mu = 1 # just forces sampling of a single event from the file

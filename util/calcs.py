@@ -4,6 +4,45 @@ import numpy as np
 import ROOT as rt
 from util.vectorcalcs import VectorCalcsManager
 
+def embed_array(array, target_shape,padding_value=0):
+    """
+    A generic function for embedding an input array into some target shape.
+    The array will be truncated or padded as needed.
+
+    """
+    # Create the output array
+    result = np.full(target_shape, padding_value, dtype=array.dtype)
+
+    # Calculate the effective shape (minimum dimensions)
+    effective_shape = tuple(min(s, t) for s, t in zip(array.shape, target_shape))
+
+    slices = tuple(slice(0, dim) for dim in effective_shape)
+    result[slices] = array[slices]
+    return result
+
+def embed_array_inplace(array, target, padding_value=0):
+    """
+    A generic function for embedding an input array into some target array.
+    The array will be truncated or padded as needed.
+    Modifies target in-place.
+    """
+    array_np = np.array(array)
+
+    # Calculate the effective shape (minimum dimensions)
+    effective_shape = tuple(min(s, t) for s, t in zip(array_np.shape, target.shape))
+
+    # Create slices for both arrays
+    slices = tuple(slice(0, dim) for dim in effective_shape)
+
+    # Reset target to padding value
+    target.fill(padding_value)
+
+    # Copy data from array to target
+    target[slices] = array_np[slices]
+    return
+
+
+class Calculator:
 # Note: Some functions have a funny-looking structure - they
 #       will try to use our custom "VectorCalcs" C++/ROOT library,
 #       but fall back on pure Python if there is an issue. This is
@@ -11,9 +50,7 @@ from util.vectorcalcs import VectorCalcsManager
 #       code on the UChicago Analysis Facility, which is a bug I
 #       have not been able to reproduce elsewhere. It involves
 #       an error with "cling JIT" not being able to allocate
-#       memory, so this is a bit of a workaround.
-
-class Calculator:
+#       memory, so this is a bit of a workaround. - Jan
     def __init__(self, use_vectorcalcs=True):
         self.vc_manager = VectorCalcsManager()
         self.use_vectorcalcs = use_vectorcalcs
@@ -151,16 +188,6 @@ class Calculator:
 
     def EPzToRap(self,e,pz):
         return 0.5 * np.log((e + pz)/(e - pz))
-
-    def AdjustPhi(self,phi):
-        """
-        Adjusts phi values so that they lie in [-pi,pi].
-        """
-        phi = np.asarray(phi)
-        phi[phi > np.pi] -= 2.0 * np.pi
-        phi[phi < -np.pi] += 2.0 * np.pi
-        if(phi.shape == (1,)): return phi[0]
-        return phi
 
     def _dPhi(self,phi1,phi2):
         """
