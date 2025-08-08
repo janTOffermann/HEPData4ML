@@ -67,13 +67,6 @@ config = {
             # Cluster small-radius jets, near the ghost-associated jets above.
             jets.JetFinder(['EFlowPhoton','EFlowNeutralHadron','EFlowTrack'],jet_algorithm='anti_kt',radius=0.4,jet_name='AntiKt04RecoJetsAssociatedTop').Containment('AntiKt08RecoJetsAssociatedTop',0,0.4,mode='filter'),
             jets.JetFinder(['EFlowPhoton','EFlowNeutralHadron','EFlowTrack'],jet_algorithm='anti_kt',radius=0.4,jet_name='AntiKt04RecoJetsAssociatedAntiTop').Containment('AntiKt08RecoJetsAssociatedAntiTop',0,0.4,mode='filter')
-
-            # jets.JetFinder(['EFlowPhoton','EFlowNeutralHadron','EFlowTrack'],jet_algorithm='anti_kt',radius=0.4,jet_name='AntiKt04RecoJetLeading').PtFilter(25.).EtaFilter(4.).Leading() # leading jet
-            # jets.JetFinder('StableTruthParticles',jet_algorithm='anti_kt',radius=0.8,jet_name='AntiKt08GenJets').PtFilter(15.).EtaFilter(2.).JohnsHopkinsTagger(mode='tag')
-            # jets.JetFinder('StableTruthParticles',jet_algorithm='anti_kt',radius=0.4,jet_name='AntiKt04GenJets_bGhostAssociated').GhostAssociation('TruthParticles',0,mode='tag'),
-            # jets.JetFinder('StableTruthParticles',jet_algorithm='anti_kt',radius=0.8,jet_name='AntiKt08GenJets').JohnsHopkinsTagger(mode='tag')
-            # jets.JetFinder(['EFlowPhoton','EFlowNeutralHadron','EFlowTrack'],jet_algorithm='anti_kt',radius=0.4,jet_name='AntiKt04EFlowJets'),
-            # jets.JetFinder(['EFlowPhoton','EFlowNeutralHadron','EFlowTrack'],jet_algorithm='anti_kt',radius=0.8,jet_name='AntiKt08EFlowJets')
         ]
     }
 }
