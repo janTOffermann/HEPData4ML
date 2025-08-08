@@ -8,6 +8,8 @@
 # CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${fj_libpath}
 # export FASTJET_INCLUDE_DIR=${fj_incpath}
 
+rm -r jhtagger/build
+
 # Now build our custom ROOT library.
 mkdir -p jhtagger/build
 pushd jhtagger/build

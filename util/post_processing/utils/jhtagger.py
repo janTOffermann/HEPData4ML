@@ -1,9 +1,12 @@
-import os,glob,pathlib
+import os,glob,pathlib,threading, queue, re
+from collections import deque
+from typing import TYPE_CHECKING
 import subprocess as sub
 import numpy as np
 import ROOT as rt
 from util.calcs import embed_array_inplace
-from typing import TYPE_CHECKING
+from util.qol_utils.progress_bar import printProgressBar, printProgressWithOutput
+
 
 if TYPE_CHECKING: # Only imported during type checking -- avoids circular imports we'd otherwise get, since jets imports this file
     from util.post_processing.jets import JetFinder
@@ -19,41 +22,25 @@ class JHTaggerSetup:
         self.SetConfigurator(configurator)
         self.executable = '/bin/bash'
         self.lib_extensions = ['so','dylib']
-        self.cmake_template = self.dir + '/../cmake_templates/CMakeLists_jhtagger.txt'
         self.status = False
 
     def SetDirectory(self,dir):
         if(dir is None):
             dir = os.path.dirname(os.path.abspath(__file__)) + '/../../root/jhtagger'
         self.dir = dir
+        self.logfile = '{}/log.stdout'.format(self.dir)
+        self.errfile = '{}/log.stderr'.format(self.dir)
 
     def SetConfigurator(self,configurator):
         self.configurator = configurator
 
     def FullPreparation(self):
         self.status = False
-        try: self.LoadJHTagger()
+        try: self.LoadJHTagger(quiet=True)
         except:
-            self.PrepareCMake() # writes a CMakeLists.txt file with current ROOT version, based on template.
             self.BuildJHTagger()
             self.LoadJHTagger()
         self.status = True
-        return
-
-    def PrepareCMake(self):
-        with open(self.cmake_template,'r') as f:
-            lines = f.readlines()
-
-        # Get the ROOT version
-        root_version = rt.__version__.split('/')[0]
-
-        for i,line in enumerate(lines):
-            lines[i] = lines[i].replace('ROOT_VERSION',root_version)
-
-        cmake_file = self.dir + '/CMakeLists.txt'
-        with open(cmake_file,'w') as f:
-            for line in lines:
-                f.write(line)
         return
 
     def BuildJHTagger(self):
@@ -66,6 +53,11 @@ class JHTaggerSetup:
         """
         self.build_script = 'build.sh'
         fastjet_dir = self.configurator.GetFastjetDirectory()
+
+        # TODO: Clean this up. Somehow put information from fastjet setup back into configurator?
+        if(fastjet_dir is None):
+            fastjet_dir = os.path.dirname(os.path.abspath(__file__)) + '/../../../external/fastjet'
+
         # TODO: This might crash if fastjet is not built yet? Could be an issue for a first run, need to test!
         fastjet_lib = glob.glob('{}/**/lib'.format(fastjet_dir),recursive=True)[0]
         fastjet_inc = glob.glob('{}/**/include'.format(fastjet_dir),recursive=True)[0]
@@ -73,8 +65,9 @@ class JHTaggerSetup:
         env['CMAKE_PREFIX_PATH'] += ':{}'.format(fastjet_lib)
         env['FASTJET_INCLUDE_DIR'] = fastjet_inc
 
-        command = ['.',self.build_script]
-        sub.check_call(command,shell=False,cwd=self.dir,env=env,executable=self.executable,stderr=sub.DEVNULL,stdout=sub.DEVNULL)
+        command = ['./{}'.format(self.build_script)]
+        self.run_command_with_progress(command,cwd=self.dir,prefix='Building JHTagger:',output_width=80)
+        # sub.check_call(command,cwd=self.dir,env=env,executable=self.executable,stderr=sub.DEVNULL,stdout=sub.DEVNULL)
         return
 
     def LoadJHTagger(self,quiet=False):
@@ -88,9 +81,9 @@ class JHTaggerSetup:
         # Note that we *also* need to fetch some include files -- this has something to do with using the ROOT interpreter.
         # Also note that we have multiple library paths -- to allow for Linux/macOS compatibility.
         build_dir = self.dir + '/jhtagger/build'
+        include_dir = self.dir + '/jhtagger/inc'
         custom_lib_paths = [os.path.realpath('{}/lib/libJHTagger.{}'.format(build_dir,x)) for x in self.lib_extensions]
-        custom_inc_paths = os.path.realpath('{}/include/jhtagger'.format(build_dir))
-        custom_inc_paths = glob.glob(custom_inc_paths + '/**/*.h',recursive=True)
+        custom_inc_paths = glob.glob(include_dir + '/**/*.h',recursive=True)
 
         # Check for any of the libraries.
         found_libary = False
@@ -112,6 +105,144 @@ class JHTaggerSetup:
         status = rt.gSystem.Load(custom_lib_path)
         assert status == 0, 'The JHTagger lib did not load properly.'
         return
+
+    def run_command_with_progress(self, command, prefix, cwd=None,
+                                show_output_lines=10, output_width=80, output_length=None):
+            """
+            Run command with progress bar and scrolling output display
+
+            Args:
+                command: Command to run
+                cwd: Current working directory for command
+                prefix: Progress bar prefix
+                show_output_lines: Number of recent output lines to show (0 to disable)
+                output_width: Width of output display area
+                output_length: Optional expected length of output; to use if output has no progress tracking (e.g. "[1%] ...")
+            """
+            # Pattern to match progress indicators
+            progress_pattern = re.compile(r'\[\s*(\d+)%\]')
+
+            # Buffer to store recent output lines
+            recent_lines = deque(maxlen=show_output_lines * 2)  # Store more than we show for better filtering
+
+            # Track current progress
+            current_progress = 0
+
+            def read_stream(stream, file_handle, line_queue, stream_name):
+                """Helper function to read from stdout/stderr in separate threads"""
+                try:
+                    for line in iter(stream.readline, ''):
+                        if line:
+                            file_handle.write(line)
+                            file_handle.flush()
+                            line_queue.put((stream_name, line))
+                except Exception as e:
+                    line_queue.put(('error', f"Error reading {stream_name}: {str(e)}\n"))
+                finally:
+                    stream.close()
+
+            with open(self.logfile, 'a') as f, open(self.errfile, 'a') as g:
+
+                # add an empty space -- nice to separate outputs from different commands
+                f.write('\n')
+                g.write('\n')
+
+                process = sub.Popen(
+                    command,
+                    cwd=cwd,
+                    stdout=sub.PIPE,
+                    stderr=sub.PIPE,
+                    universal_newlines=True,
+                    bufsize=1  # Line buffered
+                )
+
+                # Create queues for inter-thread communication
+                line_queue = queue.Queue()
+
+                # Start threads to read stdout and stderr
+                stdout_thread = threading.Thread(
+                    target=read_stream,
+                    args=(process.stdout, f, line_queue, 'stdout')
+                )
+                stderr_thread = threading.Thread(
+                    target=read_stream,
+                    args=(process.stderr, g, line_queue, 'stderr')
+                )
+
+                stdout_thread.daemon = True
+                stderr_thread.daemon = True
+                stdout_thread.start()
+                stderr_thread.start()
+
+                # Initialize display area
+                if show_output_lines > 0:
+                    # Reserve space for progress bar + output lines
+                    for i in range(3 + show_output_lines):
+                        print()
+                    # Initial display
+                    printProgressWithOutput(current_progress, 100, recent_lines,
+                                        prefix=prefix, suffix='Complete',
+                                        max_lines=show_output_lines, width=output_width)
+                else:
+                    # Just show progress bar
+                    printProgressBar(current_progress, 100, prefix=prefix, suffix='Complete')
+
+                counter = 0
+                try:
+                    while process.poll() is None or not line_queue.empty():
+                        try:
+                            # Get line with timeout to check process status
+                            stream_name, line = line_queue.get(timeout=0.1)
+
+                            # Add to recent lines buffer
+                            recent_lines.append(line)
+
+                            # Update progress -- either checking for progress indicator,
+                            # or expecting some fixed length of output.
+                            if(output_length is not None):
+                                current_progress = (counter / output_length) * 100.
+
+                            # Check for progress indicator in stdout
+                            elif stream_name == 'stdout':
+                                match = progress_pattern.search(line)
+                                if match:
+                                    current_progress = int(match.group(1))
+
+                            # Update display (both progress and output)
+                            if show_output_lines > 0:
+                                printProgressWithOutput(current_progress, 100, recent_lines,
+                                                    prefix=prefix, suffix='Complete',
+                                                    max_lines=show_output_lines, width=output_width)
+                            else:
+                                printProgressBar(current_progress, 100, prefix=prefix, suffix='Complete')
+
+                            counter += 1
+                        except queue.Empty:
+                            continue  # Continue checking if process is still running
+
+                except KeyboardInterrupt:
+                    process.terminate()
+                    raise
+
+                # Wait for threads to complete
+                stdout_thread.join(timeout=1.0)
+                stderr_thread.join(timeout=1.0)
+
+                # Final progress update
+                if show_output_lines > 0:
+                    printProgressWithOutput(100, 100, recent_lines,
+                                        prefix=prefix, suffix='Complete',
+                                        max_lines=show_output_lines, width=output_width)
+                    print()  # Move cursor to next line after final display
+                else:
+                    printProgressBar(100, 100, prefix=prefix, suffix='Complete')
+                    print()  # Move to next line
+
+                # Wait for process to complete and check return code
+                return_code = process.wait()
+                if return_code != 0:
+                    raise sub.CalledProcessError(return_code, command)
+
 
 class JohnsHopkinsTagger:
     """
@@ -184,12 +315,18 @@ class JohnsHopkinsTagger:
     def InitTagger(self):
         if(self.tagger is not None):
             del self.tagger # TODO: Is this necessary?
+
         self.tagger = rt.JHTagger.JohnnyTagger(self.delta_p,self.delta_r,self.cos_theta_W_max,*self.top_mass_range,*self.W_mass_range)
 
     def _tag(self,vecs):
         #NOTE: This usage of TagJet() is a bit awkward, but I've had some issues when trying to pass a fastjet.PseudoJet object.
         #      I think this has to do with some weirdness around the Fastjet Python interface, or Python/C++ interfaces in general.
-        self.tagger.TagJet( vecs[:,0].flatten(), vecs[:,1].flatten(), vecs[:,2].flatten(), vecs[:,3].flatten() )
+        self.tagger.TagJet(
+            rt.std.vector('double')(vecs[:,0].flatten()),
+            rt.std.vector('double')(vecs[:,1].flatten()),
+            rt.std.vector('double')(vecs[:,2].flatten()),
+            rt.std.vector('double')(vecs[:,3].flatten())
+        )
         self.tag_status = self.tagger.GetStatus()
         self.w_candidate = None
         if(self.tag_status):
@@ -203,7 +340,9 @@ class JohnsHopkinsTagger:
         return
 
     def _getWConstituents(self):
-        if(not self.tag_status): return None
+        if(not self.tag_status):
+            print('BLAM')
+            return None
         pt = np.array(self.tagger.GetWCandidateConstituentsProperty("pt"))
         n = pt.shape[0]
         if(n == 0):
