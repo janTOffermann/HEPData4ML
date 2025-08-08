@@ -33,13 +33,10 @@ def float_to_str(value):
     return re.sub(',0$','',value_str)
 
 def main(args):
-
-    # trace_hepmc3_imports()
-
     parser = ap.ArgumentParser()
 
     parser.add_argument('-n',            '--nevents',           type=int,          required=True,            help='Number of events per pt bin.')
-    parser.add_argument('-steps',        '--steps',             type = parse_mc_steps, default = 'generation pileup simulation reconstruction', help='Comma- or space-separated list of step. Options are [generation,simulation,reconstruction].')
+    parser.add_argument('-steps',        '--steps',             type = parse_mc_steps, default = 'generation pileup simulation reconstruction', help='Comma- or space-separated list of step. Options are [generation,pileup, simulation,reconstruction].')
     parser.add_argument('-p',            '--ptbins',            action = FloatListAction, default=[-1,-1], nargs='*',    help='Transverse momentum bin edges, for outgoing particles of the hard process. Can be a list of floats, or a string of comma- or space-separated floats. In GeV.')
     parser.add_argument('-o',            '--outfile',           type=str,          default='events.h5',      help='Output HDF5 file name.')
     parser.add_argument('-O',            '--outdir',            type=none_or_str,  default=None,             help='Output directory.')
@@ -53,7 +50,6 @@ def main(args):
     parser.add_argument('-tf',           '--train_fraction',    type=float,        default=0.7,              help='Fraction of events to place in the training file.')
     parser.add_argument('-vf',           '--val_fraction',      type=float,        default=0.2,              help='Fraction of events to place in the validation file.')
     parser.add_argument('-df',           '--delete_full',       type=int,          default=0,                help='Whether or not to delete the full HDF5 file after splitting into train/validation/testing files.')
-    parser.add_argument('-ds',           '--delete_stats',      type=int,          default=1,                help='Whether or not to delete the full stats file. This file\'s info is merged into HDF5 dataset, but the file may be useful in some advanced use cases.')
     parser.add_argument('-co',           '--compression_opts',  type=int,          default=7,                help='Compression option for final HDF5 file (0-9). Higher value means more compression.')
     parser.add_argument('-pc',           '--pythia_config',     type=none_or_str,  default=None,             help='Path to Pythia configuration template (for setting the process).')
     parser.add_argument('-index_offset', '--index_offset',      type=int,          default=0,                help='Offset for Event.Index.')
@@ -65,12 +61,7 @@ def main(args):
     args = vars(parser.parse_args())
 
     metadata_handler = MetaDataHandler()
-
     start_time = time.time()
-
-    # Produce a random identifier for this dataset.
-    unique_id = str(uuid.uuid4())
-    unique_id_short = str(uuid.uuid4())[:5] # a second, shorter random string -- probably more convenient to use, at the risk of a higher (but still tiny) collision rate
 
     steps = args['steps']
     nevents_per_bin = args['nevents']
@@ -86,7 +77,6 @@ def main(args):
     compression_opts = args['compression_opts']
     pythia_config = args['pythia_config']
     index_offset = args['index_offset']
-    delete_full_stats = args['delete_stats'] > 0
     config_file = args['config']
 
     delete_delphes = args['del_delphes']
@@ -330,6 +320,8 @@ def main(args):
         if(simulation_type == 'delphes'):
             if(delete_delphes):
                 # Cleanup: Delete the jet files -- which are Delphes/ROOT files, since they can always be recreated from the (compressed) HepMC files.
+                # TODO: Is this a good idea? The official DelphesHepMC3 macro (and our own DelphesHepMC3ROOT) don't allow configuration of their random number generators,
+                #       so the results actually differ run-to-run and are not entirely reproducible.
                 delphes_files = ['{}/{}'.format(outdir,x) for x in delphes_files]
                 comm = ['rm'] + delphes_files
                 sub.check_call(comm)
