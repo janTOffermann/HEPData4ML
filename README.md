@@ -32,13 +32,26 @@ HEPData4ML makes use of a number of different software packages, including:
 - [Delphes](https://cp3.irmp.ucl.ac.be/projects/delphes)
 - [fastjet](http://fastjet.fr)
 
-A YAML file detailing a `conda` environment with most of these dependencies is available in `setup/conda/`, including a binary distribution of ROOT.
-For usage on CVMFS systems, the setup script in `setup/cvmfs/` is recommended instead, which will leverage `LCG_108`.
-The Delphes, HepMC3 and fastjet dependencies will automatically be installed locally (i.e. within this repository) by the package during runtime, if they are not found (or their installation paths set to `None` in the Python configuration file); their locations should be provided in the aforementioned Python configuration file. A few notes:
-- At the present moment, the HepMC3 path *should* be set to `None`, as we leverage features not yet available in an official HepMC3 release (but which are in its `master` branch on CERN GitLab).
-- To make use of some custom Delphes
+The software environment can be set up using the `conda` package manager, or by using pre-packaged environments available via the CERN Virtual Machine File System (CVMFS).
 
-Note that the Pythia8 and fastjet installations that are used must have the Python interface built.
+### Conda setup
+
+A YAML file detailing a `conda` environment with most of these dependencies is available in `setup/conda/`, including a binary distribution of ROOT. This environment can be set up by running
+```
+conda create -f setup/conda/hepdata4ml.yml # check this!
+```
+### CVMFS usage
+For usage on CVMFS systems, the setup script in `setup/cvmfs/` is recommended instead, which will leverage `LCG_108`.
+```
+source setup/cvmfs/setup.sh
+```
+
+### Notes on dependencies: automatically installed packages
+The Delphes, HepMC3 and fastjet dependencies will automatically be installed locally (i.e. within this repository) by the package during runtime, if they are not found (or their installation paths set to `None` in the Python configuration file), in `external/`.Should you wish to intead use existing installations of these packages, their locations should be provided in the aforementioned Python configuration file. A few notes:
+- At the present moment, the HepMC3 path *should* be set to `None`, as we leverage features not yet available in an official HepMC3 release (but which are in its `master` branch on CERN GitLab).
+- To make use of some custom Delphes cards, we use a custom fork of Delphes. For any "standard" Delphes cards, a standard Delphes installation should suffice.
+
+Note that the Pythia8 and fastjet installations that are used *must* have the Python interface built -- running the script will check the fastjet Python interface, and if it's not present it will install in `external/`.
 
 ## Configuring and running the data generation
 
