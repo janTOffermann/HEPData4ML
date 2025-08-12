@@ -9,7 +9,6 @@ __pycache__/
 
 # C extensions
 *.so
-*.so.*
 *.dylib
 *.lib
 
@@ -35,11 +34,3 @@ pip-delete-this-directory.txt
 *.png
 *.hepmc
 *.tar.bz2
-*.rootmap
-*.pcm
-
-# Ignore test files
-test.sh
-test*.sh
-test*.py
-test

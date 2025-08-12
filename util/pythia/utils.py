@@ -17,12 +17,6 @@ class PythiaWrapper:
         self.SetVerbose(verbose)
         self.initialized = False
 
-    def GetPythia(self):
-        return self.pythia
-
-    def GetEvent(self):
-        return self.pythia.event
-
     def SetVerbose(self,flag):
         self.verbose = flag
 
