@@ -33,7 +33,7 @@ class TrackCountingBTagging:
 
         self.tags = None
 
-        self.print_prefix = '\n\t\TrackCountingBTagging'
+        self.print_prefix = '\n\tTrackCountingBTagging'
 
     def ModifyInitialization(self,obj):
         """

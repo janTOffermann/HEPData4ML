@@ -133,8 +133,6 @@ def main(args):
     if(nevents_per_bin >= 100): h5_conversion_verbosity = 1
     elif(nevents_per_bin >= 10000): h5_conversion_verbosity = 2
 
-    simulation_type = configurator.GetSimulationType()
-
     # Keep track of some files we create.
     hepmc_files = []
     delphes_files = []
@@ -261,8 +259,10 @@ def main(args):
     # STEP 3: Simulation (optional)
     #===============================
 
+    simulation_type=None
     if('simulation' in steps):
         simulator = None
+        simulation_type = configurator.GetSimulationType()
         if(simulation_type == 'delphes'):
             sim_logfile = '{}/delphes.log'.format(outdir)
             simulator = DelphesSimulator(configurator,outdir,logfile=sim_logfile)
