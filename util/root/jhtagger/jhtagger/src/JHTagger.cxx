@@ -2,24 +2,17 @@
 
 // Fastjet includes
 #include "fastjet/Selector.hh"
-#include "fastjet/ClusterSequence.hh"
-#include "fastjet/tools/JHTopTagger.hh"
-#include "fastjet/PseudoJet.hh"
 
 using namespace std;
 
 namespace JHTagger{
 
-  // JohnnyTagger::JohnnyTagger(Double_t delta_p, Double_t delta_r, Double_t cos_theta_w_max){
-  //   SetDeltaP(delta_p);
-  //   SetDeltaR(delta_r);
-  //   SetCosThetaWMax(cos_theta_w_max);
-  //   _vec = new fastjet::PseudoJet(0.,0.,0.,0.);
-  //   return;
-  // }
-
-  JohnnyTagger::JohnnyTagger(){
-
+  JohnnyTagger::JohnnyTagger(Double_t delta_p, Double_t delta_r, Double_t cos_theta_w_max){
+    SetDeltaP(delta_p);
+    SetDeltaR(delta_r);
+    SetCosThetaWMax(cos_theta_w_max);
+    _vec = new fastjet::PseudoJet(0.,0.,0.,0.);
+    return;
   }
 
   JohnnyTagger::JohnnyTagger(Double_t delta_p, Double_t delta_r, Double_t cos_theta_w_max,Double_t top_mass_min, Double_t top_mass_max, Double_t W_mass_min, Double_t W_mass_max){
@@ -43,21 +36,6 @@ namespace JHTagger{
     return;
   }
 
-  void JohnnyTagger::GetWCandidateConstituents(){
-    ResetWCandidateConstituents();
-    std::vector<fastjet::PseudoJet> constituents = _vec->constituents();
-    for(auto entry: constituents){ // 1
-      _vec_constituents.push_back(&entry);
-    }
-  };
-
-  void JohnnyTagger::ResetWCandidateConstituents(){
-    // for(auto entry: _vec_constituents){
-    //   delete entry;
-    // }
-    _vec_constituents.clear();
-  }
-
   void JohnnyTagger::CreateTagger(){
     _tagger = new fastjet::JHTopTagger(_delta_p,_delta_r,_cos_theta_w_max);
     _tagger->set_top_selector(fastjet::SelectorMassRange(_top_mass_min,_top_mass_max));
@@ -67,8 +45,8 @@ namespace JHTagger{
     InitializeCamAachAlgo();
   }
 
-  void JohnnyTagger::TagJet(fastjet::PseudoJet* jet){
-    fastjet::PseudoJet top_candidate = _tagger->operator()(*jet);
+  void JohnnyTagger::TagJet(fastjet::PseudoJet jet){
+    fastjet::PseudoJet top_candidate = _tagger->operator()(jet);
     delete _vec; // TODO: Is this necessary? My C++ is rusty but I wonder if constantly assigning "_vec = new ..." I have introduced a memory leak.
     _vec = 0;
     if (top_candidate != 0){
@@ -96,21 +74,21 @@ namespace JHTagger{
     if(jets.size() == 0) return;
 
     fastjet::PseudoJet jet = jets.at(0);
-    return TagJet(&jet);
+    return TagJet(jet);
   }
 
   std::vector<Double_t> JohnnyTagger::GetWCandidateConstituentsProperty(TString property){
     std::vector<Double_t> values = {};
-    for(fastjet::PseudoJet* vec : _vec_constituents){
-      if(property.EqualTo("E")) values.push_back(vec->E());
-      else if(property.EqualTo("px")) values.push_back(vec->px());
-      else if(property.EqualTo("py")) values.push_back(vec->py());
-      else if(property.EqualTo("pz")) values.push_back(vec->pz());
-      else if(property.EqualTo("pt")) values.push_back(vec->pt());
-      else if(property.EqualTo("eta")) values.push_back(vec->eta());
-      else if(property.EqualTo("phi")) values.push_back(vec->phi());
-      else if(property.EqualTo("m")) values.push_back(vec->m());
-      else if(property.EqualTo("y")) values.push_back(vec->rapidity());
+    for(fastjet::PseudoJet vec : _vec_constituents){
+      if(property.EqualTo("E")) values.push_back(vec.E());
+      else if(property.EqualTo("px")) values.push_back(vec.px());
+      else if(property.EqualTo("py")) values.push_back(vec.py());
+      else if(property.EqualTo("pz")) values.push_back(vec.pz());
+      else if(property.EqualTo("pt")) values.push_back(vec.pt());
+      else if(property.EqualTo("eta")) values.push_back(vec.eta());
+      else if(property.EqualTo("phi")) values.push_back(vec.phi());
+      else if(property.EqualTo("m")) values.push_back(vec.m());
+      else if(property.EqualTo("y")) values.push_back(vec.rapidity());
       else{
         cout << Form("Error: Property \"%s\" passed to JohnnyTagger::GetWCandidateConstituentsProperty not understood",property.Data()) << endl;
         break;

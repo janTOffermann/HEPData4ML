@@ -5,10 +5,5 @@
 #pragma link off all functions;
 
 #pragma link C++ namespace JHTagger;
-#pragma link C++ class JHTagger::JohnnyTagger+;
-
-// #pragma link C++ function JHTagger::JohnnyTagger::JohnnyTagger();
-// #pragma link C++ function JHTagger::JohnnyTagger::JohnnyTagger(Double_t, Double_t, Double_t);
-// #pragma link C++ function JHTagger::JohnnyTagger::JohnnyTagger(Double_t, Double_t, Double_t, Double_t, Double_t, Double_t, Double_t);
 
 #endif

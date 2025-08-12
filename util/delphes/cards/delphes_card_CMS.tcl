@@ -14,14 +14,14 @@ set ExecutionPath {
   MuonMomentumSmearing
 
   TrackMerger
-
+ 
   ECal
   HCal
-
+ 
   Calorimeter
   EFlowMerger
   EFlowFilter
-
+  
   PhotonEfficiency
   PhotonIsolation
 
@@ -39,7 +39,7 @@ set ExecutionPath {
   NeutrinoFilter
   GenJetFinder
   GenMissingET
-
+  
   FastJetFinder
   FatJetFinder
 
@@ -403,7 +403,7 @@ module PdgCodeFilter ElectronFilter {
 module PdgCodeFilter ChargedHadronFilter {
   set InputArray HCal/eflowTracks
   set OutputArray chargedHadrons
-
+  
   add PdgCode {11}
   add PdgCode {-11}
   add PdgCode {13}
@@ -443,7 +443,7 @@ module Merger EFlowMerger {
 module PdgCodeFilter EFlowFilter {
   set InputArray EFlowMerger/eflow
   set OutputArray eflow
-
+  
   add PdgCode {11}
   add PdgCode {-11}
   add PdgCode {13}
@@ -724,7 +724,7 @@ module BTagging BTagging {
   # gluon's PDG code has the lowest priority
 
   # based on arXiv:1211.4462
-
+  
   # default efficiency formula (misidentification rate)
   add EfficiencyFormula {0} {0.01+0.000038*pt}
 
@@ -792,7 +792,7 @@ module TreeWriter TreeWriter {
 
   add Branch GenJetFinder/jets GenJet Jet
   add Branch GenMissingET/momentum GenMissingET MissingET
-
+ 
   add Branch UniqueObjectFinder/jets Jet Jet
   add Branch UniqueObjectFinder/electrons Electron Electron
   add Branch UniqueObjectFinder/photons Photon Photon
@@ -803,4 +803,6 @@ module TreeWriter TreeWriter {
   add Branch MissingET/momentum MissingET MissingET
   add Branch ScalarHT/energy ScalarHT ScalarHT
 
+  # adding the eflow collection used for jets
+  add Branch EFlowMerger/eflow EFlowMerger Merger
 }
