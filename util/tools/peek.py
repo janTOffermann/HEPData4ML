@@ -87,7 +87,7 @@ def main(args):
 
         generator = Generator(pt_min,pt_max, configurator, pythia_rng,pythia_config_file=pythia_config,verbose=verbose)
         generator.SetEventSelection(configurator.GetEventSelection())
-        generator.SetTruthSelection(configurator.GetTruthSelection())
+        generator.SetTruthSelection(configurator.GetParticleSelection())
         generator.SetFinalStateSelection(configurator.GetFinalStateSelection())
         generator.SetEventFilter(configurator.GetEventFilter())
         generator.SetEventFilterFlag(configurator.GetEventFilterFlag())

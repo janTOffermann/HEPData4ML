@@ -9,23 +9,25 @@
 // #include "Math/VectorUtil.h"
 #endif
 
-// Fastjet includes
-#include "fastjet/ClusterSequence.hh"
-#include "fastjet/tools/JHTopTagger.hh"
-#include "fastjet/PseudoJet.hh"
-
 // standard lib includes
 #include <vector>
+
+// // forward declarations for fastjet
+namespace fastjet{
+  class JHTopTagger;
+  class PseudoJet;
+  class JetDefinition;
+}
 
 using namespace std;
 namespace JHTagger{
 
   class JohnnyTagger{
     public:
-      JohnnyTagger(){};
-      JohnnyTagger(Double_t delta_p, Double_t delta_r, Double_t cos_theta_w_max);
+      JohnnyTagger();
+      // JohnnyTagger(Double_t delta_p, Double_t delta_r, Double_t cos_theta_w_max);
       JohnnyTagger(Double_t delta_p, Double_t delta_r, Double_t cos_theta_w_max, Double_t top_mass_min, Double_t top_mass_max, Double_t W_mass_min, Double_t W_mass_max);
-      ~JohnnyTagger();
+      virtual ~JohnnyTagger();
 
       // Setters.
       void SetJetDeltaR(Double_t value){_R = value;};
@@ -59,16 +61,18 @@ namespace JHTagger{
       void InitializeCamAachAlgo();
       void CreateTagger(); // Construct the internal JH tagger. The various tagger settings need to have already been set!
 
-      void TagJet(fastjet::PseudoJet jet); // Tag an input jet (which should have been clustered using the Cambridge-Aachen algorithm.)
+      void TagJet(fastjet::PseudoJet* jet); // Tag an input jet (which should have been (re)clustered using the Cambridge-Aachen algorithm.)
       void TagJet(std::vector<Double_t> E, std::vector<Double_t> px, std::vector<Double_t> py, std::vector<Double_t> pz);
+
+      ClassDef(JohnnyTagger, 1);
 
     private:
 
       // Get a vector of the W candidate's constituents.
       // We'll want other simpler methods for extracting the candidate info
       // via the PyROOT interface, since using this on the Python side seems to cause issues.
-      void GetWCandidateConstituents(){_vec_constituents = _vec->constituents();};
-      void ResetWCandidateConstituents(){_vec_constituents.clear();};
+      void GetWCandidateConstituents();
+      void ResetWCandidateConstituents(); // TODO Fix this for memory leak issues?
 
       Double_t _delta_p = 0.1;
       Double_t _delta_r = 0.19;
@@ -76,7 +80,7 @@ namespace JHTagger{
       Bool_t _status = kFALSE;
       fastjet::JHTopTagger* _tagger = 0;
       fastjet::PseudoJet* _vec = 0;
-      std::vector<fastjet::PseudoJet> _vec_constituents = {};
+      std::vector<fastjet::PseudoJet*> _vec_constituents = {};
 
       Double_t _R = 0.8;
       fastjet::JetDefinition* _jetdef = 0;
@@ -86,9 +90,6 @@ namespace JHTagger{
       Double_t _top_mass_max = 200.; // GeV
       Double_t _W_mass_min = 65.; // GeV
       Double_t _W_mass_max = 95.; // GeV
-
-
-
   };
 }
 
