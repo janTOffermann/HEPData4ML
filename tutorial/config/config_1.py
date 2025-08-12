@@ -18,7 +18,7 @@ config = {
 
     'pileup' : {
         'handler': pu.PileupOverlay(
-            "output/tutorial0/events*.root",
+            "output/tutorial_0/events*.root",
             rng_seed=1
         ) # For example, you can overlay pileup events from some pre-existing HepMC3 files (ideally in ROOT format!), which you can generate with this package too.
     },
