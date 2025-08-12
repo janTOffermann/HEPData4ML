@@ -13,7 +13,7 @@ Future updates will allow for the supply of externally-produced HepMC3 files (as
 
 While the code on the main branch is currently structured to pick out a single jet per event, the `devel_full_event` branch features a much more general design, that saves entire events -- including possibly multiple jet collections that the user specifies.
 
-Most options are specified in a Python configuration file (akin, for example, to the "steering" files used by the Athena software package in the ATLAS collaboration). By default, this resides in `config/config.py`, although alternative files can be used.
+Most options are specified in a Python configuration file (herein referred to as the "config file") akin, for example, to the "steering" files used by the Athena software package in the ATLAS collaboration. By default, this resides in `config/config.py`, although alternative files can be used.
 
 The final output of this package -- under normal running mode -- is an "n-tuple" in HDF5 format. Future updates may include support for a ROOT-based format, which may lend itself better to jagged arrays; the HDF5 files currently hold particle and jet properties in numpy arrays, which are truncated/zero-padded to user-specified sizes.
 
@@ -32,13 +32,26 @@ HEPData4ML makes use of a number of different software packages, including:
 - [Delphes](https://cp3.irmp.ucl.ac.be/projects/delphes)
 - [fastjet](http://fastjet.fr)
 
-A YAML file detailing a `conda` environment with most of these dependencies is available in `setup/conda/`, including a binary distribution of ROOT.
-For usage on CVMFS systems, the setup script in `setup/cvmfs/` is recommended instead, which will leverage `LCG_108`.
-The Delphes, HepMC3 and fastjet dependencies will automatically be installed locally (i.e. within this repository) by the package during runtime, if they are not found (or their installation paths set to `None` in the Python configuration file); their locations should be provided in the aforementioned Python configuration file. A few notes:
-- At the present moment, the HepMC3 path *should* be set to `None`, as we leverage features not yet available in an official HepMC3 release (but which are in its `master` branch on CERN GitLab).
-- To make use of some custom Delphes
+The software environment can be set up using the `conda` package manager, or by using pre-packaged environments available via the CERN Virtual Machine File System (CVMFS).
 
-Note that the Pythia8 and fastjet installations that are used must have the Python interface built.
+### Conda setup
+
+A YAML file detailing a `conda` environment with most of these dependencies is available in `setup/conda/`, including a binary distribution of ROOT. This environment can be set up by running
+```
+conda create -f setup/conda/hepdata4ml.yml # check this!
+```
+### CVMFS usage
+For usage on CVMFS systems, the setup script in `setup/cvmfs/` is recommended instead, which will leverage `LCG_108`.
+```
+source setup/cvmfs/setup.sh
+```
+
+### Notes on dependencies: automatically installed packages
+The Delphes, HepMC3 and fastjet dependencies will automatically be installed locally (i.e. within this repository) by the package during runtime, if they are not found (or their installation paths set to `None` in the config file), in `external/`.Should you wish to intead use existing installations of these packages, their locations should be provided in the aforementioned config file. A few notes:
+- At the present moment, the HepMC3 path *should* be set to `None`, as we leverage features not yet available in an official HepMC3 release (but which are in its `master` branch on CERN GitLab).
+- To make use of some custom Delphes cards, we use a custom fork of Delphes. For any "standard" Delphes cards, a standard Delphes installation should suffice.
+
+Note that the Pythia8 and fastjet installations that are used *must* have the Python interface built -- running the script will check the fastjet Python interface, and if it's not present it will install in `external/`.
 
 ## Configuring and running the data generation
 
@@ -88,7 +101,7 @@ options:
   -del_delphes, --del_delphes DEL_DELPHES
                         Whether or not to delete DELPHES/ROOT files.
 ```
-A number of these are mostly likely not directly relevant to the user, and are mostly present for running using HTCondor (described further below). Note that many settings are provided via a Python configuration file (similar to how "steering file" work in ATLAS/Athena software, or CMSSW). For the command line arguments, here are descriptions of the most relevant ones:
+A number of these are mostly likely not directly relevant to the user, and are mostly present for running using HTCondor (described further below). Note that many settings are provided via the config file. For the command line arguments, here are descriptions of the most relevant ones:
 - `--nevents`: How many events to produce, per pT bin (specified below).
 - `--steps`: Here, one can list which particular steps in the event generation chain to run:
   - "generation" : This is done using Pythia8, and includes both matrix element generation and showering/hadronization. It produces HepMC3 files. This step can be skipped if there are existing HepMC3 files in the output directory, in which case those will be used in lieu of the generation output.
@@ -100,11 +113,11 @@ A number of these are mostly likely not directly relevant to the user, and are m
 - `--outdir` : The output file directory.
 - `--rng` : The random number generator (RNG) seed to use for generation with Pythia8. If the event generation is run twice with the same process and same RNG seed, it will produce the same events.
 - `--split` : An integer (either `0` or `1`) indicating whether or not to split the output into training, testing and validation files. The fraction of events put into these can be managed via the `-train_fraction` and `--val_fraction` arguments.
-- `--config` : A path to the Python configuration file to use, where most of the settings are actually provided. This defaults to `config/config.py`.
+- `--config` : A path to the config file to use, where most of the settings are actually provided. This defaults to `config/config.py`.
 Note that certain arguments, such as `--pythia_config`, are redundant with the information provided in the Python configuration (described below). These arguments will override the settings in the Python configuration; their primary purpose is to facilitate overrides for HTCondor jobs (described further below).
 
-### The Python configuration file
-As noted above, most of the configuration is handled by a Python configuration file, by default that in `config/config.py`. Here is the annotated example file that ships with this repository:
+### The config file
+As noted above, most of the configuration is handled by a config file, by default that in `config/config.py`. Here is the annotated example file that ships with this repository:
 ```
 import util.post_processing.jets as jets
 import util.particle_selection.particle_selection as parsel
@@ -226,7 +239,7 @@ options:
 Some of these arguments directly match those given to `run.py`. There are a few that are however specific to this script, and have to do with how the condor jobs are set up:
 - `--Njobs`: The number of jobs to run, per Pythia8 configuration.
 - `--rundir`: The directory from which the jobs will be run (more on this below, in the description of the `--mode` argument). This is where the condor submission file will be created, as well as where the job subdirectories that contain condor logs and stdout/stderr will be produced when `run_condor.py` is invoked.
-- `--pythia_config`: A path to the Pythia8 configuration file; this overrides whatever configuration is set in the Python configuration file, however this can be a *list* of Pythia8 configuration files in which case `Njobs` jobs will be spun up per Pythia8 configuration. This can be a handy way to simultaneously set up generation of multiple processes. Note however that this may make it difficult to later distinguish between these processes, whereas spinning up separate batches of jobs per process will allow for labeling them via the `signal_flag` setting in the `reconstruction` section of the Python configuration file.
+- `--pythia_config`: A path to the Pythia8 configuration file; this overrides whatever configuration is set in the config file, however this can be a *list* of Pythia8 configuration files in which case `Njobs` jobs will be spun up per Pythia8 configuration. This can be a handy way to simultaneously set up generation of multiple processes. Note however that this may make it difficult to later distinguish between these processes, whereas spinning up separate batches of jobs per process will allow for labeling them via the `signal_flag` setting in the `reconstruction` section of the config file.
 - `--shortqueue` : This setting is currently unique to the HTCondor system on the University of Chicago's Analysis Facility, where it allows for accessing a dedicated HTCondor queue for jobs limited to 3 hours. (This code can possibly be extended to similarly access unique features of other HTCondor systems).
 - `--n_cpu`: The number of CPU cores to use per job. Note that this code is not (yet) explicitly parallelized, so there is little benefit to requesting multiple cores (aside from that possibly also providing more memory).
 - `batch_name`: The name for this batch of condor jobs.
@@ -238,14 +251,23 @@ Some of these arguments directly match those given to `run.py`. There are a few 
 - `requirements`: A string of requirements for the condor worker nodes.
 - `blacklist`: Specific condor worker machines to avoid running on; this can be a handy feature for systems where certain worker nodes don't function well, e.g. some nodes not having consistent access to CVMFS.
 
-**Note** that at the present, the condor workers must have write access to the output directory. This is something that may be changed in the future.
+**Note** that at the present, the condor workers must have write access to the output directory, as the job explicitly copies output there (instead of using HTCondor's file transfer protocol for output). This is something that may be changed in the future.
 
-### Parsing and handling output
+### Running with pileup
+One of the special features of this package is the ability to include pileup. This is achieved by overlaying a set of "pileup" HepMC3 events with the "main" HepMC3 event before the detector simulation step; it is up to the user to determine how exactly the pileup events are generated. In practice, it is best to generate the pileup events with a dedicated run of this package, invoking `run.py` or `prep_condor.py` with the command line argument
+```
+--steps "generation"
+```
+as only the HepMC3 files need to be produced for the pileup. Note that in the config file, the output format should be set to `root` and not `ascii`, as the pileup mixing procedure will rely on random access of the events (which the ASCII format does not support). The ROOT-based format is also more space efficient and generally preferrable (with the caveat being that it is less human-readable than ASCII). Pileup HepMC3 files can of course be supplied externally as well, but those produced with this package have the advantage that they will have metadata attached to them (see further below), which will propagate to the metadata of the dataset they are mixed into; this will greatly help with dataset documentation/reproducibility.
+
+## Parsing and handling output
 The final output format of the data generation is an HDF5 file, that contains an n-tuple representing the data. It comprises of a set of n-dimensional `numpy` arrays, which represent properties of the event; the four-momenta of truth-level particles, the four-momenta (and position, charge etc.) of various reconstructed objects from Delphes as well as jet clustering.
 
 HDF5 has the advantage that it is quite widely supported (and relatively popular within the ML community). However unlike ROOT it does not support jagged arrays, which are a relatively natural representation for a lot of HEP data as (for example) the number of particles per event, or number of constituents per jet, is a variable quantity. Thus the n-tuples are constructed using fixed-length arrays, where the array length is (hopefully!) chosen to be sufficiently large as to avoid any edge effects, and zero-padding is employed as needed; each object in the n-tuple also has a column indicating its "multiplicity", i.e. how many of them there are per event.
 
+#### Metadata
 In addition to the kinematics and properties of objects in each event, there are also fields corresponding with *metadata*, such as the configuration used to generate the events, with these fields indexing each event with respect to a list of metadata values stored in the HDF5 file's "attributes". When files are concatenated using the Python script `util/tools/concat.py`, merging of the metadata is handled automatically. As it includes the configuration, command line arguments and git hash (among other pieces of information), this metadata in principle allows one to completely reproduce a dataset (aside from the Delphes RNG -- which may be handled in future updates!).
 
+#### Checking dataset contents
 One can check the particular contents of a dataset by using the Python script `util/tools/check_file.py`, which will print all the available fields, their dimensions, as well as a single event.
 

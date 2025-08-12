@@ -1,7 +1,7 @@
 import ROOT as rt
 import uproot as ur
 import numpy as np
-import glob,sys,os
+import glob,sys,os,pathlib
 import subprocess as sub
 from util.qol_utils.progress_bar import printProgressBarColor
 from util.qol_utils.pdg import DatabasePDG
@@ -106,9 +106,14 @@ class PileupOverlay:
             return
         if(isinstance(files,str)):
             self.files = glob.glob(files)
+            if(len(self.files) == 0): # maybe this was not an absolute path, but a relative one (w.r.t. cwd)
+                self.files = glob.glob('{}/{}'.format(os.getcwd(),files))
         else:
             self.files = files
-        self.files = sorted(self.files)
+            for i,file in enumerate(self.files):
+                if(not pathlib.Path(file).exists()):
+                    self.files[i] = '{}/{}'.format(os.getcwd(),file)
+        self.files = sorted([pathlib.Path(x).absolute() for x in self.files if pathlib.Path(x).exists()])
         return
 
     def _index_ascii(self,file):

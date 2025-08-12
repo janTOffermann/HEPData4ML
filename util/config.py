@@ -24,10 +24,22 @@ def GetConfigFileContent(config_file):
 
 class Configurator:
     def __init__(self,config_dictionary):
-        self.generation=config_dictionary['generation']
-        self.pileup=config_dictionary['pileup']
-        self.simulation=config_dictionary['simulation']
-        self.reconstruction=config_dictionary['reconstruction']
+        try:
+            self.generation=config_dictionary['generation']
+        except:
+            self.generation=None
+        try:
+            self.pileup=config_dictionary['pileup']
+        except:
+            self.pileup=None
+        try:
+            self.simulation=config_dictionary['simulation']
+        except:
+            self.simulation=None
+        try:
+            self.reconstruction=config_dictionary['reconstruction']
+        except:
+            self.reconstruction=None
 
         self.config = {} # TODO: Might want to eventually restructure this
         self.config['generation'] = self.generation
@@ -57,6 +69,8 @@ class Configurator:
         }
 
         for key,key_list in path_keys.items():
+            if(self.config[key] is None):
+                continue
             for key2 in key_list:
                 status = True
                 if(key2 in self.config[key].keys()):
@@ -141,8 +155,10 @@ class Configurator:
         pythia_config['Random:seed'] = self.config['generation']['rng']
 
         # Add the phase space stuff.
-        pythia_config['PhaseSpace:pTHatMin'] = pt_min
-        pythia_config['PhaseSpace:pTHatMax'] = pt_max
+        if(pt_min >= 0.):
+            pythia_config['PhaseSpace:pTHatMin'] = pt_min
+        if(pt_max > 0.):
+            pythia_config['PhaseSpace:pTHatMax'] = pt_max
 
         if(not verbose):
             pythia_config['Print:quiet'] = 'on' # avoid printing reams of info
