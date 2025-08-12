@@ -2,7 +2,7 @@
 import ROOT as rt
 import os,glob,pathlib
 import subprocess as sub
-import util.qol_utils.qol_util as qu
+from util.qol_utils.misc import stdout_redirected
 
 class VectorCalcsManager:
     def __init__(self,verbose=True):
@@ -48,7 +48,7 @@ class VectorCalcsManager:
         # Check if the VectorCalcs library is already built, by trying to load it.
         # We will disable printouts for this check, since it's okay if it fails.
         if(not force):
-            with qu.stdout_redirected():
+            with stdout_redirected():
                 try:
                     self.LoadVectorCalcs()
                     return
