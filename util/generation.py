@@ -44,7 +44,13 @@ class PythiaGenerator:
         self.event_filter = None
 
         # Things for the progress bar.
-        self.prefix = 'Generating events for pT bin [{},{}]:'.format(self.pt_min,self.pt_max)
+        if(self.pt_min > 0. and self.pt_max > 0.):
+            self.prefix = 'Generating events for pT^ in [{}, {}] GeV:'.format(self.pt_min,self.pt_max)
+        elif(self.pt_min <= 0. and self.pt_max > 0.):
+            self.prefix = 'Generating events for pT^ < {} GeV:'.format(self.pt_max)
+        else:
+            self.prefix = 'Generating events (default pT^ boundaries):'
+
         self.suffix = 'Complete'
         self.bl = 50
 
