@@ -27,7 +27,7 @@ To run this tutorial, invoke
 ./tutorial_1.sh
 ```
 
-If this is your first time running the package, this may take a moment as a few dependencies may need to be installed; this will happen automatically and the printouts should give you a sense of the progress. For reference, on an M3 Max MacBook Pro this takes roughly 2 minutes or so (the building of dependencies may use a handful of logical cores; it's not maxed out).
+If this is your first time running the package, this may take a moment as a few dependencies may need to be installed; this will happen automatically and the printouts should give you a sense of the progress. For reference, on an M3 Max MacBook Pro this takes roughly a minute or so (the building of dependencies may use a handful of logical cores; it's not maxed out).
 
 The output will be in `output/tutorial_1`, and should consist of a couple files -- the final n-tuple is `events.h5`. You can check the contents of this file by passing it to the script `../util/tools/check_file.py`, or visualize it via
 ```
