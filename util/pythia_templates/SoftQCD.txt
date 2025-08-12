@@ -1,5 +1,0 @@
-! QCD
-SoftQCD:nonDiffractive = on
-Beams:idA = 2212
-Beams:idB = 2212
-Beams:eCM = 13000.

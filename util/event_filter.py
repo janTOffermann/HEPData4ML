@@ -1,3 +1,5 @@
+#DEPRECATED (Needs reworking)
+
 # Some functions for filtering out events during generation -- if an event fails to pass some condition
 # on its selected truth and final-state particles (the inputs to jet clustering), the event is thrown out
 # and not written to the HepMC file -- is not counted towards the total number of events we have generated.
