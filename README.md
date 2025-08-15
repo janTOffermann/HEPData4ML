@@ -19,6 +19,14 @@ The final output of this package -- under normal running mode -- is an "n-tuple"
 
 ## Requirements/setup
 
+This package makes use of Git submodules; after cloning, please run
+```
+git submodule update --init --recursive
+```
+to make sure that these are fetched as well.
+
+
+### Software requirements overview
 The code is primarily written in Python3, along with some C++/ROOT code (which is leveraged in Python via PyROOT).
 HEPData4ML makes use of a number of different software packages, including:
 
