@@ -36,6 +36,10 @@ class ContainmentTagger:
         self.tags = None
 
         self.print_prefix = '\n\t\tContainmentTagger'
+        self.citations = {}
+
+    def GetCitations(self):
+        return self.citations
 
     def SetRadius(self,dr:float):
         self.radius2 = np.square(dr)

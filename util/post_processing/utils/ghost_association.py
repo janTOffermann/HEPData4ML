@@ -32,6 +32,30 @@ class GhostAssociator():
         self.tags = None
         self.print_prefix = '\n\t\tGhostAssociator'
 
+        self.citations = {
+            "GhostAssociation":
+            """
+@article{Cacciari:2008gn,
+    author = "Cacciari, Matteo and Salam, Gavin P. and Soyez, Gregory",
+    title = "{The Catchment Area of Jets}",
+    eprint = "0802.1188",
+    archivePrefix = "arXiv",
+    primaryClass = "hep-ph",
+    reportNumber = "LPTHE-07-02",
+    doi = "10.1088/1126-6708/2008/04/005",
+    journal = "JHEP",
+    volume = "04",
+    pages = "005",
+    year = "2008"
+}
+            """
+        }
+
+    def GetCitations(self):
+        return self.citations
+
+
+
     def _makeGhosts(self,vecs:Union[list,np.ndarray], a:float=1.0e-10):
 
         result = np.zeros(vecs.shape)
