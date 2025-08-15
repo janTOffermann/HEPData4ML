@@ -23,16 +23,24 @@ class MetaDataHandler:
         start_time = time.time()
         self.AddElement('Metadata.Timestamp',start_time)
         self.AddElement('Metadata.Timestamp.StringUTC',time.strftime('%Y-%m-%d %H:%M:%S',time.gmtime(start_time)))
-        self.AddElement('Metadata.GitHash',self.get_git_revision_short_hash())
+        self.AddElement('Metadata.GitHash',self._get_git_revision_short_hash())
+        self.AddElement('Metadata.HostName',self._get_hostname())
         self.AddElement('Metadata.UniqueID',str(uuid.uuid4()))
         self.AddElement('Metadata.UniqueIDShort',str(uuid.uuid4())[:5]) # a second, shorter random string -- probably more convenient to use, at the risk of a higher (but still tiny) collision rate
 
-    def get_git_revision_short_hash(self): # see https://stackoverflow.com/a/21901260
+    def _get_git_revision_short_hash(self): # see https://stackoverflow.com/a/21901260
         cwd = os.path.dirname(os.path.abspath(__file__))
         try:
             result = sub.check_output(['git', 'rev-parse', '--short', 'HEAD'],cwd=cwd).decode('ascii').strip()
         except:
             result = 'NO_GIT_HASH'
+        return result
+
+    def _get_hostname(self):
+        try:
+            result = sub.check_output(['hostname']).decode('ascii').strip()
+        except:
+            result='NO_HOSTNAME'
         return result
 
     def AddMetaDataToROOTFiles(self,root_file:Union[List[str],str], cwd=None, tree_name:str='hepmc3_tree'):
