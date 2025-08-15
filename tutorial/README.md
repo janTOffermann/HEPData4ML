@@ -1,5 +1,9 @@
 # Tutorial
 
+## Prerequisites
+
+Before running the tutorials below, make sure that your environment is set up correctly (see the top-level README.md). The scripts will assume that this is set up.
+
 ## Tutorial 0
 
 In this first tutorial, we will just run Pythia8 to produce some events corresponding with the processes in Pythia's `SoftQCD` category, without any special phase space cuts. To run this, simply invoke
