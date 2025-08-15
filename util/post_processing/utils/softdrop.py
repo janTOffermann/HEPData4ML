@@ -29,6 +29,26 @@ class Softdrop:
         self.cluster_sequences = []
 
         self.print_prefix = '\n\t\tSoftdrop'
+        self.citations = {
+            "SoftDrop":
+            """
+@article{Larkoski:2014wba,
+    author = "Larkoski, Andrew J. and Marzani, Simone and Soyez, Gregory and Thaler, Jesse",
+    title = "{Soft Drop}",
+    eprint = "1402.2657",
+    archivePrefix = "arXiv",
+    primaryClass = "hep-ph",
+    reportNumber = "MIT-CTP-4531, DCPT-14-24, IPPP-14-12",
+    doi = "10.1007/JHEP05(2014)146",
+    journal = "JHEP",
+    volume = "05",
+    pages = "146",
+    year = "2014"
+}
+            """
+        }
+    def GetCitations(self):
+        return self.citations
 
     def _initialize_fastjet(self): #TODO: This can probably be removed, as in practice JetFinder will have taken care of this
         """
@@ -183,6 +203,26 @@ class IteratedSoftdrop:
         self.cluster_sequences = []
 
         self.print_prefix = '\n\t\tIterated Softdrop'
+        self.citations = {
+            "IteratedSoftDrop":
+            """
+@article{Frye:2017yrw,
+    author = "Frye, Christopher and Larkoski, Andrew J. and Thaler, Jesse and Zhou, Kevin",
+    title = "{Casimir Meets Poisson: Improved Quark/Gluon Discrimination with Counting Observables}",
+    eprint = "1704.06266",
+    archivePrefix = "arXiv",
+    primaryClass = "hep-ph",
+    reportNumber = "MIT-CTP-4987, MIT--CTP-4987",
+    doi = "10.1007/JHEP09(2017)083",
+    journal = "JHEP",
+    volume = "09",
+    pages = "083",
+    year = "2017"
+}
+            """
+        }
+    def GetCitations(self):
+        return self.citations
 
     def ModifyInitialization(self,obj : 'JetFinder'):
         # Take the opportunity to set up FastJet.

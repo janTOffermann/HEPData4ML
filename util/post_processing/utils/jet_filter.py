@@ -13,6 +13,10 @@ class PtFilter:
     def __init__(self,pt_min):
         self.pt_min = pt_min
         self.print_prefix = '\n\t\tPtFilter'
+        self.citations = {}
+
+    def GetCitations(self):
+        return self.citations
 
     def ModifyInitialization(self,obj):
         return
@@ -59,6 +63,10 @@ class EtaFilter:
     def __init__(self,eta_max):
         self.eta_max = eta_max
         self.print_prefix = '\n\t\tEtaFilter'
+        self.citations = {}
+
+    def GetCitations(self):
+        return self.citations
 
     def ModifyInitialization(self,obj:'JetFinder'):
         return
@@ -101,6 +109,10 @@ class Leading:
 
     def __init__(self):
         self.print_prefix = '\n\t\tLeading'
+        self.citations = {}
+
+    def GetCitations(self):
+        return self.citations
 
     def ModifyInitialization(self,obj:'JetFinder'):
         obj.single_jet = True

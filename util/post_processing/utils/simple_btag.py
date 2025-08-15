@@ -34,6 +34,10 @@ class TrackCountingBTagging:
         self.tags = None
 
         self.print_prefix = '\n\tTrackCountingBTagging'
+        self.citations = {}
+
+    def GetCitations(self):
+        return self.citations
 
     def ModifyInitialization(self,obj):
         """
