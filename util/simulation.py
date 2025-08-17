@@ -59,13 +59,13 @@ class DelphesSimulator(DetectorSimulator):
         self.mode = None
 
         self.delphes_card_text = {}
+        self._generate_citations()
 
     def _generate_citations(self):
         """
         Fills in citations (in BibTex format) for Delphes.
         """
         key = 'Delphes'
-
         self.citations[key] = [
             """
 @article{deFavereau:2013fsa,
@@ -114,15 +114,12 @@ class DelphesSimulator(DetectorSimulator):
             self._print('Unable to write metadata; no handler was provided.')
             return
 
-        metadata = self.metadata_handler.GetMetaData()
-
         # Add information on Delphes card
         key = 'Metadata.Simulation.DelphesCard'
         self.FetchDelphesCard()
-        metadata[key] = self.GetDelphesCard()
+        self.metadata_handler.AddElement(key,self.GetDelphesCard())
 
         # Also add metadata on citations for algorithms.
-        key = 'Metadata.Citations'
         self.metadata_handler.AddCitations(self.GetCitations())
 
     def SetMode(self,mode:str):

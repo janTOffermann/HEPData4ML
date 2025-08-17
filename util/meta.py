@@ -9,9 +9,28 @@ class MetaDataHandler:
 
     def __init__(self):
 
+        print('Constructing MetaDataHandler.')
         self.metadata = {}
         self.print_prefix = 'MetaDataHandler: '
         self.Initialize()
+
+    def _init_citations(self):
+        """
+        This is where we initialize the citation for HEPData4ML itself!
+        Using the @software format, which works nicely together with the
+        custom BibLaTeX style here: https://github.com/janTOffermann/CustomNumericComp
+        """
+        citation = {'HEPData4ML':
+            """
+@software{Offermann:HEPData4ML,
+    author = {Offermann, Jan Tuzli\\'c and Liu, Xiaoyang and Hoffman, Timothy},
+    title = {\\textttnohyphen{HEPData4ML}},
+    url = {https://github.com/janTOffermann/HEPData4ML},
+    year = {2023}
+}
+        """
+        }
+        self.AddCitations(citation)
 
     def AddElement(self,key,val,combine_dictionaries=False):
         if(key in self.metadata.keys()):
@@ -44,6 +63,7 @@ class MetaDataHandler:
         self.AddElement('Metadata.HostName',self._get_hostname())
         self.AddElement('Metadata.UniqueID',str(uuid.uuid4()))
         self.AddElement('Metadata.UniqueIDShort',str(uuid.uuid4())[:5]) # a second, shorter random string -- probably more convenient to use, at the risk of a higher (but still tiny) collision rate
+        self._init_citations()
 
     def _get_git_revision_short_hash(self): # see https://stackoverflow.com/a/21901260
         cwd = os.path.dirname(os.path.abspath(__file__))
