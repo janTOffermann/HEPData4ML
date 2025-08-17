@@ -11,11 +11,15 @@ from typing import Optional,TYPE_CHECKING
 
 if TYPE_CHECKING: # Only imported during type checking -- avoids risk of circular imports, limits unnecessary imports
     from util.config import Configurator
+    from util.meta import MetaDataHandler
 
 class PythiaGenerator:
     """
     Generates events using Pythia8.
     """
+
+    # TODO: Make a more general parent class, and use inheritance?
+
     def __init__(self, pt_min:float, pt_max:float, configurator:'Configurator', pythia_rng:Optional[int]=None, pythia_config_file:Optional[str]=None):
         self.configurator = configurator
         self.pt_min = pt_min
@@ -85,11 +89,19 @@ class PythiaGenerator:
         self.header_status = False
         self.footer_status = False
 
+        self.metadata_handler = None
+
+        self.citations = {}
+        self._generate_citations()
+
         # Variables related to handling of pileup.
         # TODO: Might want to eventually reorganize this, or move it into a separate class?
         # self.pileup_handler = self.configurator.GetPileupHandling()
 
         # self.calculator = Calculator(use_vectorcalcs=self.configurator.GetUseVectorCalcs())
+
+    def SetMetadataHandler(self,handler:'MetaDataHandler'):
+        self.metadata_handler = handler
 
     def SetVerbose(self,val:bool):
         self.verbose = val
@@ -148,6 +160,29 @@ class PythiaGenerator:
 
     def GetEventFilterFlagFilename(self):
         return self.event_filter_flag_filename
+
+    def _generate_citations(self):
+        """
+        Fills in citations (in BibTex format) for Pythia8.
+        """
+        self.citations = {}
+        key = 'Pythia8'
+        self.citations[key] = """@article{Bierlich:2022pfr,
+    author = "Bierlich, Christian and others",
+    title = "{A comprehensive guide to the physics and usage of PYTHIA 8.3}",
+    eprint = "2203.11601",
+    archivePrefix = "arXiv",
+    primaryClass = "hep-ph",
+    reportNumber = "LU-TP 22-16, MCNET-22-04, FERMILAB-PUB-22-227-SCD",
+    doi = "10.21468/SciPostPhysCodeb.8",
+    journal = "SciPost Phys. Codeb.",
+    volume = "2022",
+    pages = "8",
+    year = "2022"
+}"""
+
+    def GetCitations(self):
+        return self.citations
 
     def ConfigPythia(self, config_file:Optional[str]=None, verbose:bool=False):
         """
@@ -332,23 +367,7 @@ class PythiaGenerator:
 
         self.writer.Close()
 
-        # # Fill out an array with each event's cross section (and the uncertainty on that cross-section).
-        # self.xsecs = np.zeros((nevents,2))
-        # xsec_dictionary = self.GetSigmaDictionary()
-        # for i,pcode in enumerate(self.process_codes):
-        #     self.xsecs[i,:] = xsec_dictionary[pcode]
-
-        # # Create/append a stats file, and put in information on event weights & cross-sections.
-        # #TODO: Will want to rework this.
-        # f = h5.File('{}/{}'.format(self.outdir,self.stats_filename),'a')
-        # compression = 'gzip'
-        # copts = 9
-        # f.create_dataset('mc_weight',data=self.weights,compression=compression,compression_opts=copts)
-        # f.create_dataset('process_code',data=self.process_codes,compression=compression,compression_opts=copts)
-        # f.create_dataset('cross_section',data=self.xsecs[:,0],compression=compression,compression_opts=copts)
-        # f.create_dataset('cross_section_uncertainty',data=self.xsecs[:,1],compression=compression,compression_opts=copts)
-        # f.close()
-
+        self.metadata_handler.AddCitations(self.GetCitations())
         return
 
     # Get the MC event weights (will typically just be 1 for each event).

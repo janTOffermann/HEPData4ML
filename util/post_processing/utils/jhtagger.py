@@ -291,6 +291,26 @@ class JohnsHopkinsTagger:
         self.n_w_constituents_max = n_w_constituents_max
 
         self.print_prefix = '\n\t\tJohnsHopkinsTagger'
+        self.citations = {
+            "JohnsHopkinsTopTagger":
+            """
+@article{Kaplan:2008ie,
+    author = "Kaplan, David E. and Rehermann, Keith and Schwartz, Matthew D. and Tweedie, Brock",
+    title = "{Top Tagging: A Method for Identifying Boosted Hadronically Decaying Top Quarks}",
+    eprint = "0806.0848",
+    archivePrefix = "arXiv",
+    primaryClass = "hep-ph",
+    doi = "10.1103/PhysRevLett.101.142001",
+    journal = "Phys. Rev. Lett.",
+    volume = "101",
+    pages = "142001",
+    year = "2008"
+}
+            """
+        }
+    def GetCitations(self):
+        return self.citations
+
 
     def SetDeltaP(self,p,init=True):
         self.delta_p = p

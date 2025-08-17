@@ -208,6 +208,7 @@ def main(args):
         hep_file = 'events_{}.{}'.format(i,hepmc_extension)
 
         generator = PythiaGenerator(pt_min,pt_max, configurator, pythia_rng,pythia_config_file=pythia_config)
+        generator.SetMetadataHandler(metadata_handler)
 
         generator.SetOutputDirectory(outdir)
         generator.SetFilename(hep_file, rename_extra_files=False)
@@ -219,7 +220,8 @@ def main(args):
             print('\tHepMC3 file {}/{} already found, skipping its generation.'.format(outdir,hep_file))
             generate = False
 
-        if(generate): generator.Generate(nevents_per_bin)
+        if(generate):
+            generator.Generate(nevents_per_bin)
 
         filter_flag_files.append(generator.GetEventFilterFlagFilename())
         hepmc_files.append(hep_file)
@@ -267,11 +269,8 @@ def main(args):
             sim_logfile = '{}/delphes.log'.format(outdir)
             simulator = DelphesSimulator(configurator,outdir,logfile=sim_logfile)
 
-            # Fetch the Delphes card and any dependencies of it, and add these to metadata.
-            simulator.FetchDelphesCard()
-            metadata_handler.AddElement('delphes_card',simulator.GetDelphesCard())
-
         if(simulator is not None):
+            simulator.SetMetadataHandler(metadata_handler)
             simulator.SetInputs(hepmc_files)
             simulator.Process()
             delphes_files = simulator.GetOutputFiles()
@@ -286,6 +285,7 @@ def main(args):
         processor.SetNentriesPerChunk(10) # the larger this is, the larger the chunks in memory (and higher the memory usage)
         processor.SetDelphesFiles(delphes_files)
         processor.SetOutputDirectory(outdir)
+        processor.SetMetadataHandler(metadata_handler)
 
         h5_files = []
         print('\nProducing separate HDF5 files for each pT bin, and then concatenating these.')
