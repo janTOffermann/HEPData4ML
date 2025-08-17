@@ -1,4 +1,4 @@
-import sys,os,pathlib
+import sys,os,pathlib,json
 import h5py as h5
 import numpy as np
 import argparse as ap
@@ -128,24 +128,117 @@ def _check_event(filename,idx=0):
     f.close()
     return
 
+def _check_metadata(filename):
+    n = 40
+    print(n * '=')
+    print("| Metadata for file {}".format(filename))
+    print(n * '=')
+    print()
+
+    f = h5.File(filename,'r')
+    metadata = f.attrs
+
+    for key,value_list in metadata.items():
+        padding = 3
+        length = len(key) + 2
+        print(padding * ' ' + length * '-')
+        print(padding * ' ' + "|{}|".format(key))
+        print(padding * ' ' + length * '-')
+
+        # each value_list is a numpy array
+
+        for i,val in enumerate(value_list):
+            print('\n\tEntry [{}/{}]'.format(i+1,len(value_list)))
+
+            # try to identify dictionaries, print them accordingly
+            is_dictionary = False
+            if(isinstance(val,str)):
+                if(val[0] == '{'):
+                    is_dictionary = True
+                    val_dict = json.loads(val)
+                    print('Type: dict')
+                    for k,v in val_dict.items():
+                        print('\tKey: {}'.format(k))
+                        print('\tValue (type={}):'.format(type(v)))
+                        if(isinstance(v,list)):
+                            for entry in v:
+                                print(entry)
+                        else:
+                            print(v)
+                        print(20 * '-')
+                        print()
+
+            if(not is_dictionary):
+                print('Type: {}'.format(type(val)))
+                print('Value:')
+                print(val)
+
+            print(n * '-')
+            print()
+
+        print(n * '=')
+    f.close()
+    return
+
+def _check_citations(filename):
+    f = h5.File(filename,'r')
+    metadata = f.attrs
+
+    unique_citations = []
+
+    citations_dict_lists = metadata['Metadata.Citations']
+
+    for entry in citations_dict_lists:
+        citation_dict = json.loads(entry)
+
+        for k,v in citation_dict.items():
+
+            if(isinstance(v,list)):
+                for entry in v:
+                    unique_citations.append(entry)
+            else:
+                unique_citations.append(v)
+
+    unique_citations = list(set(unique_citations))
+    for entry in unique_citations:
+        print(entry)
+
+
+    f.close()
+    return
+
+
 def main(args):
     parser = ap.ArgumentParser()
     parser.add_argument('-i','--inputFile',type=str,required=True)
     parser.add_argument('-ei','--eventIndex',type=int,default=0)
+    parser.add_argument('-md','--metaData',action='store_true',help='Check the metadata values.')
+    parser.add_argument('-citations','--citations',action='store_true',help='Print list of all citations for algorithms used.')
     args = vars(parser.parse_args())
     input_file = args['inputFile']
     event_index = args['eventIndex']
+    metadata = args['metaData']
+    citations = args['citations']
 
     # First check that the file exists
     if(not _check_file(input_file)):
         return
 
-    # Now open the file, and gather the keys.
-    _print_keys(input_file)
+    if(metadata):
+        _check_metadata(input_file)
+        return
 
-    # Check a single event
-    print('Checking event #{}.'.format(event_index))
-    _check_event(input_file,event_index)
+    if(citations):
+        _check_citations(input_file)
+        return
+
+    else:
+        # Now open the file, and gather the keys.
+        _print_keys(input_file)
+
+        # Check a single event
+        print('Checking event #{}.'.format(event_index))
+        _check_event(input_file,event_index)
     return
 
 if(__name__=='__main__'):

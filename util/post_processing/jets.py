@@ -3,7 +3,7 @@
 import json
 import numpy as np
 import h5py as h5
-from typing import Any, Optional, List, Tuple, Annotated, Union, Literal # experimenting with typing
+from typing import Any, Optional, List, Tuple, Annotated, Union, TYPE_CHECKING # experimenting with typing
 from numpy.typing import NDArray
 from util.fastjet.jetfinderbase import JetFinderBase
 from util.qol_utils.progress_bar import printProgressBarColor
@@ -16,6 +16,9 @@ import util.post_processing.utils.jhtagger as jhtagger
 import util.post_processing.utils.jet_filter as jet_filter
 import util.post_processing.utils.containment as containment
 import util.post_processing.utils.simple_btag as simple_btag
+
+if(TYPE_CHECKING):
+    from util.meta import MetaDataHandler
 
 class JetFinder(JetFinderBase):
     """
@@ -59,15 +62,23 @@ class JetFinder(JetFinderBase):
         self.tagger = None
 
         self.copts = 9
-
         self.error = False
 
         self._i = 0
         self.processors = [] # supposedly this is an example of an "observer pattern"
 
+        self.metadata_handler = None
+
+        # Generate info on citations for algorithms
+        self.citations = {}
+        self._generate_citations()
+
     def _print(self,val:Any):
         print('{}: {}'.format(self.print_prefix,val))
         return
+
+    def SetMetadataHandler(self,handler:'MetaDataHandler'):
+        self.metadata_handler = handler
 
     def SetVerbosity(self,flag:bool):
         self.verbose = flag
@@ -106,6 +117,9 @@ class JetFinder(JetFinderBase):
     def ClearUserInfo(self):
         self.user_info = None
 
+    def GetCitations(self):
+        return self.citations
+
     def _input_consistency_check(self):
         f = h5.File(self.h5_file,'r')
         keys = list(f.keys())
@@ -124,6 +138,51 @@ class JetFinder(JetFinderBase):
             self._print('Error: No input collections.')
             return False
         return True
+
+    def _generate_citations(self):
+        """
+        Fills in citations (in BibTex format) for FastJet.
+        Additional post-processors can add to this.
+        """
+        key = 'FastJet'
+        if(key not in self.citations.keys()):
+            self.citations[key] = [
+                """
+@article{Cacciari:2011ma,
+    author = "Cacciari, Matteo and Salam, Gavin P. and Soyez, Gregory",
+    title = "{FastJet User Manual}",
+    eprint = "1111.6097",
+    archivePrefix = "arXiv",
+    primaryClass = "hep-ph",
+    reportNumber = "CERN-PH-TH-2011-297",
+    doi = "10.1140/epjc/s10052-012-1896-2",
+    journal = "Eur. Phys. J. C",
+    volume = "72",
+    pages = "1896",
+    year = "2012"
+}
+                """,
+                """
+@article{Cacciari:2005hq,
+    author = "Cacciari, Matteo and Salam, Gavin P.",
+    title = "{Dispelling the $N^{3}$ myth for the $k_t$ jet-finder}",
+    eprint = "hep-ph/0512210",
+    archivePrefix = "arXiv",
+    reportNumber = "LPTHE-05-32",
+    doi = "10.1016/j.physletb.2006.08.037",
+    journal = "Phys. Lett. B",
+    volume = "641",
+    pages = "57--61",
+    year = "2006"
+}
+                """
+            ]
+
+        # Now, fetch citations for any existing post-processors.
+        for post_proc in self.processors:
+            for k,v in post_proc.GetCitations().items():
+                if(k) not in self.citations.keys():
+                    self.citations[k] = v
 
     def Initialize(self): # TODO: May want to consider chunking things and using a buffer? Memory usage will scale better for larger files.
         """
@@ -163,6 +222,9 @@ class JetFinder(JetFinderBase):
 
         # With nevents defined, we can initialize the buffer.
         self._initializeBuffer()
+
+        # Now (re)generate citations, will pull in any additions from post-processors that have been added on.
+        self._generate_citations()
 
         self.status = True
         f.close()
@@ -255,14 +317,26 @@ class JetFinder(JetFinderBase):
         return
 
     def _writeMetadata(self):
+        """
+        Writes metadata to the output file.
+        """
+
+        if(self.metadata_handler is None):
+            self._print('Unable to write metadata; no handler was provided.')
+            return
+
+        metadata = self.metadata_handler.GetMetaData()
+
+        # Add information on jet input collections.
         key = 'Metadata.JetCollections.InputCollections'
-        metadata = GetMetadata(self.h5_file,key=key)
-        if(metadata is None):
-            metadata = {}
-        else:
-            metadata = json.loads(metadata[0]) # dictionary information is being stored as keys serialized by JSON library
-        metadata[self.jet_name] = [x.replace('.Pmu','') for x in self.input_collections]
-        AddMetaDataWithReference(self.h5_file,value=metadata,key=key,overwrite=True)
+        if(key not in metadata.keys()):
+            metadata[key] = {}
+        metadata[key][self.jet_name] = [x.replace('.Pmu','') for x in self.input_collections]
+
+        # Also add metadata on citations for algorithms. This is stored as a list of strings; it is not separated by jet_name,
+        # as that level of granularity is probably not useful.
+        key = 'Metadata.Citations'
+        self.metadata_handler.AddCitations(self.GetCitations())
 
     def __call__(self,hepmc_file:str,h5_file:str,output_file:Optional[str]=None,verbose:Optional[bool]=None, copts:int=9, key:Optional[str]=None):
         """

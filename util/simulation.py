@@ -7,11 +7,19 @@ from util.delphes.delphes import DelphesWrapper
 from typing import TYPE_CHECKING
 if TYPE_CHECKING: # Only imported during type checking -- limits the risk of circular imports, as the code is further developped
     from util.config import Configurator
+    from util.meta import MetaDataHandler
 
 class DetectorSimulator:
+    """
+    Abstract parent class for detector simulation.
+    """
     def __init__(self):
         self.input_files = []
         self.output_files = []
+
+        # for metadata
+        self.metadata_handler = None
+        self.citations = {}
 
     def SetConfigurator(self,configurator : 'Configurator'):
         self.configurator = configurator
@@ -28,8 +36,17 @@ class DetectorSimulator:
     def SetLogfile(self,file:str):
         self.logfile = file
 
-class DelphesSimulator(DetectorSimulator):
+    def GetCitations(self):
+        return self.citations
 
+    def SetMetadataHandler(self,handler:'MetaDataHandler'):
+        self.metadata_handler = handler
+
+class DelphesSimulator(DetectorSimulator):
+    """
+    Detector (pseudo)simulation using the Delphes fast detector
+    simulation framework.
+    """
     def __init__(self,configurator,output_directory,logfile=None):
         super().__init__()
         self.SetConfigurator(configurator)
@@ -42,6 +59,71 @@ class DelphesSimulator(DetectorSimulator):
         self.mode = None
 
         self.delphes_card_text = {}
+
+    def _generate_citations(self):
+        """
+        Fills in citations (in BibTex format) for Delphes.
+        """
+        key = 'Delphes'
+
+        self.citations[key] = [
+            """
+@article{deFavereau:2013fsa,
+    author = "de Favereau, J. and Delaere, C. and Demin, P. and Giammanco, A. and Lema{\\^\\i}tre, V. and Mertens, A. and Selvaggi, M.",
+    collaboration = "DELPHES 3",
+    title = "{DELPHES 3, A modular framework for fast simulation of a generic collider experiment}",
+    eprint = "1307.6346",
+    archivePrefix = "arXiv",
+    primaryClass = "hep-ex",
+    doi = "10.1007/JHEP02(2014)057",
+    journal = "JHEP",
+    volume = "02",
+    pages = "057",
+    year = "2014"
+}
+            """,
+            """
+@article{Selvaggi:2014mya,
+    author = "Selvaggi, Michele",
+    editor = "Wang, Jianxiong",
+    title = "{DELPHES 3: A modular framework for fast-simulation of generic collider experiments}",
+    doi = "10.1088/1742-6596/523/1/012033",
+    journal = "J. Phys. Conf. Ser.",
+    volume = "523",
+    pages = "012033",
+    year = "2014"
+}
+            """,
+            """
+@article{Mertens:2015kba,
+    author = "Mertens, Alexandre",
+    editor = "Fiala, L. and Lokajicek, M. and Tumova, N.",
+    title = "{New features in Delphes 3}",
+    doi = "10.1088/1742-6596/608/1/012045",
+    journal = "J. Phys. Conf. Ser.",
+    volume = "608",
+    number = "1",
+    pages = "012045",
+    year = "2015"
+}
+            """
+        ]
+
+    def _writeMetadata(self):
+        if(self.metadata_handler is None):
+            self._print('Unable to write metadata; no handler was provided.')
+            return
+
+        metadata = self.metadata_handler.GetMetaData()
+
+        # Add information on Delphes card
+        key = 'Metadata.Simulation.DelphesCard'
+        self.FetchDelphesCard()
+        metadata[key] = self.GetDelphesCard()
+
+        # Also add metadata on citations for algorithms.
+        key = 'Metadata.Citations'
+        self.metadata_handler.AddCitations(self.GetCitations())
 
     def SetMode(self,mode:str):
         self.mode = mode.lower()
@@ -77,6 +159,8 @@ class DelphesSimulator(DetectorSimulator):
                 logfile=self.logfile
             )
             self.output_files.append(delphes_file)
+
+        self._writeMetadata()
         return
 
     def FetchDelphesCard(self):
