@@ -1,4 +1,4 @@
-import sys,os,pathlib,time,datetime,re,shlex,uuid
+import sys,os,pathlib,time,datetime,re,shlex
 import argparse as ap
 import subprocess as sub
 from util.generation import PythiaGenerator
@@ -6,25 +6,9 @@ from util.simulation import DelphesSimulator
 from util.conversion import Processor
 from util.hdf5 import RemoveFailedFromHDF5, SplitH5, AddEventIndices, ConcatenateH5
 from util.hepmc.hepmc import CompressHepMC
-# from util.hepmc.setup import HepMCSetup
 from util.config import Configurator,GetConfigFileContent, GetConfigDictionary
 from util.args import parse_mc_steps, FloatListAction, none_or_str
 from util.meta import MetaDataHandler, AddMetaDataWithReference
-
-
-def trace_hepmc3_imports():
-    """Add import tracing to see what imports pyHepMC3 first"""
-    original_import = __builtins__.__import__
-
-    def traced_import(name, *args, **kwargs):
-        if 'pyHepMC3' in name or 'HepMC3' in name:
-            import traceback
-            print(f"\n=== IMPORTING {name} ===")
-            traceback.print_stack()
-            print("=" * 40)
-        return original_import(name, *args, **kwargs)
-
-    __builtins__.__import__ = traced_import
 
 # Convenience function for file naming
 def float_to_str(value):
@@ -247,15 +231,12 @@ def main(args):
         if(pileup_handler is not None): # if it's set to None, we just skip the pileup step
             pileup_handler.SetInputDirectory(outdir)
             pileup_handler.SetOutputDirectory(outdir)
+            pileup_handler.SetMetadataHandler(metadata_handler)
 
             if(pileup_handler.GetRNGSeed() < 0): # use the Pythia rng seed
                 pileup_handler.SetRNGSeed(pythia_rng)
 
-            hep_files_with_pileup = pileup_handler.Process(hepmc_files)
-
-            # Try to add the pileup files' metadata to the output metadata.
-            pileup_metadata = pileup_handler.FetchMetadata()
-            metadata_handler.AddElement('Metadata.Pileup.Metadata',pileup_metadata)
+            _ = pileup_handler.Process(hepmc_files)
 
     #===============================
     # STEP 3: Simulation (optional)
