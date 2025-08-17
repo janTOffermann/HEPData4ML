@@ -21,6 +21,7 @@ if(TYPE_CHECKING):
     if(python_dir not in sys.path):
         sys.path = [setup.GetPythonDirectory()] + sys.path # prepend, to make sure we pick this one up first
     from pyHepMC3 import HepMC3 as hm
+    from util.meta import MetaDataHandler
 
 class Processor:
     """
@@ -59,6 +60,11 @@ class Processor:
         # truth selector
         self.SetParticleSelection()
 
+        self.metadata_handler = None
+
+    def SetMetadataHandler(self,handler:'MetaDataHandler'):
+        self.metadata_handler = handler
+
     def _identity_selector(self,event:'hm.GenEvent'):
         """
         A placeholder truth particle selector.
@@ -85,19 +91,6 @@ class Processor:
     def SetPostProcessing(self,post_proc=None):
         if(post_proc is None): post_proc = self.configurator.GetPostProcessing()
         self.post_processing = post_proc
-        if(self.post_processing is None):
-            return
-
-        # # Determine whether or not to generate files containing indices
-        # # of particles that were both in the truth and final-state selections.
-        # # Useful for things like particle daughter tracing.
-        # # TODO: There might be a neater way to handle this.
-        # self.SetRecordFinalStateIndices(False)
-        # for p in post_proc:
-        #     if(p is None): continue
-        #     if(p.RequiresIndexing()):
-        #         self.SetRecordFinalStateIndices(True)
-        #         break
 
     def SetStatsFile(self,filename:str):
         self.stats_file = filename
@@ -444,6 +437,7 @@ class Processor:
             if(post_proc is None): continue
             # print('\tRunning post processor: {}'.format(post_proc))
             post_proc.SetConfigurator(self.configurator)
+            post_proc.SetMetadataHandler(self.metadata_handler)
             for i in range(nfiles):
                 h5_file = None
                 if(h5_files is not None): h5_file = '{}/{}'.format(self.outdir,h5_files[i])
