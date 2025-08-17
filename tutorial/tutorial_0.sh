@@ -37,5 +37,4 @@ python $script \
   -index_offset 0 \
   -config $config \
   --verbose 0 \
-  --rng 1 \
  --steps "generation"
