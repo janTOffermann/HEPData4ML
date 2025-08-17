@@ -5,4 +5,4 @@ Beams:idA = 2212
 Beams:idB = 2212
 Beams:eCM = 13000.
 
-Tune:pp = 14 ! Monash 2013?
+Tune:pp = 14 ! Monash 2013 (this is actually the default!)
