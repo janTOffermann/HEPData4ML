@@ -13,8 +13,25 @@ class MetaDataHandler:
         self.print_prefix = 'MetaDataHandler: '
         self.Initialize()
 
-    def AddElement(self,key,val):
+    def AddElement(self,key,val,combine_dictionaries=False):
+        if(key in self.metadata.keys()):
+            old_val = self.metadata[key]
+            if(isinstance(old_val,dict) and isinstance(val,dict) and combine_dictionaries):
+                # special case: combine dictionaries
+                for k,v in old_val.items():
+                    val[k] = v
+            else:
+                self._print('Warning: Overwriting metadata associated with key={} .'.format(key))
         self.metadata[key] = val
+
+    def AddCitations(self,val):
+        """
+        Special function for appending citation information to the metadata.
+        It is expected that multiple objects will contribute to this key throughout
+        the workflow, each supplying a dictionary; we combine these together.
+        """
+        key = 'Metadata.Citations'
+        self.AddElement(key,val,combine_dictionaries=True)
 
     def GetMetaData(self):
         return self.metadata
@@ -106,8 +123,7 @@ class MetaDataHandler:
                 # Convert dict to JSON string and store as TNamed
                 json_str = json.dumps(value)
                 param = rt.TNamed(key, json_str)
-                # Add a marker to identify this as JSON
-                param.SetUniqueID(999)  # Custom marker for JSON data, to tell it apartfrom the basic string
+                param.SetUniqueID(999)  # Custom marker for JSON data, to tell it apart from the basic string
                 user_info.Add(param)
             else:
                 self._print('Warning: _add_to_ttree() unable to add metadata associated with key={} to ROOT file.'.format(key))
