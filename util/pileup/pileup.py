@@ -76,6 +76,11 @@ class PileupOverlay:
         # for particle charge lookup
         self.pdg_database = DatabasePDG()
 
+        self.metadata_handler = None
+
+    def SetMetadataHandler(self,handler:'MetaDataHandler'):
+        self.metadata_handler = handler
+
     def GetRNGSeed(self):
         return self.rng_seed
 
@@ -438,6 +443,8 @@ class PileupOverlay:
 
         if(replace_inputs):
             return final_outputs
+
+        self._writeMetadata()
         return outputs
 
     def _flush_to_file(self,events:List['hm.GenEvent'],output_file:str,buffername:str=None):
@@ -611,9 +618,11 @@ class PileupOverlay:
         for i,vtx in vertex_map.items():
             target_event.add_vertex(vtx)
 
-    def FetchMetadata(self):
+    def _writeMetadata(self):
         pileup_metadata = {}
-        metadata_handler = MetaDataHandler()
+        if(self.metadata_handler is None):
+            self._print('Unable to write metadata; no handler was provided.')
+            return
 
         # read in the metadata from all the pileup files
         for pileup_file in self.files:
@@ -622,9 +631,10 @@ class PileupOverlay:
                 self._print('Warning: Cannot read in metadata from pileup file {} .'.format(pileup_file))
                 continue
             key = pileup_file.split('/')[-1]
-            pileup_metadata[key] = metadata_handler.ReadMetaDataFromROOTFile(pileup_file)
+            pileup_metadata[key] = self.metadata_handler.ReadMetaDataFromROOTFile(pileup_file)
 
-        return pileup_metadata
+        self.metadata_handler.AddElement('Metadata.Pileup.Metadata',pileup_metadata)
+        return
 
     def FetchMuValueDictionary(self):
         return self.mu_values
