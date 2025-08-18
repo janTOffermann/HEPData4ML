@@ -228,6 +228,9 @@ class Configurator:
     def GetEventFilterFlag(self):
         return self.config['reconstruction']['event_filter_flag']
 
+    def GetDelphesRngSeed(self):
+        return self.config['simulation']['delphes_rng_seed']
+
     def GetDelphesDirectory(self):
         return self.config['simulation']['delphes_dir']
 
