@@ -4,3 +4,4 @@
 [submodule "external/delphes"]
 	path = external/delphes
 	url = git@github.com:janTOffermann/delphes.git
+        ignore = untracked
