@@ -1,10 +1,10 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.5...3.30)
 
 project(DelphesHepMC3ROOT)
 
 # Set C++ standard to match ROOT/Delphes
 # TODO: Does this limit portability?
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Add compile options similar to original Delphes
@@ -76,13 +76,14 @@ message(STATUS "Found HepMC3/ROOT library: ${HEPMC3_ROOT_LIBRARIES}")
 # Find DELPHES.
 # Will search CMAKE_PREFIX_PATH, plus the DELPHES_EXT_DIR
 # that we define here (to pick up a possible local installation).
-file(GLOB DELPHES_SUBDIRS "${REPO_DIR}/external/delphes/*")
-foreach(subdir ${DELPHES_SUBDIRS})
-    if(IS_DIRECTORY ${subdir})
-        set(DELPHES_EXT_DIR ${subdir})
-        break()
-    endif()
-endforeach()
+set(DELPHES_EXT_DIR "${REPO_DIR}/external/delphes")
+# file(GLOB DELPHES_SUBDIRS "${REPO_DIR}/external/delphes/*")
+# foreach(subdir ${DELPHES_SUBDIRS})
+#     if(IS_DIRECTORY ${subdir})
+#         set(DELPHES_EXT_DIR ${subdir})
+#         break()
+#     endif()
+# endforeach()
 
 # Check if we found a directory
 if(NOT DELPHES_EXT_DIR)

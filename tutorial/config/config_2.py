@@ -17,8 +17,10 @@ config = {
     },
 
     'pileup' : {
-        'handler':None,
-        # 'handler': pu.PileupOverlay("/Users/jan/tmp/pileup/part0/events_0.root",rng_seed=1) # For example, you can overlay pileup events from some pre-existing HepMC3 files (ideally in ROOT format!), which you can generate with this package too.
+        'handler': pu.PileupOverlay(
+            "output/tutorial_0/events*.root",
+            rng_seed=1
+        ) # For example, you can overlay pileup events from some pre-existing HepMC3 files (ideally in ROOT format!), which you can generate with this package too.
     },
 
     'simulation' : {
@@ -46,27 +48,22 @@ config = {
                     parsel.AlgoSelection(algos.SelectFinalStateDaughters(parsel.FirstSelector(22,24)),n=120) # up to 120 stable daughters of W
                 ]
             ),
-            'TruthParticlesAntiTopAndChildren':
-            parsel.MultiSelection(
-                [
-                    parsel.FirstSelector(22, -6), # top anti-quark
-                    parsel.FirstSelector(23, -5), # bottom anti-quark
-                    parsel.FirstSelector(22,-24), # W boson
-                    parsel.AlgoSelection(algos.SelectFinalStateDaughters(parsel.FirstSelector(22,-24)),n=120) # up to 120 stable daughters of W
-                ]
-            )
         },
         'signal_flag' : 1, # What to provide as the "SignalFlag" for these events. Relevant if combining multiple samples, so as to bookkeep what is what.
         'split_seed' : 1, # RNG seed to be used for splitting the dataset into train/test/validation samples.
         'post_processing': [ # What post-processing algorithms to run -- this includes jet clustering! You can queue up multiple separate post-processors.
 
-            # Cluster large-radius jets, ghost associated to the top and antitop. Enforce some pt and eta cuts.
-            jets.JetFinder(['EFlowPhoton','EFlowNeutralHadron','EFlowTrack'],jet_algorithm='anti_kt',radius=0.8,jet_name='AntiKt08RecoJetsAssociatedTop').PtFilter(25.).EtaFilter(4.).GhostAssociation('TruthParticlesTopAndChildren',    0,mode='filter'),
-            jets.JetFinder(['EFlowPhoton','EFlowNeutralHadron','EFlowTrack'],jet_algorithm='anti_kt',radius=0.8,jet_name='AntiKt08RecoJetsAssociatedAntiTop').PtFilter(25.).EtaFilter(4.).GhostAssociation('TruthParticlesAntiTopAndChildren',0,mode='filter'),
+            # Cluster large-radius jets, ghost associated to the top. Explicitly require dR<0.8 with respect to the truth-level top, W and b, apply pt and eta cuts.
+            jets.JetFinder(['EFlowPhoton','EFlowNeutralHadron','EFlowTrack'],jet_algorithm='anti_kt',radius=0.8,jet_name='AntiKt08RecoJetsAssociatedTop').
+                PtFilter(25.).
+                EtaFilter(4.).
+                GhostAssociation('TruthParticlesTopAndChildren',    0,mode='filter'). # this forces us to only have 1 jet per event -- flattens the jet branches by 1 dim
+                Containment('TruthParticlesTopAndChildren',[0,1,2],delta_r=0.8,use_rapidity=True, mode='filter').
+                JohnsHopkinsTagger(mode='tag'),
 
             # Cluster small-radius jets, near the ghost-associated jets above.
-            jets.JetFinder(['EFlowPhoton','EFlowNeutralHadron','EFlowTrack'],jet_algorithm='anti_kt',radius=0.4,jet_name='AntiKt04RecoJetsAssociatedTop').Containment('AntiKt08RecoJetsAssociatedTop',0,0.4,mode='filter'),
-            jets.JetFinder(['EFlowPhoton','EFlowNeutralHadron','EFlowTrack'],jet_algorithm='anti_kt',radius=0.4,jet_name='AntiKt04RecoJetsAssociatedAntiTop').Containment('AntiKt08RecoJetsAssociatedAntiTop',0,0.4,mode='filter')
+            jets.JetFinder(['EFlowPhoton','EFlowNeutralHadron','EFlowTrack'],jet_algorithm='anti_kt',radius=0.4,jet_name='AntiKt04RecoJetsAssociatedTop').
+                Containment('AntiKt08RecoJetsAssociatedTop',None,delta_r=0.4,use_rapidity=True,mode='filter'),
         ]
     }
 }

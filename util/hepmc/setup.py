@@ -54,7 +54,7 @@ def ensure_hepmc_setup(hepmc_dir=None, verbose=False, j=4, require_root=True,
         if _setup_completed and not force:
             return _hepmc_available, _hepmc_instance
 
-        print("HepMCSetup: Checking HepMC3 availability...")
+        # print("HepMCSetup: Checking HepMC3 availability...")
 
         # Create the setup instance
         setup_instance = _HepMCSetupInternal(hepmc_dir, verbose)
@@ -69,7 +69,7 @@ def ensure_hepmc_setup(hepmc_dir=None, verbose=False, j=4, require_root=True,
             )
             _hepmc_available = True
             _hepmc_instance = setup_instance
-            print("HepMCSetup: HepMC3 setup completed successfully")
+            # print("HepMCSetup: HepMC3 setup completed successfully")
         except Exception as e:
             _hepmc_available = False
             _hepmc_instance = None

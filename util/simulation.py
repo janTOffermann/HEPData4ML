@@ -58,6 +58,8 @@ class DelphesSimulator(DetectorSimulator):
         self.SetLogfile(logfile)
         self.mode = None
 
+        self.default_rng_seed = self.configurator.GetDelphesRngSeed()
+
         self.delphes_card_text = {}
         self._generate_citations()
 
@@ -125,8 +127,16 @@ class DelphesSimulator(DetectorSimulator):
     def SetMode(self,mode:str):
         self.mode = mode.lower()
 
-        # if(mode == 'root'): # this requires special setup TODO: Move upstream to initialization?
-        #     self.delphes_wrapper._setup_root()
+    def SetDefaultRngSeed(self,seed:int):
+        """
+        This sets the default RNG seed to be passed to Delphes;
+        this feature has been added in my custom fork of Delphes
+        (and is not available in the official release!).
+
+        Note that a detector card can also specify an RNG seed,
+        which will overwrite this value.
+        """
+        self.default_rng_seed = seed
 
     def Process(self,files=None):
         if(files is not None):
@@ -153,7 +163,8 @@ class DelphesSimulator(DetectorSimulator):
                 output_file=delphes_file,
                 cwd=self.outdir,
                 delphes_card=self.delphes_card,
-                logfile=self.logfile
+                logfile=self.logfile,
+                default_rng_seed=self.default_rng_seed
             )
             self.output_files.append(delphes_file)
 

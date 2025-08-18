@@ -56,8 +56,8 @@ source setup/cvmfs/setup.sh
 
 ### Notes on dependencies: automatically installed packages
 The Delphes, HepMC3 and fastjet dependencies will automatically be installed locally (i.e. within this repository) by the package during runtime, if they are not found (or their installation paths set to `None` in the config file), in `external/`.Should you wish to intead use existing installations of these packages, their locations should be provided in the aforementioned config file. A few notes:
-- At the present moment, the HepMC3 path *should* be set to `None`, as we leverage features not yet available in an official HepMC3 release (but which are in its `master` branch on CERN GitLab).
-- To make use of some custom Delphes cards, we use a custom fork of Delphes. For any "standard" Delphes cards, a standard Delphes installation should suffice.
+- At the present moment, the HepMC3 path *should* be set to `None`, as we leverage features not yet available in an official HepMC3 release (but which are in its `master` branch on CERN GitLab). This may eventually be changed to use an official HepMC3 release.
+- Similarly, the Delphes path should be set to `None`; Delphes is now a git submodule of this package, as we use a custom fork -- this allows use of some (provided) custom Delphes cards, plus it importantly adds the ability to set the random number generator seed for Delphes at the command line.
 
 Note that the Pythia8 and fastjet installations that are used *must* have the Python interface built -- running the script will check the fastjet Python interface, and if it's not present it will install in `external/`.
 
