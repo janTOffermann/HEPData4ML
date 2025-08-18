@@ -106,7 +106,10 @@ class Configurator:
         return self.config['generation']['hepmc_format']
 
     def GetHepMC3Directory(self)->str:
-        return self.config['generation']['hepmc_dir']
+        try:
+            return self.config['generation']['hepmc_dir']
+        except:
+            return None # this will be interpreted by our tools to point to external/hepmc (our HepMC3 git submodule) -- could consider just setting that here
 
     def SetHepMC3Directory(self,dir:str):
         self.config['generation']['hepmc_dir'] = dir
