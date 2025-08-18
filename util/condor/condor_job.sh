@@ -80,7 +80,6 @@ python ${gitdir}/run.py \
   -o ${output_filename} \
   -rng ${rng_seed} \
   -pb 1 \
-  --delete_stats 0 \
   --split 0 \
   -del_delphes $delete_delphes \
   -pc ${pythia_config} \
