@@ -28,7 +28,27 @@ class MetaDataHandler:
 }
         """
         }
+
+        # Also adding the HepMC3 citation, as the package is used throughout.
+        # TODO: Is there a better place to put this? Doesn't have a dedicated module like Pythia8/Delphes/Fastjet.
+        citation['HepMC3'] = """
+@article{Buckley:2019xhk,
+    author = {Buckley, Andy and Ilten, Philip and Konstantinov, Dmitri and L{\\"o}nnblad, Leif and Monk, James and Pokorski, Witold and Przedzinski, Tomasz and Verbytskyi, Andrii},
+    title = "{The HepMC3 event record library for Monte Carlo event generators}",
+    eprint = "1912.08005",
+    archivePrefix = "arXiv",
+    primaryClass = "hep-ph",
+    reportNumber = "MPP-2019-258, MCNET-19-27, LU-TP 19-58",
+    doi = "10.1016/j.cpc.2020.107310",
+    journal = "Comput. Phys. Commun.",
+    volume = "260",
+    pages = "107310",
+    year = "2021"
+}
+        """
+
         self.AddCitations(citation)
+
 
     def AddElement(self,key,val,combine_dictionaries=False):
         if(key in self.metadata.keys()):
