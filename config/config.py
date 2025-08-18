@@ -12,7 +12,6 @@ config = {
         'fsr' : True, # Pythia8 final-state radiation flag
         'rng' : 1, # Pythia8 RNG seed
         'verbose' : False,
-        'hepmc_dir': None, # Directory containing the HepMC3 installation. If None, will build in a local directory "external/hepmc". Note that we currently use a custom fork of HepMC3, so you probably want to leave this as None.
         'hepmc_format': 'root' # Options are 'root' and 'ascii'. The ROOT option provides superior filesize and random-access capability (useful if making samples for pileup overlay), at the cost of being less human-readable.
     },
 

@@ -54,12 +54,14 @@ For usage on CVMFS systems, the setup script in `setup/cvmfs/` is recommended in
 source setup/cvmfs/setup.sh
 ```
 
-### Notes on dependencies: automatically installed packages
-The Delphes, HepMC3 and fastjet dependencies will automatically be installed locally (i.e. within this repository) by the package during runtime, if they are not found (or their installation paths set to `None` in the config file), in `external/`.Should you wish to intead use existing installations of these packages, their locations should be provided in the aforementioned config file. A few notes:
-- At the present moment, the HepMC3 path *should* be set to `None`, as we leverage features not yet available in an official HepMC3 release (but which are in its `master` branch on CERN GitLab). This may eventually be changed to use an official HepMC3 release.
-- Similarly, the Delphes path should be set to `None`; Delphes is now a git submodule of this package, as we use a custom fork -- this allows use of some (provided) custom Delphes cards, plus it importantly adds the ability to set the random number generator seed for Delphes at the command line.
+### Notes on dependencies: automatically installed packages and git submodules
+The Delphes, HepMC3 and fastjet dependencies will automatically be installed in `external/` (i.e. within this repository) by the package during runtime, if they are not found (or their installation paths set to `None` in the config file), with the former two being `git submodules` of this package.
+Should you wish to intead use existing installations of these packages, their locations should be provided in the aforementioned config file. A few notes:
+- The code leverages features in HepMC3 and Delphes that may not presently be available in official releases (or in the case of Delphes, in the official repository: the submodule corresponds to my own fork of the project).
+    - The "non-standard" HepMC3 features are presently part of the master branch of the [official HepMC3 repository](https://gitlab.cern.ch/hepmc/HepMC3/-/tree/master?ref_type=heads), so it is foreseeable that an official release may eventually be used instead.
+    - By contrast, the Delphes-based code makes use of some special features that are only available in my fork of the project; this is true both of some of the provided Delphes detector cards, as well as the `DelphesHepMC3ROOT` executable in `external/delphes_custom` (as well as the `DelphesWrapper` Python interface).
 
-Note that the Pythia8 and fastjet installations that are used *must* have the Python interface built -- running the script will check the fastjet Python interface, and if it's not present it will install in `external/`.
+Note that the Pythia8 and fastjet installations that are used *must* have the Python interface built -- running the script will check the fastjet Python interface, and if it's not present it will install in `external/fastjet`.
 
 ## Configuring and running the data generation
 

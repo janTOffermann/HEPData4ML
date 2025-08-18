@@ -1,7 +1,6 @@
-from util.qol_utils.misc import stdout_redirected
 from util.qol_utils.progress_bar import printProgressBar, printProgressWithOutput
 import subprocess as sub
-import sys, os, glob, re, pathlib, importlib, threading, atexit, queue, uuid
+import sys, os, glob, re, pathlib, importlib, threading, queue, uuid
 from collections import deque
 from typing import Optional, Union
 
@@ -85,7 +84,6 @@ class _HepMCSetupInternal:
     """
 
     def __init__(self, hepmc_dir=None, verbose: bool = False):
-        self.version = '3.3.1'  # what version we'll try to install, if necessary
         self.hepmc_dir_default = os.path.dirname(os.path.abspath(__file__)) + '/../../external/hepmc'
         self.python_dir = None
         self.SetVerbose(verbose)
@@ -106,12 +104,11 @@ class _HepMCSetupInternal:
         self.logfile = '{}/log.stdout'.format(self.hepmc_dir)
         self.errfile = '{}/log.stderr'.format(self.hepmc_dir)
 
-        self.source_dir = '{}/HepMC3-{}'.format(self.hepmc_dir, self.version)
+        # self.source_dir = '{}/HepMC3-{}'.format(self.hepmc_dir, self.version)
+        self.source_dir = '{}/HepMC3'.format(self.hepmc_dir)
         self.build_dir = '{}/hepmc3-build'.format(self.hepmc_dir)
         self.install_dir = '{}/hepmc3-install'.format(self.hepmc_dir)
 
-        if self.verbose:
-            print('CALLING SetPythonDirectory() within SetDirectory().\tself.install_dir = {}'.format(self.install_dir))
         self.SetPythonDirectory()
 
     def GetDirectory(self) -> str:
@@ -133,99 +130,6 @@ class _HepMCSetupInternal:
         Adding this to the $PYTHONPATH (sys.path) will allow one to import it.
         """
         return self.python_dir
-
-    def Download(self):
-        """
-        Instead of downloading the official HepMC3 release, this will pull
-        a specific commit from the master branch on CERN GitLab.
-        This incorporates some features I have added, that may not have yet
-        propagated to an official release.
-        """
-        if pathlib.Path(self.source_dir).exists():
-            self._vprint('Found existing HepMC3 source directory: {}'.format(self.source_dir))
-            self._vprint('... Skipping download.')
-            return  # if source exists, don't download again
-
-        with open(self.logfile, 'a') as f, open(self.errfile, 'a') as g:
-            # add an empty space -- nice to separate outputs from different commands
-            f.write('\n')
-            g.write('\n')
-
-            # Fetch the HepMC3 source
-            commit_sha = '136fd57d52ce8d79c224870469414bcf7f81b995'
-            hepmc_download = 'https://gitlab.cern.ch/hepmc/HepMC3/-/archive/{sha}/HepMC3-{sha}.tar.gz'.format(sha=commit_sha)
-            hepmc_file = hepmc_download.split('/')[-1]
-            self._vprint('Downloading HepMC3 from {}.'.format(hepmc_download))
-
-            # Depending on Linux/macOS, we use wget or curl.
-            has_wget = True
-            with stdout_redirected():
-                try:
-                    sub.check_call('which wget'.split(' '))
-                except:
-                    has_wget = False
-                    pass
-
-            if has_wget:
-                sub.check_call(['wget', hepmc_download], cwd=self.hepmc_dir, stdout=f, stderr=g)
-            else:
-                sub.check_call(['curl', hepmc_download, '-o', hepmc_file], cwd=self.hepmc_dir, stdout=f, stderr=g)
-            sub.check_call(['tar', 'xzf', hepmc_file], cwd=self.hepmc_dir, stdout=f, stderr=g)
-            sub.check_call(['rm', hepmc_file], cwd=self.hepmc_dir, stdout=f, stderr=g)
-
-            # Rename the source dir to match the one of the official release.
-            # A little hacky but it will work for now.
-            source_dir = '/'.join(self.source_dir.split('/')[:-1]) + '/' + hepmc_file.split('.')[0]
-            try:
-                sub.check_call(['mv', source_dir, self.source_dir])
-            except:  # assume it already exists -- edge case
-                sub.check_call(['rm', '-r', source_dir])
-                pass
-
-    def DownloadFork(self):
-        """
-        Instead of downloading the official HepMC3 release, this will pull
-        a (public) fork of the project from CERN GitLab.
-        """
-        if pathlib.Path(self.source_dir).exists():
-            self._vprint('Found existing HepMC3 source directory: {}'.format(self.source_dir))
-            self._vprint('... Skipping download.')
-            return  # if source exists, don't download again
-
-        with open(self.logfile, 'a') as f, open(self.errfile, 'a') as g:
-            # add an empty space -- nice to separate outputs from different commands
-            f.write('\n')
-            g.write('\n')
-
-            # Fetch the HepMC3 source
-            hepmc_download = 'https://gitlab.cern.ch/jaofferm/HepMC3/-/archive/jaofferm_devel/HepMC3-jaofferm_devel.tar.gz'
-            hepmc_file = hepmc_download.split('/')[-1]
-            self._vprint('Downloading HepMC3 from {}.'.format(hepmc_download))
-
-            # Depending on Linux/macOS, we use wget or curl.
-            has_wget = True
-            with stdout_redirected():
-                try:
-                    sub.check_call('which wget'.split(' '))
-                except:
-                    has_wget = False
-                    pass
-
-            if has_wget:
-                sub.check_call(['wget', hepmc_download], cwd=self.hepmc_dir, stdout=f, stderr=g)
-            else:
-                sub.check_call(['curl', hepmc_download, '-o', hepmc_file], cwd=self.hepmc_dir, stdout=f, stderr=g)
-            sub.check_call(['tar', 'xzf', hepmc_file], cwd=self.hepmc_dir, stdout=f, stderr=g)
-            sub.check_call(['rm', hepmc_file], cwd=self.hepmc_dir, stdout=f, stderr=g)
-
-            # Rename the source dir to match the one of the official release.
-            # A little hacky but it will work for now.
-            source_dir = '/'.join(self.source_dir.split('/')[:-1]) + '/' + hepmc_file.split('.')[0]
-            try:
-                sub.check_call(['mv', source_dir, self.source_dir])
-            except:  # assume it already exists -- edge case
-                sub.check_call(['rm', '-r', source_dir])
-                pass
 
     def Make(self, j: int = 4):
         with open(self.logfile, 'a') as f, open(self.errfile, 'a') as g:
@@ -317,7 +221,6 @@ class _HepMCSetupInternal:
             return
 
         self.SetDirectory()
-        self.Download()
         self.Make(j)
         self.SetPythonDirectory()
 
@@ -928,6 +831,3 @@ class HepMCSetup:
             require_read_with_index=require_read_with_index,
             force=True
         )
-
-# Optional: Clean up on exit
-atexit.register(lambda: print("HepMCSetup: Cleanup complete") if _setup_completed else None)
