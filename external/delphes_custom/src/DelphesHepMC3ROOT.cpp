@@ -60,6 +60,26 @@ void SignalHandler(int sig)
 
 //---------------------------------------------------------------------------
 
+// Helper function to check if a string is a valid integer -- used for input parsing.
+Bool_t isInteger(const char* str) {
+    if (str == nullptr || *str == '\0') return kFALSE;
+
+    // Handle optional minus sign
+    if (*str == '-') str++;
+
+    // Must have at least one digit after optional minus
+    if (*str == '\0') return kFALSE;
+
+    // Check that all remaining characters are digits
+    while (*str) {
+        if (*str < '0' || *str > '9') return kFALSE;
+        str++;
+    }
+    return kTRUE;
+}
+
+//---------------------------------------------------------------------------
+
 int main(int argc, char *argv[])
 {
   char appName[] = "DelphesHepMC3";
@@ -77,6 +97,9 @@ int main(int argc, char *argv[])
   Int_t i, maxEvents, skipEvents;
   Long64_t eventCounter;
 
+  Int_t rngDefaultSeed = -1;
+  Bool_t foundDefaultSeed = kFALSE;
+
   if(argc < 3)
   {
     cout << " Usage: " << appName << " config_file"
@@ -88,6 +111,16 @@ int main(int argc, char *argv[])
     cout << " with no input_file, or when input_file is -, read standard input." << endl;
     return 1;
   }
+  if (argc > 3)
+  {
+    if (isInteger(argv[argc - 1]))
+    {
+      rngDefaultSeed = std::atoi(argv[argc - 1]);
+      foundDefaultSeed = kTRUE;
+      cout << "** Using random seed default: " << rngDefaultSeed << " (can still be overwritten by settings in detector card!)" << endl;;
+    }
+  }
+  Int_t fileArgLimit = foundDefaultSeed ? argc - 1 : argc;
 
   signal(SIGINT, SignalHandler);
 
@@ -131,6 +164,7 @@ int main(int argc, char *argv[])
     modularDelphes = new Delphes("Delphes");
     modularDelphes->SetConfReader(confReader);
     modularDelphes->SetTreeWriter(treeWriter);
+    if(foundDefaultSeed) modularDelphes->SetDefaultRngSeed(rngDefaultSeed);
 
     factory = modularDelphes->GetFactory();
     allParticleOutputArray = modularDelphes->ExportArray("allParticles");
@@ -205,7 +239,7 @@ int main(int argc, char *argv[])
       // if(inputFile != stdin) fclose(inputFile);
 
       ++i;
-    } while(i < argc);
+    } while(i < fileArgLimit);
 
     modularDelphes->FinishTask();
     treeWriter->Write();

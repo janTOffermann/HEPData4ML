@@ -17,7 +17,23 @@ The outputs of the script will be in the `output/tutorial_0` directory; the outp
 
 ## Tutorial 1
 
-In this tutorial, we'll do something considerably more complex: we'll generate top-antitop pair production events, with a few special configurations:
+In this tutorial, we'll generate top-antitop pair production events. Here's a breakdown of our configuration:
+- We'll run nearly the full MC pipeline this time: generation, simulation and reconstruction steps. We're just skipping the addition of any pileup.
+- We'll cluster large-radius (R=0.8) jets.
+    - We'll enforce some jet-level pT and eta cuts.
+
+To run this tutorial, invoke
+```
+./tutorial_1.sh
+```
+
+If this is your first time running the package, this may take a moment as a few dependencies may need to be installed; this will happen automatically and the printouts should give you a sense of the progress. For reference, on an M3 Max MacBook Pro this takes roughly a minute or so (the building of dependencies may use a handful of logical cores; it's not maxed out).
+
+The output will be in `output/tutorial_1`, and should consist of a couple files -- the final n-tuple is `events.h5`. You can check the contents of this file by passing it to the script `../util/tools/check_file.py`.
+
+## Tutorial 2
+
+In this tutorial, we'll do something considerably more complex: we'll generate top-antitop pair production events again, now with a few special configurations:
 - We'll run the full MC pipeline this time: generation, pileup, simulation and reconstruction steps.
     - We'll include pileup, taken from the output of Tutorial 0.
 - We'll cluster large-radius (R=0.8) jets.
@@ -28,13 +44,18 @@ In this tutorial, we'll do something considerably more complex: we'll generate t
 
 To run this tutorial, invoke
 ```
-./tutorial_1.sh
+./tutorial_2.sh
 ```
 
 If this is your first time running the package, this may take a moment as a few dependencies may need to be installed; this will happen automatically and the printouts should give you a sense of the progress. For reference, on an M3 Max MacBook Pro this takes roughly a minute or so (the building of dependencies may use a handful of logical cores; it's not maxed out).
 
-The output will be in `output/tutorial_1`, and should consist of a couple files -- the final n-tuple is `events.h5`. You can check the contents of this file by passing it to the script `../util/tools/check_file.py`, or visualize it via
+The output will be in `output/tutorial_2`, and should consist of a couple files -- the final n-tuple is `events.h5`. You can check the contents of this file by passing it to the script `../util/tools/check_file.py`, or visualize it via
 ```
-python -i ../display.py -i output/tutorial_1/events.h5 -ei 0 -mode 0
+python -i ../display.py -i output/tutorial_2/events.h5 -ei 0 -mode 0
 # note the use of python -i otherwise it closes immediately; need to keep the viewer active
+```
+
+You can also use the `check_file.py` utility to print out the citations (in BibTex format) associated with the various algorithms we've used -- this includes packages like Pythia8, FastJet and Delphes, as well as algorithms like the Johns Hopkins top tagger and ghost association. This can be accomplished via
+```
+python ../util/tools/check_file.py -i events.h5 --citations
 ```

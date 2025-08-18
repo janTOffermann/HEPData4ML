@@ -1,3 +1,7 @@
 [submodule "util/qol_utils"]
 	path = util/qol_utils
 	url = git@github.com:janTOffermann/QolUtils.git
+[submodule "external/delphes"]
+	path = external/delphes
+	url = git@github.com:janTOffermann/delphes.git
+        ignore = untracked

@@ -228,8 +228,15 @@ class Configurator:
     def GetEventFilterFlag(self):
         return self.config['reconstruction']['event_filter_flag']
 
+    def GetDelphesRngSeed(self):
+        return self.config['simulation']['delphes_rng_seed']
+
     def GetDelphesDirectory(self):
-        return self.config['simulation']['delphes_dir']
+        # NOTE: Shifting to no longer require this entry in the config file, since we really should stick to the delphes submodule
+        try:
+            return self.config['simulation']['delphes_dir']
+        except:
+            return None # this will be interpreted by the simulation tools to point to external/delphes (our delphes git submodule) -- could consider just setting that here
 
     def SetDelphesDirectory(self,val):
         self.config['simulation']['delphes_dir'] = val

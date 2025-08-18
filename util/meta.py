@@ -8,8 +8,6 @@ from typing import Union, List
 class MetaDataHandler:
 
     def __init__(self):
-
-        print('Constructing MetaDataHandler.')
         self.metadata = {}
         self.print_prefix = 'MetaDataHandler: '
         self.Initialize()
