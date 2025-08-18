@@ -1,7 +1,7 @@
 from util.qol_utils.misc import stdout_redirected
 from util.qol_utils.progress_bar import printProgressBar, printProgressWithOutput
 import subprocess as sub
-import sys, os, glob, re, pathlib, importlib, threading, atexit, queue, uuid
+import sys, os, glob, re, pathlib, importlib, threading, queue, uuid
 from collections import deque
 from typing import Optional, Union
 
@@ -928,6 +928,3 @@ class HepMCSetup:
             require_read_with_index=require_read_with_index,
             force=True
         )
-
-# Optional: Clean up on exit
-atexit.register(lambda: print("HepMCSetup: Cleanup complete") if _setup_completed else None)
