@@ -1,4 +1,3 @@
-from util.qol_utils.misc import stdout_redirected
 from util.qol_utils.progress_bar import printProgressBar, printProgressWithOutput
 import subprocess as sub
 import sys, os, glob, re, pathlib, importlib, threading, queue, uuid

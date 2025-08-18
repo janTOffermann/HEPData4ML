@@ -12,8 +12,6 @@ class DelphesSetup:
     """
     def __init__(self,delphes_dir:Optional[str]=None):
         self.SetDirectory(delphes_dir)
-        self.delphes_download = 'https://github.com/delphes/delphes/archive/refs/tags/3.5.1pre12.tar.gz' # LCG_105 - LCG_107 has 3.5.1pre09
-        self.delphes_file = 'delphes-{}'.format(self.delphes_download.split('/')[-1]) # TODO: A bit hacky
         self.executable = None
         self.prefix = self.__class__.__name__
         self.expected_stdout = 281
@@ -71,7 +69,6 @@ class DelphesSetup:
         command = ['cmake','./']
         self.run_command_with_progress(command,cwd=self.build_dir, prefix='Configuring Delphes:',output_length=18)
 
-        # self.build_dir = '{}/{}'.format(self.delphes_dir,self.delphes_file.replace('.tar.gz','')) # TODO: clean this up
         self._print('Building Delphes @ {} .'.format(self.build_dir))
         command = ['cmake', '--build','.', '-j{}'.format(j)]
         self.run_command_with_progress(command,cwd=self.build_dir, prefix='Building Delphes:')#,output_length=self.expected_stdout)
