@@ -23,7 +23,6 @@ config = {
     'simulation' : {
         'type' : 'delphes', # what simulation (if any) to use. Currently supported options are [None, 'delphes']
         'delphes_card' : "util/delphes/cards/delphes_card_CMS_custom.tcl", # path to the Delphes card to use. If None, will use the ATLAS Delphes card that ships with Delphes
-        'delphes_dir' : None, # Directory containing the Delphes installation. If None, will be build in a local directory "external/delphes". If using Delphes from CVMFS, this should match your release/views setup, otherwise it might not work! E.g. "/cvmfs/sft.cern.ch/lcg/releases/LCG_105/delphes/3.5.1pre09/x86_64-el9-gcc13-opt". Note that our custom CMS card requires a custom fork of Delphes (which will be installed if None).
         'delphes_output' : ['EFlowPhoton','EFlowNeutralHadron','EFlowTrack','Electron','Muon','Photon','GenMissingET','MissingET','GenVertex','Vertex'], # Which output objects from Delphes to propagate to the final HDF5 file -- this is also what will be available to the post-processors; other information will be dropped. Some details for the vertex-type objects may still need some ironing out.
         'delphes_rng_seed' : 1
     },
