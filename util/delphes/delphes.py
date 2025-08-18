@@ -1,8 +1,6 @@
 import os, glob, pathlib
 import subprocess as sub
-from util.qol_utils.misc import stdout_redirected
 from util.delphes.setup import DelphesSetup, DelphesROOTHepMC3Setup
-from typing import Union,Optional
 
 class DelphesWrapper:
     """
@@ -31,7 +29,7 @@ class DelphesWrapper:
     def GetExecutable(self)->str:
         return self.executable
 
-    def HepMC3ToDelphes(self,hepmc_file, output_file=None, delphes_card=None, logfile=None, cwd=None, force=False):
+    def HepMC3ToDelphes(self,hepmc_file:str, output_file:str=None, delphes_card:str=None, logfile:str=None, cwd:str=None, force:bool=False, default_rng_seed:int=None):
         """
         This function runs the Delphes executable,
         to convert HepMC3(ROOT) files to DELPHES ROOT files.
@@ -56,7 +54,6 @@ class DelphesWrapper:
             if(cwd is not None): return output_file_nodir
             return output_file
 
-
         delphes_ex = self.executable['hepmc']
         if(hepmc_file.split('.')[-1].lower() == 'root'):
             delphes_ex = self.executable['root']
@@ -68,13 +65,17 @@ class DelphesWrapper:
         try: os.remove(output_file)
         except: pass
 
+        command = [delphes_ex, delphes_card, output_file, hepmc_file]
+        if(default_rng_seed is not None):
+            command.append(str(default_rng_seed))
+
         if(logfile is not None):
             with open(logfile,'a') as f:
-                sub.check_call([delphes_ex, delphes_card, output_file, hepmc_file],
+                sub.check_call(command,
                             shell=False, stdout=f, stderr=f)
 
         else:
-            sub.check_call([delphes_ex, delphes_card, output_file, hepmc_file],
+            sub.check_call(command,
                         shell=False, stdout=sub.DEVNULL, stderr=sub.DEVNULL)
 
         if(cwd is not None): return output_file_nodir

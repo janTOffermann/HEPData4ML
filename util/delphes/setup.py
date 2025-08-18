@@ -17,8 +17,8 @@ class DelphesSetup:
         self.delphes_file = 'delphes-{}'.format(self.delphes_download.split('/')[-1]) # TODO: A bit hacky
         self.executable = None
         self.prefix = self.__class__.__name__
-
         self.expected_stdout = 281
+        self.build_dir = None
 
     def SetDirectory(self,delphes_dir:Optional[str]=None):
         self.delphes_dir = delphes_dir
@@ -52,8 +52,9 @@ class DelphesSetup:
                 if(verbose): self._print('Found DelphesHepMC3 @ {}'.format(self.executable['hepmc']))
                 return
 
+        # NOTE: We've shifted to using a git submodule -- so the downloads shouldn't be done, but the build may still need to be executed.
         # self.Download() # TODO: Could check to see if source code is downloaded, though it's hard to make a perfect check.
-        self.DownloadFork() # TODO: Could check to see if source code is downloaded, though it's hard to make a perfect check.
+        # self.DownloadFork() # TODO: Could check to see if source code is downloaded, though it's hard to make a perfect check.
         self.Build(j=j)
         self.executable = glob.glob('{}/**/DelphesHepMC3'.format(self.delphes_dir),recursive=True)[0]
         return
@@ -115,6 +116,9 @@ class DelphesSetup:
         that ships with Delphes. However, we're going to invoke CMake since Delphes also ships a CMakeLists.txt file,
         and it looks like this will automatically build the display library (that we may also want to leverage).
         """
+
+        if(self.build_dir is None):
+            self.build_dir = self.delphes_dir
 
         self._print('Configuring Delphes.')
         command = ['cmake','./']
