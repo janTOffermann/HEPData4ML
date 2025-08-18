@@ -5,3 +5,6 @@
 	path = external/delphes
 	url = git@github.com:janTOffermann/delphes.git
         ignore = untracked
+[submodule "external/hepmc/HepMC3"]
+	path = external/hepmc/HepMC3
+	url = ssh://git@gitlab.cern.ch:7999/hepmc/HepMC3.git

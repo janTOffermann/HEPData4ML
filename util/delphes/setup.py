@@ -2,7 +2,6 @@ import os, glob, re, threading, queue
 from collections import deque
 import subprocess as sub
 import numpy as np
-from util.qol_utils.misc import stdout_redirected
 from util.qol_utils.progress_bar import printProgressBar, printProgressWithOutput
 from typing import Optional
 
@@ -41,8 +40,10 @@ class DelphesSetup:
 
     def Prepare(self, j:int=4, force:bool=False, verbose:bool=False):
         """
-        Checks if Delphes is built. If it's not, it will download
-        and build Delphes.
+        Checks if Delphes is built. If it's not,
+        it will build Delphes.
+        (Historically, this class handled downloading code as well,
+         but we have shifted to using git submodules for better versioning.)
         """
         # Check if Delphes is already built at destination.
         if(not force):
@@ -52,62 +53,8 @@ class DelphesSetup:
                 if(verbose): self._print('Found DelphesHepMC3 @ {}'.format(self.executable['hepmc']))
                 return
 
-        # NOTE: We've shifted to using a git submodule -- so the downloads shouldn't be done, but the build may still need to be executed.
-        # self.Download() # TODO: Could check to see if source code is downloaded, though it's hard to make a perfect check.
-        # self.DownloadFork() # TODO: Could check to see if source code is downloaded, though it's hard to make a perfect check.
         self.Build(j=j)
         self.executable = glob.glob('{}/**/DelphesHepMC3'.format(self.delphes_dir),recursive=True)[0]
-        return
-
-    def Download(self):
-        with open(self.logfile,'w') as f, open(self.errfile,'w') as g:
-            # Fetch Delphes source.
-            self._print('Downloading Delphes from {} .'.format(self.delphes_download))
-            # Depending on Linux/macOS, we use wget or curl.
-            has_wget = True
-            with stdout_redirected():
-                try: sub.check_call('which wget'.split(' '))
-                except:
-                    has_wget = False
-                    pass
-
-            if(has_wget):
-                sub.check_call('wget --no-check-certificate --content-disposition {} -O {}'.format(self.delphes_download,self.delphes_file).split(' '),cwd=self.delphes_dir, stdout=f, stderr=g)
-            else:
-                sub.check_call('curl -LJ {} -o {}'.format(self.delphes_download,self.delphes_file).split(' '),cwd=self.delphes_dir, stdout=f, stderr=g)
-            sub.check_call(['tar', '-zxf', self.delphes_file],cwd=self.delphes_dir, stdout=f, stderr=g)
-            sub.check_call(['rm', self.delphes_file],cwd=self.delphes_dir, stdout=f, stderr=g)
-        self.build_dir = '{}/{}'.format(self.delphes_dir,self.delphes_file.replace('.tar.gz','')) # TODO: clean this up
-        return
-
-    def DownloadFork(self):
-        """
-        Instead of downloading the official Delphes release,
-        this downloads my own fork of the project.
-        This includes some adjustments to classes/modules that
-        are necessary for some of our custom Delphes cards.
-        """
-        self.delphes_download = 'https://github.com/janTOffermann/delphes/archive/refs/heads/jaofferm_devel.tar.gz'
-        self.delphes_file = 'delphes-{}'.format(self.delphes_download.split('/')[-1]) # TODO: A bit hacky
-        with open(self.logfile,'w') as f, open(self.errfile,'w') as g:
-            # Fetch Delphes source.
-            self._print('Downloading Delphes from {} .'.format(self.delphes_download))
-            # Depending on Linux/macOS, we use wget or curl.
-            has_wget = True
-            with stdout_redirected():
-                try: sub.check_call('which wget'.split(' '))
-                except:
-                    has_wget = False
-                    pass
-
-            if(has_wget):
-                sub.check_call('wget --no-check-certificate --content-disposition {} -O {}'.format(self.delphes_download,self.delphes_file).split(' '),cwd=self.delphes_dir, stdout=f, stderr=g)
-            else:
-                sub.check_call('curl -LJ {} -o {}'.format(self.delphes_download,self.delphes_file).split(' '),cwd=self.delphes_dir, stdout=f, stderr=g)
-            sub.check_call(['tar', '-zxf', self.delphes_file],cwd=self.delphes_dir, stdout=f, stderr=g)
-            sub.check_call(['rm', self.delphes_file],cwd=self.delphes_dir, stdout=f, stderr=g)
-        self.build_dir = '{}/{}'.format(self.delphes_dir,self.delphes_file.replace('.tar.gz','')) # TODO: clean this up
-        self.expected_stdout = 282
         return
 
     def Build(self, j:int=4):
@@ -327,46 +274,7 @@ class DelphesROOTHepMC3Setup(DelphesSetup):
         self.run_command_with_progress(command,prefix='Configuring DelphesHepMC3ROOT',cwd=self.build_dir)
         command = ['make', '-j{}'.format(j)]
         self.run_command_with_progress(command,prefix='Building DelphesHepMC3ROOT',cwd=self.build_dir,show_output_lines=5)
-        # self.run_make_with_progress(command)
         return
 
     def _print(self,val:str):
         print('{}: {}'.format(self.prefix,val))
-
-    # def run_make_with_progress(self,command=['make'],prefix='Building DelphesHepMC3ROOT'):
-    #     """
-    #     Runs "make", with a progress bar.
-    #     """
-    #     # Pattern to match progress indicators
-    #     progress_pattern = re.compile(r'\[\s*(\d+)%\]')
-
-    #     with open(self.logfile, 'w') as f, open(self.errfile, 'w') as g:
-    #         process = sub.Popen(
-    #             command,
-    #             cwd=self.build_dir,
-    #             stdout=sub.PIPE,
-    #             stderr=sub.PIPE,
-    #             universal_newlines=True,
-    #             bufsize=1  # Line buffered
-    #         )
-
-    #         # Read stdout line by line
-    #         for line in iter(process.stdout.readline, ''):
-    #             f.write(line)  # Write to log file
-    #             f.flush()
-
-    #             # Check for progress indicator
-    #             match = progress_pattern.search(line)
-    #             if match:
-    #                 progress = int(match.group(1))
-    #                 printProgressBar(progress, 100, prefix=prefix, suffix='Complete')
-
-    #         # Read any remaining stderr
-    #         stderr_output = process.stderr.read()
-    #         if stderr_output:
-    #             g.write(stderr_output)
-
-    #         # Wait for process to complete and check return code
-    #         return_code = process.wait()
-    #         if return_code != 0:
-    #             raise sub.CalledProcessError(return_code, command)
