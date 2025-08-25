@@ -109,15 +109,12 @@ class PythiaGenerator:
 
     def SetEventFilter(self,filter):
         self.event_filter = filter
+
+        if(filter is None):
+            self.event_filter = self.configurator.GetEventFilter()
+
         if(self.event_filter is not None):
             self.event_filter.Initialize(self.configurator) # may be necessary for things like dynamic fastjet import
-
-    def SetEventFilterFlag(self,filter):
-        self.event_filter_flag = filter
-        if(self.event_filter_flag is not None):
-            self.event_filter_flag.Initialize(self.configurator) # may be necessary for things like dynamic fastjet import
-        else:
-            self.event_filter_flag_filename = None
 
     def SetPythiaConfigFile(self,file:Optional[str]=None):
         self.pythia_config_file = file
@@ -264,30 +261,11 @@ class PythiaGenerator:
             # this condition. If not we will count the event as failed, and generate another.
             # ==========================================
             if(self.event_filter is not None):
+                print('Running event filter.')
                 passed_filter = self.event_filter(self.pythia)
                 if(not passed_filter):
                     n_fail += 1
                     continue
-
-            # # ==========================================
-            # # Now we apply an (optional) "event filter" flag. This applies some condition to the set
-            # # of truth and final-state particles selected above, and checks if the event passes
-            # # this condition. The result is recorded in an HDF5 file that will be merged into the
-            # # final dataset.
-            # # ==========================================
-            # # TODO: Rework or remove this. Don't want to create anything other than the HepMC at this stage.
-            # if(self.event_filter_flag is not None):
-            #     event_filter_flag_filename_full = '{}/{}'.format(self.outdir,self.event_filter_flag_filename)
-            #     f = h5.File(event_filter_flag_filename_full,'a')
-            #     key = self.event_filter_flag.GetName()
-            #     filter_flag = self.event_filter_flag(self.pythia)
-            #     if(i_real == 1):
-            #         filter_flag = np.expand_dims(filter_flag,axis=0)
-            #         f.create_dataset(key,data=filter_flag,compression='gzip',chunks=True,maxshape=(None,))
-            #     else:
-            #         f[key].resize(f[key].shape[0] + 1,axis=0)
-            #         f[key][-1] = filter_flag
-            #     f.close()
 
             # ==========================================
             # Now lets create the HepMC event.
