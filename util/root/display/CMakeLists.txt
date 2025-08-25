@@ -71,13 +71,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Find DELPHES.
 # Will search CMAKE_PREFIX_PATH, plus the DELPHES_EXT_DIR
 # that we define here (to pick up a possible local installation).
-file(GLOB DELPHES_SUBDIRS "${REPO_DIR}/external/delphes/*")
-foreach(subdir ${DELPHES_SUBDIRS})
-    if(IS_DIRECTORY ${subdir})
-        set(DELPHES_EXT_DIR ${subdir})
-        break()
-    endif()
-endforeach()
+set(DELPHES_EXT_DIR "${REPO_DIR}/external/delphes")
+# file(GLOB DELPHES_SUBDIRS "${REPO_DIR}/external/delphes/*")
+# foreach(subdir ${DELPHES_SUBDIRS})
+#     if(IS_DIRECTORY ${subdir})
+#         set(DELPHES_EXT_DIR ${subdir})
+#         break()
+#     endif()
+# endforeach()
 
 # Check if we found a directory
 if(NOT DELPHES_EXT_DIR)
