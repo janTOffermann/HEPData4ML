@@ -1,1 +1,5 @@
 fastjet
+
+# for HepMC3
+hepmc/hepmc3-build
+hepmc/hepmc3-install
