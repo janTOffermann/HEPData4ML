@@ -232,6 +232,12 @@ def main(args):
             pileup_handler.SetInputDirectory(outdir)
             pileup_handler.SetOutputDirectory(outdir)
             pileup_handler.SetMetadataHandler(metadata_handler)
+            pileup_handler.SetConfigurator(configurator)
+
+            # Some pileup handlers might require some extra initialization after construction,
+            # that leverages the configurator.
+            if(hasattr(pileup_handler,'Initialize')):
+                pileup_handler.Initialize()
 
             if(pileup_handler.GetRNGSeed() < 0): # use the Pythia rng seed
                 pileup_handler.SetRNGSeed(pythia_rng)

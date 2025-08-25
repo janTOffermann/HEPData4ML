@@ -1,15 +1,17 @@
 import ROOT as rt
 import uproot as ur
 import numpy as np
-import glob,sys,os,pathlib
+import glob,sys,os,pathlib,itertools
 import subprocess as sub
 from util.qol_utils.progress_bar import printProgressBarColor
 from util.qol_utils.pdg import DatabasePDG
 from util.meta import MetaDataHandler
+from util.config import Configurator
 from util.math.rotations import RotateVector
-
+from util.post_processing.jets import TruthJetFinder
 from util.hepmc.setup import HepMCSetup, prepend_to_pythonpath
 from util.hepmc.readers import ReaderAscii, ReaderRootTree # our wrappers for the HepMC3 reader classes
+from util.hepmc.hepmc import IsStable, ParticleToVector
 from typing import List, Union, Tuple, Optional, TYPE_CHECKING
 
 if(TYPE_CHECKING):
@@ -52,10 +54,12 @@ class PileupOverlay:
         self.event_indices = np.arange(self.n_total)
         self.event_mask = np.full(self.n_total,True,dtype=bool)
         self.selected_indices = None # transient storage for indices selected for a particular event
+        self.allow_reuse = True
 
         self.SetRNGSeed(rng_seed)
         self.beam_spot_sigma = None # will store the beam spot size
         self.SetBeamSpotSigma() # sets some sensible defaults
+        self.do_phi_rotations = True
 
         # Set up the distribution for # of interactions per crossing
         self.mu_file = mu_file
@@ -77,9 +81,13 @@ class PileupOverlay:
         self.pdg_database = DatabasePDG()
 
         self.metadata_handler = None
+        self.configurator = None
 
     def SetMetadataHandler(self,handler:'MetaDataHandler'):
         self.metadata_handler = handler
+
+    def SetConfigurator(self,configurator:'Configurator'):
+        self.configurator = configurator
 
     def GetRNGSeed(self):
         return self.rng_seed
@@ -99,11 +107,16 @@ class PileupOverlay:
     def SetOutputDirectory(self,val:str):
         self.outdir = val
 
+    def SetAllowReuse(self, val:bool):
+        self.allow_reuse = val
+
+    def SetUsePhiRotations(self, val:bool):
+        self.do_phi_rotations = val
+
     def _init_hepmc(self):
         setup = HepMCSetup(verbose=False)
         python_dir = setup.GetPythonDirectory()
         prepend_to_pythonpath(python_dir)
-
         # now can do "from pyHepMC3 import HepMC3 as hm"
 
     def SetPileupFiles(self,files:Union[str,list]=None):
@@ -195,12 +208,11 @@ class PileupOverlay:
     def _sample_mu_distribution(self):
         self.mu = int(self.rng.choice(self.available_mu_values,p=self.mu_probabilities))
 
-    def _pick_event_indices(self, update_mask=False):
+    def _pick_event_indices(self):
         self._sample_mu_distribution()
         self.selected_indices = self.rng.choice(self.event_indices[self.event_mask],size=self.mu)
-        if(update_mask): self._update_mask()
-
-        # print('self.selected_indices = ', self.selected_indices)
+        if(not self.allow_reuse):
+            self._update_mask()
 
     def _update_mask(self,indices=None):
         """
@@ -257,13 +269,9 @@ class PileupOverlay:
         if(isinstance(indices,int)):
             indices = np.atleast_1d(int)
         indices = sorted(indices)
-
         indices = np.array([x - self.first_idx[filename] for x in indices],dtype=int) # adjust from global indexing, to indexing iwthin this file
 
         events = [hm.GenEvent()] * len(indices)
-        # counter = 0
-        # write_counter = 0
-
         reader = ReaderRootTree(filename)
 
         for i,idx in enumerate(indices):
@@ -290,10 +298,6 @@ class PileupOverlay:
         if(isinstance(indices,int)):
             indices = np.atleast_1d(int)
         indices = sorted(indices)
-
-        # events = [hm.GenEvent()] * len(indices)
-        # counter = 0
-        # write_counter = 0
 
         if(filename.split('.')[-1].lower() == 'root'):
             return self._fetch_event_single_file_root(filename,indices)
@@ -574,7 +578,11 @@ class PileupOverlay:
             # Apply displacement to vertex position
 
             old_position = np.array([getattr(vertex.position(),method)() for method in ['t','x','y','z']])
-            new_position = RotateVector(old_position,phi_rotation_angle,0.,0.) + np.array([dt,dx,dy,dz])
+            if(self.do_phi_rotations):
+                new_position = RotateVector(old_position,phi_rotation_angle,0.,0.)
+            else:
+                new_position = old_position
+            new_position += np.array([dt,dx,dy,dz])
             new_position = hm.FourVector(*np.roll(new_position,-1)) # using np.roll to get from (t,x,y,z) to (x,y,z,t) for the constructor
 
             new_vertex = hm.GenVertex(new_position)
@@ -586,9 +594,11 @@ class PileupOverlay:
         for particle in pileup_event.particles():
 
             old_momentum = np.array([getattr(particle.momentum(),method)() for method in ['e','px','py','pz']])
-            new_momentum = hm.FourVector(*np.roll(RotateVector(old_momentum,phi_rotation_angle,0.,0.),-1))
+            if(self.do_phi_rotations):
+                new_momentum = hm.FourVector(*np.roll(RotateVector(old_momentum,phi_rotation_angle,0.,0.),-1))
+            else:
+                new_momentum = hm.FourVector(*np.roll(old_momentum,-1)) # using np.roll to get from (e,px,py,pz) to (px,py,pz,e) for the constructor
 
-            new_momentum = particle.momentum()
             new_particle = hm.GenParticle(
                 new_momentum,
                 particle.pid(),
@@ -643,9 +653,6 @@ class PileupOverlay:
         print('{}: {}'.format(self.print_prefix,val))
         return
 
-
-
-
 class PileupOverlaySingle(PileupOverlay):
 
     """
@@ -657,3 +664,77 @@ class PileupOverlaySingle(PileupOverlay):
     """
     def _sample_mu_distribution(self):
         self.mu = 1 # just forces sampling of a single event from the file
+
+class PileupOverlayPtFilter(PileupOverlay):
+    """
+    A modified version of the PileupOverlay class. This will
+    allow for recycling of events if they have leading jet pt
+    below some user-defined cut; events with leading jet pt
+    above this cut can only be used once -- but once all
+    such events have been used once, we then allow recycling
+    (so that we don't just run out of high-pT events).
+    """
+    # In practice, you'll want to use enough events that
+    # there isn't *much* recycling, but this method should
+    # still ensure that the effective "recycling rate" of
+    # the higher-pt events is comparitively low.
+
+    def __init__(self, pileup_files:Optional[Union[str,list]]=None,rng_seed:int=1,mu_file:str=None, pt_cut=35.):
+
+        super(PileupOverlayPtFilter,self).__init__(pileup_files,rng_seed,mu_file)
+
+        self.pt_cut = pt_cut # GeV
+        self.jet_finder = TruthJetFinder('anti_kt',0.4)
+        self.event_usage_mask = np.full(self.n_total,False,dtype=bool) # keep track of whether or not an event has been used
+        self.leading_pt = np.full(self.n_total,-999.)
+
+    def Initialize(self):
+        self.jet_finder.SetConfigurator(self.configurator)
+        self.jet_finder.Initialize()
+
+    def _pick_event_indices(self):
+        self._sample_mu_distribution()
+
+        if(self.mu > np.sum(self.event_mask)): # running out of events; need to allow recycling
+            self._reset_mask()
+
+        if(np.sum(self.event_usage_mask) == len(self.event_usage_mask)):
+            self._reset_mask() # TODO: Maybe needs some more work, or a different approach? -Jan
+
+        self.selected_indices = self.rng.choice(self.event_indices[self.event_mask],size=self.mu)
+        self.event_usage_mask[self.selected_indices] = True
+
+        self._update_mask()
+
+    def _reset_mask(self):
+        self.event_mask = np.full(self.n_total,True,dtype=bool)
+
+    def _fill_leading_pt(self):
+
+        pileup_events = self._fetch_events(self.selected_indices)
+
+        for event,index in zip(pileup_events,self.selected_indices):
+            if(self.leading_pt[index] > 0.): continue
+
+            event_particles = event.particles()
+            status = np.array([x.status() for x in event_particles])
+            stable_particles = list(itertools.compress(event_particles, status == 1))
+            stable_particle_vecs = [ParticleToVector(x) for x in stable_particles]
+
+            momenta = np.vstack([
+                    [getattr(vec, method)() for vec in stable_particle_vecs]
+                    for method in ['E','Px','Py','Pz']
+                ]).T
+
+            self.jet_finder.Process(momenta)
+            self.leading_pt[index] = np.max( [momentum[0] for momentum in self.jet_finder.jet_vectors_cyl.values() ] )
+            if(self.leading_pt[index] > self.pt_cut):
+                self._print('pt > {} GeV @ index = {}'.format(self.pt_cut,index))
+        return
+
+    def _update_mask(self):
+        # make sure we know the leading jet pt of these events
+        self._fill_leading_pt() # only fills if it's not already computed
+        pt_mask = self.leading_pt[self.selected_indices] > self.pt_cut
+        masked_indices = list(itertools.compress(self.selected_indices,pt_mask))
+        self.event_mask[masked_indices] = False
