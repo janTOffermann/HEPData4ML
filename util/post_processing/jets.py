@@ -28,6 +28,8 @@ class JetFinder(JetFinderBase):
 
     def __init__(self, input_collections:List[str]=['StableTruthParticles'], jet_algorithm:str='anti_kt',radius:float=0.4, jet_name:str='AK04Jets', n_jets_max:int=10,save_constituents:bool=True, fastjet_dir:Optional[str]=None,verbose:bool=False):
 
+        # TODO: super init?
+
         self.status = False
 
         self.SetInputCollections(input_collections)
@@ -379,8 +381,6 @@ class JetFinder(JetFinderBase):
             self.buffer.create_array('{}.Constituents.Collection'.format(self.jet_name),shape=shape2,dtype=np.dtype('i4'))
             self.buffer.create_array('{}.Constituents.Collection.Index'.format(self.jet_name),shape=shape2,dtype=np.dtype('i4'))
 
-        # self._print('Done with _initializeBuffer(). shape0 = ',shape0)
-
         return
 
     def _computeConstituentIndices(self):
@@ -400,7 +400,6 @@ class JetFinder(JetFinderBase):
 
             # Store the results
             self.constituent_indices_dict[i] = constituent_indices
-
         return
 
     def _writeToBuffer(self,event_index:Optional[int]=None):
@@ -469,7 +468,6 @@ class JetFinder(JetFinderBase):
     def Leading(self):
         self.processors.append(jet_filter.Leading())
         return self
-
 
     def GhostAssociation(self,truth_key,truth_indices,mode='filter',tag_name=None):
         """
@@ -557,3 +555,66 @@ class JetFinder(JetFinderBase):
     def Leading(self):
         self.processors.append(jet_filter.Leading())
         return self
+
+
+class TruthJetFinder(JetFinderBase):
+    """
+    A simple jet-finding class, for use with event filters.
+    See the JetFinder in util/post_processing/jets.py for a more
+    complete example (made to work with HDF5 input files).
+    """
+
+    def __init__(self, jet_algorithm:str='anti_kt',radius:float=0.4, jet_name:str='AK04Jets', n_jets_max:Optional[int]=None,fastjet_dir:Optional[str]=None):
+
+        # TODO: Check this? (and maybe add to JetFinder?)
+        super(TruthJetFinder,self).__init__(fastjet_dir)
+
+        self.status = False
+
+        self.jet_algorithm_name = jet_algorithm
+        self.jet_name = jet_name
+        self.radius = radius
+        self.n_jets_max = n_jets_max # max number of jets to save per event (will be pt-ordered)
+        self.n_constituents_max = 200 # max number of constituents to save per jet
+
+        self.fastjet_dir = fastjet_dir
+        self.fastjet_init_flag = False
+
+        self.configurator = None
+
+        self.print_prefix = '\n\tTruthJetFinder'
+        self.setup = None
+        self.tagger = None
+
+        self.error = False
+
+        self._i = 0
+
+    def SetConfigurator(self,configurator):
+        self.configurator = configurator
+
+    def Initialize(self):
+
+        # If already initialized, no need to do it again.
+        if(self.status):
+            return
+
+        # Initialize fastjet.
+        self._initialize_fastjet()
+        if(not self.fastjet_init_flag):
+            self.status = False
+            return
+
+        # Initialize the fastjet jet definition
+        self._initialize_jet_definition()
+
+        self.status = True
+
+    def Process(self,input_vecs):
+        self.input_vecs = input_vecs
+        self._clusterJets()
+        self._ptSort()
+
+    def _print(self,val:Any):
+        print('{}: {}'.format(self.print_prefix,val))
+        return

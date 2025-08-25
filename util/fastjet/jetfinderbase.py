@@ -1,6 +1,7 @@
 import sys, operator
 import numpy as np
 from util.fastjet.setup import FastJetSetup
+from typing import Optional, Any
 
 class JetFinderBase:
     """
@@ -10,11 +11,13 @@ class JetFinderBase:
     It lacks some useful functionality that JetFinder includes.
     """
 
-    def __init__(self,fastjet_dir=None):
+    def __init__(self,fastjet_dir:Optional[str]=None):
 
         self.jet_algorithm_name = ''
         self.jet_name = ''
         self.radius = 0.4
+
+        self.print_prefix = '\n\tJetFinderBase'
 
         self.fastjet_dir = fastjet_dir
         self.fastjet_init_flag = False
@@ -47,6 +50,7 @@ class JetFinderBase:
 
         if(self.fastjet_dir is None):
             if(self.configurator is None):
+                self._print('Error: Fastjet being requested, but this JetFinderBase has no self.fastjet_dir nor self.configurator . Fastjet import will not work.')
                 return # bad
             else: # Fetch fastjet directory from configurator. This is foreseen as the "typical" usage.
                 self.fastjet_dir = self.configurator.GetFastjetDirectory()
@@ -224,6 +228,10 @@ class JetFinderBase:
         indices = indices[sorting][:l]
 
         return vecs, vecs_cyl, indices
+
+    def _print(self,val:Any):
+        print('{}: {}'.format(self.print_prefix,val))
+        return
 
 class ParticleInfo(object):
     """Illustrative class for use in assigning pythonic user information

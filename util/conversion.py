@@ -150,10 +150,6 @@ class Processor:
 
                 status = np.array([x.status() for x in event_particles])
                 stable_particles = list(itertools.compress(event_particles, status == 1))
-
-                # NOTE: Currently supporting both PyHepMC and HepMC, may want to consider
-                #       dropping PyHepMC since in practice we won't be switching back and forth.
-
                 stable_particle_vecs = [ParticleToVector(x) for x in stable_particles]
 
                 self.WriteToDataBuffer(j,'{}.N'.format(self.stable_truth_particle_name),len(stable_particle_vecs))
