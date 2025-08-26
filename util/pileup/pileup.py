@@ -3,6 +3,7 @@ import uproot as ur
 import numpy as np
 import glob,sys,os,pathlib,itertools
 import subprocess as sub
+from util.qol_utils.misc import RN
 from util.qol_utils.progress_bar import printProgressBarColor
 from util.qol_utils.pdg import DatabasePDG
 from util.meta import MetaDataHandler
@@ -323,7 +324,6 @@ class PileupOverlay:
         events = []
         for key,val in file_indices.items():
             events += self._fetch_event_single_file(self.files[key],val)
-
         return events
 
     def _get_nevents_root(self,filename:str):
@@ -679,7 +679,7 @@ class PileupOverlayPtFilter(PileupOverlay):
     # still ensure that the effective "recycling rate" of
     # the higher-pt events is comparitively low.
 
-    def __init__(self, pileup_files:Optional[Union[str,list]]=None,rng_seed:int=1,mu_file:str=None, pt_cut=35.):
+    def __init__(self, pileup_files:Optional[Union[str,list]]=None,rng_seed:int=1,mu_file:str=None, pt_cut=35., precompute=False):
 
         super(PileupOverlayPtFilter,self).__init__(pileup_files,rng_seed,mu_file)
 
@@ -687,10 +687,21 @@ class PileupOverlayPtFilter(PileupOverlay):
         self.jet_finder = TruthJetFinder('anti_kt',0.4)
         self.event_usage_mask = np.full(self.n_total,False,dtype=bool) # keep track of whether or not an event has been used
         self.leading_pt = np.full(self.n_total,-999.)
+        self.precompute = precompute
+
+        # Create an internal histogram, to keep track of the leading jet kinematics -- can be interesting for diagnosis of issues.
+        self._initialize_histogram()
 
     def Initialize(self):
         self.jet_finder.SetConfigurator(self.configurator)
         self.jet_finder.Initialize()
+
+        if(self.precompute):
+            self._precompute_leading_pt()
+
+    def _initialize_histogram(self):
+        binning = (100,0.,100.)
+        self.hist_pt = rt.TH1D('h_PileupOverlayPtFilter_leading_pt',';p_{T} [GeV];Count (unweighted)',*binning)
 
     def _pick_event_indices(self):
         self._sample_mu_distribution()
@@ -709,11 +720,14 @@ class PileupOverlayPtFilter(PileupOverlay):
     def _reset_mask(self):
         self.event_mask = np.full(self.n_total,True,dtype=bool)
 
-    def _fill_leading_pt(self):
+    def _fill_leading_pt(self,indices=None):
 
-        pileup_events = self._fetch_events(self.selected_indices)
+        if(indices is None):
+            indices = self.selected_indices
 
-        for event,index in zip(pileup_events,self.selected_indices):
+        pileup_events = self._fetch_events(indices)
+
+        for event,index in zip(pileup_events,indices):
             if(self.leading_pt[index] > 0.): continue
 
             event_particles = event.particles()
@@ -728,6 +742,7 @@ class PileupOverlayPtFilter(PileupOverlay):
 
             self.jet_finder.Process(momenta)
             self.leading_pt[index] = np.max( [momentum[0] for momentum in self.jet_finder.jet_vectors_cyl.values() ] )
+            self.hist_pt.Fill(self.leading_pt[index])
             if(self.leading_pt[index] > self.pt_cut):
                 self._print('pt > {} GeV @ index = {}'.format(self.pt_cut,index))
         return
@@ -738,3 +753,24 @@ class PileupOverlayPtFilter(PileupOverlay):
         pt_mask = self.leading_pt[self.selected_indices] > self.pt_cut
         masked_indices = list(itertools.compress(self.selected_indices,pt_mask))
         self.event_mask[masked_indices] = False
+
+    def _precompute_leading_pt(self):
+        # We'll batch things.
+        batch_size = 100 # configurable?
+        index_ranges = [(i, min(i + batch_size, self.n_total)) for i in range(0, self.n_total, batch_size)]
+
+        self._print('Pre-computing leading jet pT for all input pileup events.')
+
+        for i,index_range in enumerate(index_ranges):
+            indices = range(*index_range)
+            self._fill_leading_pt(indices)
+            printProgressBarColor(i+1,len(index_ranges),'Pre-computing jet pT:',decimals=2)
+
+    def Process(self, inputs, outputs=None):
+        super().Process(inputs, outputs)
+
+        # Save the histogram.
+        histogram_filename = '{}/pileup_histograms.root'.format(self.outdir)
+        self.hist_pt.SaveAs(histogram_filename)
+
+        return
