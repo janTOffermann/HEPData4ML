@@ -17,6 +17,10 @@ The outputs of the script will be in the `output/tutorial_0` directory; the outp
 
 ## Tutorial 1
 
+This is a duplicate of **Tutorial 0**, except that it produces an ASCII-format HepMC3 file. These are a little less useful in practice because they lack some of the nice features of ROOT (specifically, random access -- which is super-useful for things like pileup handling), but they do have the benefit of being human-readable!
+
+## Tutorial 2
+
 In this tutorial, we'll generate top-antitop pair production events. Here's a breakdown of our configuration:
 - We'll run nearly the full MC pipeline this time: generation, simulation and reconstruction steps. We're just skipping the addition of any pileup.
 - We'll cluster large-radius (R=0.8) jets.
@@ -31,7 +35,7 @@ If this is your first time running the package, this may take a moment as a few 
 
 The output will be in `output/tutorial_1`, and should consist of a couple files -- the final n-tuple is `events.h5`. You can check the contents of this file by passing it to the script `../util/tools/check_file.py`.
 
-## Tutorial 2
+## Tutorial 3
 
 In this tutorial, we'll do something considerably more complex: we'll generate top-antitop pair production events again, now with a few special configurations:
 - We'll run the full MC pipeline this time: generation, pileup, simulation and reconstruction steps.

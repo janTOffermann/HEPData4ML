@@ -22,19 +22,19 @@ get_script_dir()
     echo "$SCRIPT_DIR"
 }
 
-# We'll generate 100 events.
-n=100
+# We'll generate 10 events.
+n=10
 
-outputDirectory=$(get_script_dir)/output/tutorial_1
+outputDirectory=$(get_script_dir)/output/tutorial_3
 script=$(get_script_dir)/../run.py
-config=config/config_1.py
+config=config/config_3.py
 
 python $script \
   -n $n \
   -O $outputDirectory \
+  -p 550 560 \
   -pb 1 \
   -sp 0 \
   -index_offset 0 \
   -config $config \
-  --verbose 0 \
- --steps "generation"
+  --verbose 0

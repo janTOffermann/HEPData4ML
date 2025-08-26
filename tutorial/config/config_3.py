@@ -16,7 +16,10 @@ config = {
     },
 
     'pileup' : {
-        'handler': None # still no pileup
+        'handler': pu.PileupOverlay(
+            "output/tutorial_0/events*.root",
+            rng_seed=1
+        ) # For example, you can overlay pileup events from some pre-existing HepMC3 files (ideally in ROOT format!), which you can generate with this package too.
     },
 
     'simulation' : {
@@ -49,10 +52,17 @@ config = {
         'split_seed' : 1, # RNG seed to be used for splitting the dataset into train/test/validation samples.
         'post_processing': [ # What post-processing algorithms to run -- this includes jet clustering! You can queue up multiple separate post-processors.
 
-            # Basic clustering of large-radius jets, with some pt and eta cuts.
-            jets.JetFinder(['EFlowPhoton','EFlowNeutralHadron','EFlowTrack'],jet_algorithm='anti_kt',radius=0.8,jet_name='AntiKt08RecoJets').
+            # Cluster large-radius jets, ghost associated to the top. Explicitly require dR<0.8 with respect to the truth-level top, W and b, apply pt and eta cuts.
+            jets.JetFinder(['EFlowPhoton','EFlowNeutralHadron','EFlowTrack'],jet_algorithm='anti_kt',radius=0.8,jet_name='AntiKt08RecoJetsAssociatedTop').
                 PtFilter(25.).
-                EtaFilter(4.)
+                EtaFilter(4.).
+                GhostAssociation('TruthParticlesTopAndChildren',    0,mode='filter'). # this forces us to only have 1 jet per event -- flattens the jet branches by 1 dim
+                Containment('TruthParticlesTopAndChildren',[0,1,2],delta_r=0.8,use_rapidity=True, mode='filter').
+                JohnsHopkinsTagger(mode='tag'),
+
+            # Cluster small-radius jets, near the ghost-associated jets above.
+            jets.JetFinder(['EFlowPhoton','EFlowNeutralHadron','EFlowTrack'],jet_algorithm='anti_kt',radius=0.4,jet_name='AntiKt04RecoJetsAssociatedTop').
+                Containment('AntiKt08RecoJetsAssociatedTop',None,delta_r=0.4,use_rapidity=True,mode='filter'),
         ]
     }
 }
