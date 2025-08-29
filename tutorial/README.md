@@ -63,3 +63,11 @@ You can also use the `check_file.py` utility to print out the citations (in BibT
 ```
 python ../util/tools/check_file.py -i events.h5 --citations
 ```
+
+## Tutorial 4
+
+This tutorial is similar to Tutorials 2 and 3:
+- We perform the same object reconstructions as in Tutorial 2,
+- We use pileup as in Tutorial 3.
+
+However, the pileup is in this case generated on-the-fly; rather than reading in pileup events from some input HepMC3 file, we generate them with Pythia8 as needed (harnessing the same instance of the generator we used in the `generation` step). While we might sometimes be OK with recycling pileup events -- as may happen when randomly sampling them from a file -- this is a sure-fire way to generate unique pileup events. This may be especially handy when running parallelized jobs: We have some pileup handling classes like `PileupOverlayPtFilter` that are meant to avoid recycling pileup events that have a jet above some $p_{T}$ threshold (following the [typical ATLAS prescription](https://iopscience.iop.org/article/10.1088/1742-6596/513/2/022024)), these methods currently break down under parallelization where each worker/job isn't aware of whether another has already used a particular event.
