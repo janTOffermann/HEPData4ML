@@ -3,7 +3,6 @@ import uproot as ur
 import numpy as np
 import glob,sys,os,pathlib,itertools
 import subprocess as sub
-from util.qol_utils.misc import RN
 from util.qol_utils.progress_bar import printProgressBarColor
 from util.qol_utils.pdg import DatabasePDG
 from util.meta import MetaDataHandler
@@ -12,7 +11,8 @@ from util.math.rotations import RotateVector
 from util.post_processing.jets import TruthJetFinder
 from util.hepmc.setup import HepMCSetup, prepend_to_pythonpath
 from util.hepmc.readers import ReaderAscii, ReaderRootTree # our wrappers for the HepMC3 reader classes
-from util.hepmc.hepmc import IsStable, ParticleToVector
+from util.hepmc.hepmc import ParticleToVector
+from util.generation import PythiaGenerator
 from typing import List, Union, Tuple, Optional, TYPE_CHECKING
 
 if(TYPE_CHECKING):
@@ -41,19 +41,10 @@ class PileupOverlay:
         self.verbosity = 1
         self.print_prefix = 'PileupOverlay: '
 
+        self.require_pileup_input = True
         self.files = None
         self.SetPileupFiles(pileup_files)
 
-        self.files = sorted(glob.glob(pileup_files))
-
-        # determine the total number of events in these files
-        self.n_dict = {}
-        self.first_idx = {}
-        self.n_total = 0
-        self._index_files()
-
-        self.event_indices = np.arange(self.n_total)
-        self.event_mask = np.full(self.n_total,True,dtype=bool)
         self.selected_indices = None # transient storage for indices selected for a particular event
         self.allow_reuse = True
 
@@ -132,7 +123,16 @@ class PileupOverlay:
             for i,file in enumerate(self.files):
                 if(not pathlib.Path(file).exists()):
                     self.files[i] = '{}/{}'.format(os.getcwd(),file)
-        self.files = sorted([pathlib.Path(x).absolute() for x in self.files if pathlib.Path(x).exists()])
+        self.files = sorted([str(pathlib.Path(x).absolute()) for x in self.files if pathlib.Path(x).exists()])
+
+        # determine the total number of events in these files
+        self.n_dict = {}
+        self.first_idx = {}
+        self.n_total = 0
+        self._index_files()
+
+        self.event_indices = np.arange(self.n_total)
+        self.event_mask = np.full(self.n_total,True,dtype=bool)
         return
 
     def _index_ascii(self,file):
@@ -173,7 +173,6 @@ class PileupOverlay:
         self.beam_spot_sigma = (dt,dx,dy,dz)
 
     def _init_mu_distribution(self):
-        # print('Running InitializeMuDistibution')
         hist_name = 'SimplePileup_mu'
 
         if(self.mu_file is None):
@@ -264,7 +263,6 @@ class PileupOverlay:
     def _fetch_event_single_file_root(self,filename:str,indices:Union[int,list,np.ndarray]):
         # NOTE: Leverages functions currently only available in our custom fork of HepMC3,
         #       for accessing non-sequential events from a ROOT file.
-
         from pyHepMC3 import HepMC3 as hm
 
         if(isinstance(indices,int)):
@@ -350,7 +348,7 @@ class PileupOverlay:
         # TODO: Have to check how ROOT writing works -- appends to existing file, or erases it?
         buffer_file = output_file.replace('.{}'.format(input_file_extension),'_buffer.{}'.format(input_file_extension))
 
-        if((self.files is None) or len(self.files) == 0):
+        if(((self.files is None) or len(self.files) == 0) and self.require_pileup_input):
             print('Error: No pileup files for PileupOverlay.')
             return
 
@@ -445,10 +443,10 @@ class PileupOverlay:
                 sub.check_call(command)
                 final_outputs.append(input) # TODO: a little messy in terms of code
 
-        if(replace_inputs):
-            return final_outputs
-
         self._writeMetadata()
+
+        if(replace_inputs):
+            outputs = final_outputs
         return outputs
 
     def _flush_to_file(self,events:List['hm.GenEvent'],output_file:str,buffername:str=None):
@@ -614,7 +612,6 @@ class PileupOverlay:
                     prod_vertex.add_particle_out(new_particle)
                 except ValueError:
                     pass # expected to be triggered, by beam particles
-                    # print(f"Warning: Could not find production vertex for particle {particle.pid}")
 
             # Set end vertex if it exists
             if particle.end_vertex():
@@ -634,16 +631,23 @@ class PileupOverlay:
             self._print('Unable to write metadata; no handler was provided.')
             return
 
-        # read in the metadata from all the pileup files
-        for pileup_file in self.files:
-            pileup_file_extension = pileup_file.split('.')[-1]
-            if(pileup_file_extension.lower() != 'root'):
-                self._print('Warning: Cannot read in metadata from pileup file {} .'.format(pileup_file))
-                continue
-            key = pileup_file.split('/')[-1]
-            pileup_metadata[key] = self.metadata_handler.ReadMetaDataFromROOTFile(pileup_file)
+        # Here, the metadata from the pileup files themselves will be fetched.
+        if(self.files is not None):
+            for pileup_file in self.files:
+                pileup_file_extension = pileup_file.split('.')[-1]
+                if(pileup_file_extension.lower() != 'root'):
+                    self._print('Warning: Cannot read in metadata from pileup file {} .'.format(pileup_file))
+                    continue
+                key = pileup_file.split('/')[-1]
+                pileup_metadata[key] = self.metadata_handler.ReadMetaDataFromROOTFile(pileup_file)
+            self.metadata_handler.AddElement('Metadata.Pileup.InputMetadata',pileup_metadata)
 
-        self.metadata_handler.AddElement('Metadata.Pileup.Metadata',pileup_metadata)
+        # Also add info on the mu distribution that was used
+        mu_bins = np.array([self.mu_distribution.GetBinLowEdge(x+1) for x in range(self.mu_distribution.GetNbinsX())]) # left edges)
+        mu_weights = np.array([self.mu_distribution.GetBinContent(x+1) for x in range(self.mu_distribution.GetNbinsX())])
+        self.metadata_handler.AddElement('Metadata.Pileup.MuDistribution.BinEdgesLeft',mu_bins)
+        self.metadata_handler.AddElement('Metadata.Pileup.MuDistribution.BinContents',mu_weights)
+
         return
 
     def FetchMuValueDictionary(self):
@@ -673,11 +677,18 @@ class PileupOverlayPtFilter(PileupOverlay):
     above this cut can only be used once -- but once all
     such events have been used once, we then allow recycling
     (so that we don't just run out of high-pT events).
+
+    Warning: Keep in mind that when running in parallel
+    (e.g. HTCondor), each job is unaware of what pileup
+    events another job may have already used; this only
+    limits recycling of high-pt jets *within* a single job.
     """
     # In practice, you'll want to use enough events that
     # there isn't *much* recycling, but this method should
     # still ensure that the effective "recycling rate" of
-    # the higher-pt events is comparitively low.
+    # the higher-pt events is comparitively low; at the cost
+    # of running more slowly (since this involves an extra layer
+    # of jet clustering).
 
     def __init__(self, pileup_files:Optional[Union[str,list]]=None,rng_seed:int=1,mu_file:str=None, pt_cut=35., precompute=False):
 
@@ -774,3 +785,66 @@ class PileupOverlayPtFilter(PileupOverlay):
         self.hist_pt.SaveAs(histogram_filename)
 
         return
+
+class PileupOverlayFromGenerator(PileupOverlay):
+    """
+    This is a modification of the PileupOverlay class,
+    which generates pileup events on-the-fly using a Pythia8
+    instance taken from the configuration of the generation step.
+    This has the potential advantage of using whatever RNG seed
+    was given to the generator -- so that for parallelized jobs
+    (HTCondor), if the generation RNG seeds are different then
+    the jobs will each generate their unique pileup events
+    on-the-fly.
+    """
+
+    def __init__(self, rng_seed:int=1,mu_file:Optional[str]=None, pythia_config_file:Optional[str]=None):
+
+        super(PileupOverlayFromGenerator,self).__init__(None,rng_seed,mu_file)
+        self.require_pileup_input = False
+        self.pythia_config_file = pythia_config_file
+        self.SetUsePhiRotations(False) # no reason to use these as we're generating new events on-the-fly
+
+    def SetGenerator(self,generator:'PythiaGenerator'):
+        self.generator = generator
+
+    def Initialize(self):
+        """
+        Here, we will reconfigure the Pythia8 generator.
+        This should be OK since in practice, we're not going
+        back to the generation step (so it's OK that we are
+        modifying the generator).
+        """
+
+        # We need to (re)configure the generator, to make sure that it is making SoftQCD.
+        # TODO: This is a bit hacky, maybe could consider reworking it?
+        if(self.pythia_config_file is None):
+            this_dir = os.path.dirname(os.path.abspath(__file__))
+            self.pythia_config_file = str(pathlib.Path('{}/../pythia/pythia_templates/SoftQCD.txt'.format(this_dir)).absolute())
+        self.generator.SetPt(-1.,-1.) # remove any \hat{p_{T}} cuts
+        self.generator.ConfigPythia(self.pythia_config_file)
+
+    def _pick_event_indices(self):
+        self._sample_mu_distribution()
+        self.selected_indices = np.full(self.mu,0) # actual entries will be unused, just need the right size
+
+    def _fetch_events(self,indices:Union[int,list,np.ndarray]):
+        """
+        Redefined w.r.t. PileupOverlay. Here, the provided indices
+        argument is almost vestigial; it just tells us how many
+        pileup events to generate.
+        """
+        if(isinstance(indices,int)):
+            indices = np.atleast_1d(int)
+        n_pileup_events = len(indices)
+
+        return self._generate(n_pileup_events)
+
+    def _generate(self,n_events:int):
+        from pyHepMC3 import HepMC3 as hm
+
+        events = []
+        for i in range(n_events):
+            hepmc_event = self.generator.GenerateSingle() # generate an event!
+            events.append(hepmc_event)
+        return events

@@ -26,8 +26,7 @@ def main(args):
     parser.add_argument('-O',            '--outdir',            type=none_or_str,  default=None,             help='Output directory.')
     parser.add_argument('-v',            '--verbose',           type=int,          default=0,                help='Verbosity.')
     parser.add_argument('-f',            '--force',             type=int,          default=0,                help='Whether or not to force generation -- if true, will possibly overwrite existing HepMC files in output directory.')
-    parser.add_argument('-c',            '--compress',          type=int,          default=0,                help='Whether or not to compress HepMC files.')
-    parser.add_argument('-rng',          '--rng',               type=int,          default=None,             help='Pythia RNG seed. Will override the one provided in the config file.')
+    parser.add_argument('-c',            '--compress',          type=int,          default=0,                help='Whether or not to compress HepMC files from the generation step.')
     parser.add_argument('-npc',          '--nentries_per_chunk',type=int,          default=int(1e4),         help='Number of entries to process per chunk, for jet clustering & conversion to HDF5.')
     parser.add_argument('-pb',           '--progress_bar',      type=int,          default=1,                help='Whether or not to print progress bar during event generation')
     parser.add_argument('-sp',           '--split',             type=int,          default=1,                help='Whether or not to split HDF5 file into training/validation/testing files.')
@@ -39,8 +38,9 @@ def main(args):
     parser.add_argument('-index_offset', '--index_offset',      type=int,          default=0,                help='Offset for Event.Index.')
     parser.add_argument('-config',       '--config',            type=str,          default=None,             help='Path to configuration Python file. Default will use config/config.py .')
 
-    # DELPHES-related arguments
-    parser.add_argument('-del_delphes',  '--del_delphes',       type=int,          default=0,                help='Whether or not to delete DELPHES/ROOT files.')
+    # Overrides for things set in the config file.
+    parser.add_argument('-rng',          '--rng',               type=int,          default=None,             help='Pythia RNG seed. Overides the config file.')
+    parser.add_argument('-pileup',       '--pileupFiles',       type=str,          default=None,             help='Glob-compatible string for input pileup files, for the pileup step. Overides the config file.')
 
     args = vars(parser.parse_args())
 
@@ -55,15 +55,12 @@ def main(args):
     verbose = args['verbose'] > 0
     compress_hepmc = args['compress']
     force = args['force']
-    pythia_rng = args['rng']
     nentries_per_chunk = args['nentries_per_chunk']
     progress_bar = args['progress_bar']
     compression_opts = args['compression_opts']
     pythia_config = args['pythia_config']
     index_offset = args['index_offset']
     config_file = args['config']
-
-    delete_delphes = args['del_delphes']
 
     nbins = len(pt_bin_edges) - 1
 
@@ -77,6 +74,9 @@ def main(args):
     if(test_frac < 0. and split_files):
         print('Error: Requested training fraction and validation fraction sum to more than 1, this leaves no events for the test file.')
         assert(False)
+
+    pythia_rng = args['rng']
+    pileup_files = args['pileupFiles']
 
     # Configurator class, used for fetching information from our config file.
     # We import this from a user-supplied file, by default it is config/config.py.
@@ -234,6 +234,13 @@ def main(args):
             pileup_handler.SetMetadataHandler(metadata_handler)
             pileup_handler.SetConfigurator(configurator)
 
+            if(pileup_files is not None): # overriding config file
+                pileup_handler.SetPileupFiles(pileup_files)
+
+            # TODO: Maybe rework this code, it's a bit ugly to have to check attributes like this? -Jan
+            if(hasattr(pileup_handler,'SetGenerator')):
+                pileup_handler.SetGenerator(generator)
+
             # Some pileup handlers might require some extra initialization after construction,
             # that leverages the configurator.
             if(hasattr(pileup_handler,'Initialize')):
@@ -304,18 +311,8 @@ def main(args):
         # print('\n\tConcatenating HDF5 files. Will drop the "Event.Index" key, \n\tthis was used internally for any post-processing steps.\n\tIndices will be recomputed and added at the end.')
         ConcatenateH5(h5_files,'/'.join((outdir,h5_file)),copts=compression_opts,delete_inputs=delete_individual_h5,ignore_keys=['Event.Index'],verbose=False,silent_drop=True)
 
-        if(simulation_type == 'delphes'):
-            if(delete_delphes):
-                # Cleanup: Delete the jet files -- which are Delphes/ROOT files, since they can always be recreated from the (compressed) HepMC files.
-                # TODO: Is this a good idea? The official DelphesHepMC3 macro (and our own DelphesHepMC3ROOT) don't allow configuration of their random number generators,
-                #       so the results actually differ run-to-run and are not entirely reproducible.
-                delphes_files = ['{}/{}'.format(outdir,x) for x in delphes_files]
-                comm = ['rm'] + delphes_files
-                sub.check_call(comm)
-
-        else:
-            #Cleanup: Compress the HepMC files.
-            if(compress_hepmc): CompressHepMC(hepmc_files,True,cwd=outdir)
+        #Cleanup: Compress the HepMC files.
+        if(compress_hepmc): CompressHepMC(hepmc_files,True,cwd=outdir)
 
         # Add some event indices to our dataset.
         if(index_offset < 0): index_offset = 0

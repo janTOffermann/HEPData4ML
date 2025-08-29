@@ -100,6 +100,16 @@ class PythiaGenerator:
 
         # self.calculator = Calculator(use_vectorcalcs=self.configurator.GetUseVectorCalcs())
 
+    def SetPtMin(self,pt_min):
+        self.pt_min = pt_min
+
+    def SetPtMax(self,pt_max):
+        self.pt_max = pt_max
+
+    def SetPt(self,pt_min,pt_max):
+        self.SetPtMin(pt_min)
+        self.SetPtMax(pt_max)
+
     def SetMetadataHandler(self,handler:'MetaDataHandler'):
         self.metadata_handler = handler
 
@@ -309,13 +319,15 @@ class PythiaGenerator:
 
         return i_real-1, n_fail # note that i_real is using 1-indexing, which is what HepMC events use
 
-    def GenerateSingle(self):
+    def GenerateSingle(self,event_number=1):
         """
         Just calls generation a single time.
-        To be used for testing.
         """
+        from pyHepMC3 import HepMC3 as hm # the HepMCSetup will have taken care of this -- so the package will be already cached
         self.pythia.Generate()
-        return
+        hepmc_event = hm.GenEvent()
+        self.hepmc_converter.fill_next_event1(self.pythia.GetPythia(),hepmc_event,event_number)
+        return hepmc_event
 
     # Generate a bunch of events in the given pT range,
     # and save them to a HepMC file.

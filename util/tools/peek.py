@@ -103,7 +103,7 @@ def main(args):
         generator.pythia.AddToConfigDict(generator.pythia_config)
         generator.pythia.InitializePythia()
 
-        generator.GenerateSingle()
+        _ = generator.GenerateSingle()
 
     end_time = time.time()
     elapsed_time = end_time - start_time
