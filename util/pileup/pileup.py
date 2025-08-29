@@ -1,6 +1,7 @@
 import ROOT as rt
 import uproot as ur
 import numpy as np
+import h5py as h5
 import glob,sys,os,pathlib,itertools
 import subprocess as sub
 from util.qol_utils.progress_bar import printProgressBarColor
@@ -47,11 +48,14 @@ class PileupOverlay:
 
         self.selected_indices = None # transient storage for indices selected for a particular event
         self.allow_reuse = True
+        self.pileup_indices = {} # accumulate the pileup event indices per event -> for output. Dictionary keys are filename
 
         self.SetRNGSeed(rng_seed)
         self.beam_spot_sigma = None # will store the beam spot size
         self.SetBeamSpotSigma() # sets some sensible defaults
         self.do_phi_rotations = True
+        self.phi_rotations_transient = []
+        self.phi_rotations = {} # accumulate the phi rotations per event -> for output. Dictionary keys are filename
 
         # Set up the distribution for # of interactions per crossing
         self.mu_file = mu_file
@@ -211,6 +215,7 @@ class PileupOverlay:
     def _pick_event_indices(self):
         self._sample_mu_distribution()
         self.selected_indices = self.rng.choice(self.event_indices[self.event_mask],size=self.mu)
+        self.selected_indices.sort() # not strictly necessary, but nice since we do some bookkeeping
         if(not self.allow_reuse):
             self._update_mask()
 
@@ -353,7 +358,6 @@ class PileupOverlay:
             return
 
         events = []
-        self.mu_values[output_file] = []
 
         # technically allows toggling mode from file to file... though one really should stick to ROOT.
         mode = 'root'
@@ -381,7 +385,6 @@ class PileupOverlay:
 
             self._pick_event_indices() # sets self.mu
             pileup_events = self._fetch_events(self.selected_indices)
-            self.mu_values[output_file].append(self.mu)
 
             # overlay pileup on this event
             # for now, use automatic displacement -- will use self.beam_spot_sigma
@@ -389,6 +392,9 @@ class PileupOverlay:
 
             # store the combined event in memory
             events.append(evt)
+
+            # record the selected indices, and phi rotations
+            self._record_pileup_info(output_file)
 
             # flush events from memory as needed
             if(len(events) >= self.event_buffer_size):
@@ -413,6 +419,30 @@ class PileupOverlay:
             pass
 
         return output_file
+
+    def _record_pileup_info(self,output_file):
+        key = output_file.split('/')[-1] # remove any leading directory, just use filename (this is generally our convention)
+        if(key not in self.pileup_indices.keys()):
+            self.pileup_indices[key] = []
+            self.phi_rotations[key] = []
+            self.mu_values[key] = []
+        self.pileup_indices[key].append(self.selected_indices)
+        self.mu_values[key].append(self.mu)
+
+        # only record phi rotations if they were used -- no point in recording lots of zeros
+        if(self.do_phi_rotations):
+            self.phi_rotations[key].append(self.phi_rotations_transient)
+        return
+
+    def _migrate_pileup_info(self,old_key,new_key):
+        """
+        A bit of a messy function, a consequence of some file naming & I/O options.
+        Simply renames a key in the info dictionaries.
+        """
+        for d in [self.mu_values,self.pileup_indices,self.phi_rotations]:
+            if(old_key in d.keys()):
+                d[new_key] = d[old_key]
+                del d[old_key]
 
     def Process(self,inputs,outputs=None):
         replace_inputs = False
@@ -441,13 +471,15 @@ class PileupOverlay:
                 os.unlink(input_fullpath)
                 command = ['mv',output_old,output_new]
                 sub.check_call(command)
+
+                # we also need to rename some keys in a few dictionaries that were based on output_old
+                # TODO: This is a bit messy, is there a better way?
+                if(output in self.mu_values.keys()):
+                    self._migrate_pileup_info(output,input)
                 final_outputs.append(input) # TODO: a little messy in terms of code
 
         self._writeMetadata()
-
-        if(replace_inputs):
-            outputs = final_outputs
-        return outputs
+        return
 
     def _flush_to_file(self,events:List['hm.GenEvent'],output_file:str,buffername:str=None):
         from pyHepMC3 import HepMC3 as hm
@@ -549,6 +581,7 @@ class PileupOverlay:
         # self._displace_event(combined_event,*main_event_displacement)
 
         # Add each pileup event with displacement
+        self.phi_rotations_transient.clear()
         for pileup_event, (dt, dx, dy, dz) in zip(pileup_events, pileup_displacements):
             self._add_displaced_event(combined_event, pileup_event, dt, dx, dy, dz)
 
@@ -566,6 +599,8 @@ class PileupOverlay:
         # Add a random rotation in phi to the input pileup event.
         # (rotate, then translate)
         phi_rotation_angle = self.rng.uniform(0.,2 * np.pi)
+        if(self.do_phi_rotations):
+            self.phi_rotations_transient.append(phi_rotation_angle)
 
         # Create mapping from old vertex objects to new vertex objects using list index
         vertex_map = {}
@@ -650,8 +685,45 @@ class PileupOverlay:
 
         return
 
-    def FetchMuValueDictionary(self):
+    def GetMuValues(self):
         return self.mu_values
+
+    def GetPileupInfo(self):
+        data = {}
+        data['Pileup.Mu'] = self.mu_values
+        data['Pileup.Index'] = self.pileup_indices
+        if(self.do_phi_rotations):
+            data['Pileup.PhiRotation'] = self.phi_rotations
+        return data
+
+    def AddPileupInfoToH5(self,h5_file,file_key, cwd=None,copts=9):
+        if(cwd is not None): h5_file = '{}/{}'.format(cwd,h5_file)
+
+        f = h5.File(h5_file,'r+')
+        keys = list(f.keys())
+        nevents = f[keys[0]].shape[0]
+        data = self.GetPileupInfo()
+
+        for key,value_dict in data.items():
+            # for lists of (variable-length) arrays, need to embed these in some fixed length array
+
+            value = value_dict[file_key]
+
+            is_nested_list = False
+            if(isinstance(value[0],list)):
+                is_nested_list = True
+            elif(isinstance(value[0],np.ndarray)):
+                is_nested_list = True
+
+            if(is_nested_list):
+                # create an array
+                max_length = np.max([len(x) for x in value])
+                value_array = np.array([np.pad(row, (0, max_length-len(row))) for row in value])
+                f.create_dataset(key,data=value_array,compression='gzip',compression_opts=copts)
+            else:
+                f.create_dataset(key,data=value,compression='gzip',compression_opts=copts)
+
+        f.close()
 
     def _print(self,val):
         print('{}: {}'.format(self.print_prefix,val))
