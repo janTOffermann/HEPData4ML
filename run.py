@@ -4,7 +4,7 @@ import subprocess as sub
 from util.generation import PythiaGenerator
 from util.simulation import DelphesSimulator
 from util.conversion import Processor
-from util.hdf5 import RemoveFailedFromHDF5, SplitH5, AddEventIndices, ConcatenateH5
+from util.hdf5 import RemoveFailedFromHDF5, SplitH5, AddEventIndices, AddBranch, ConcatenateH5
 from util.hepmc.hepmc import CompressHepMC
 from util.config import Configurator,GetConfigFileContent, GetConfigDictionary
 from util.args import parse_mc_steps, FloatListAction, none_or_str
@@ -249,7 +249,11 @@ def main(args):
             if(pileup_handler.GetRNGSeed() < 0): # use the Pythia rng seed
                 pileup_handler.SetRNGSeed(pythia_rng)
 
-            _ = pileup_handler.Process(hepmc_files)
+            pileup_handler.Process(hepmc_files)
+
+            # Now we fetch some information from the pileup handler, that will propagate into the final dataset:
+            # info on the number of interactions per bunch crossing, the actual indices of pileup events used,
+            # plus some other optional pieces of info that depend on what handler we used and how it was configured.
 
     #===============================
     # STEP 3: Simulation (optional)
@@ -285,14 +289,17 @@ def main(args):
         print('\nProducing separate HDF5 files for each pT bin, and then concatenating these.')
         delete_individual_h5 = True
         nentries_per_chunk = int(nentries_per_chunk/nbins)
-        for i in range(nbins):
+
+        for i, hepmc_file in enumerate(hepmc_files):
             # TODO: Rework this a little. Should just generically loop over HepMC files, since they might have an external source and not be pt-binned.
             pt_min = pt_bin_edges[i]
             pt_max = pt_bin_edges[i+1]
-            h5_file_individual = h5_file.replace('.h5','_{}-{}.h5'.format(float_to_str(pt_min),float_to_str(pt_max)))
-            processor.SetProgressBarPrefix('\tConverting HepMC3 -> HDF5 for pT bin [{},{}]:'.format(pt_min,pt_max))
 
-            processor.Process(hepmc_files[i],h5_file_individual,verbosity=h5_conversion_verbosity)
+            h5_file_individual = '.'.join(hepmc_file.split('/')[-1].split('.')[:-1]) + '.h5'
+
+            processor.SetProgressBarPrefix('\tConverting HepMC3 -> HDF5 for file {}/{}:'.format(i+1,len(hepmc_files)))
+
+            processor.Process(hepmc_file,h5_file_individual,verbosity=h5_conversion_verbosity)
 
             # To each HDF5 event file, we will add event indices. These may be useful/necessary for the post-processing step.
             # We will remove these indices when concatenating files, since as one of our last steps we'll add indices again
@@ -300,10 +307,12 @@ def main(args):
             AddEventIndices(h5_file_individual,cwd=outdir,copts=compression_opts)
 
             # Optional post-processing. Any post-processing steps have been configured in the config file, config/config.py.
-            processor.PostProcess(hepmc_files[i],[h5_file_individual])
+            processor.PostProcess(hepmc_file,[h5_file_individual])
 
-            # # Optionally add any "event_filter_flags" that were set in the configuration. If none were set, this doesn't do anything.
-            # processor.MergeEventFilterFlag(h5_file_individual,filter_flag_files[i],copts=compression_opts)
+            # Add information from the pileup handler (if any).
+            # TODO: This may need a little reworking? The handling of filenames might be a little fragile.
+            if(pileup_handler is not None):
+                pileup_handler.AddPileupInfoToH5(h5_file_individual,cwd=outdir,file_key=hepmc_file)
 
             h5_file_individual = '/'.join((outdir,h5_file_individual))
             h5_files.append(h5_file_individual)

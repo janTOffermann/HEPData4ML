@@ -187,32 +187,18 @@ def AddConstantValue(h5_file,cwd=None,copts=9,value=0,key='constant_value',dtype
     f.create_dataset(key,data=data,compression='gzip',compression_opts=copts)
     f.close()
 
-# def AddMetaData(h5_file,cwd=None,value='',key='metadata'):
-#     """
-#     Generic function for adding a value to the HDF5 file
-#     metadata container.
-#     """
-#     if(cwd is not None): h5_file = '{}/{}'.format(cwd,h5_file)
-#     f = h5.File(h5_file,'r+')
-#     f.attrs[key] = value
-#     f.close()
+def AddBranch(h5_file,key,value,cwd=None,copts=9):
+    if(cwd is not None): h5_file = '{}/{}'.format(cwd,h5_file)
+    f = h5.File(h5_file,'r+')
+    nevents = f['SignalFlag'].shape[0]
 
-# def AddMetaDataWithReference(h5_file,cwd=None,value='',key='metadata',copts=9):
-#     """
-#     Adds an entry to the metadata -- if under an existing key, appends it to the list at that key.
-#     Also creates a column in the dataset that will point to this metadata's index.
-#     Somewhat redundant for file generation but this type of logic will be useful when concatenating files
-#     with different entries in the metadata fields.
-#     """
-#     if(cwd is not None): h5_file = '{}/{}'.format(cwd,h5_file)
-#     f = h5.File(h5_file,'r+')
-#     nevents = f['SignalFlag'].shape[0]
-#     metadata = f.attrs
-#     if(key not in metadata.keys()): f.attrs[key] = [value]
-#     else: f.attrs[key] = list(f.attrs[key]) + [value] # I think the list <-> array stuff should be OK here
-#     idx = len(f.attrs[key]) - 1
-#     f.create_dataset(key,data=np.full(nevents,idx,dtype=np.dtype('i4')),compression='gzip',compression_opts=copts)
-#     f.close()
+    if(len(value) != nevents):
+        print('Error in AddBranch: Tried adding branch for key={}, but length of branch doesn\'t match length of files\' existing branches.'.format(key))
+        f.close()
+        return
+
+    f.create_dataset(key,data=value,compression='gzip',compression_opts=copts)
+    f.close()
 
 def SplitH5(h5_file, split_ratio = (7,2,1), train_name=None, val_name=None, test_name=None, cwd=None, copts=9,verbose=False, seed=0):
     """
