@@ -8,7 +8,7 @@ import subprocess as sub
 from util.calcs import embed_array
 from util.buffer import IndexableLazyLoader
 from util.qol_utils.progress_bar import printProgressBarColor
-from util.hepmc.hepmc import ExtractHepMCEvents, ExtractHepMCParticles, ParticleToVector, ParticleToProductionVertex, ParticleToEndVertex, IsStable, GetParticleID
+from util.hepmc.hepmc import ExtractHepMCEvents, ExtractHepMCParticles, ParticleToVector, ParticleToProductionVertex, ParticleToEndVertex, IsStable
 from typing import Union, Optional, List, TYPE_CHECKING
 
 if(TYPE_CHECKING):
@@ -16,7 +16,6 @@ if(TYPE_CHECKING):
     from util.config import Configurator
     from util.hepmc.setup import HepMCSetup
     setup = HepMCSetup(verbose=False)
-    setup.PrepHepMC() # will download/install if necessary
     python_dir = setup.GetPythonDirectory()
     if(python_dir not in sys.path):
         sys.path = [setup.GetPythonDirectory()] + sys.path # prepend, to make sure we pick this one up first
@@ -168,7 +167,11 @@ class Processor:
                                        dimensions={1:self.nparticles_stable}
                 )
 
-                self.WriteToDataBuffer(j,'{}.PdgId'.format(self.stable_truth_particle_name),[GetParticleID(x) for x in stable_particles],
+                self.WriteToDataBuffer(j,'{}.PdgId'.format(self.stable_truth_particle_name),[x.pid() for x in stable_particles],
+                                       dimensions={1:self.nparticles_stable}, dtype=np.dtype('i4')
+                )
+
+                self.WriteToDataBuffer(j,'{}.HepMC3Index'.format(self.stable_truth_particle_name),[x.id() for x in stable_particles],
                                        dimensions={1:self.nparticles_stable}, dtype=np.dtype('i4')
                 )
 
@@ -205,7 +208,11 @@ class Processor:
                                             dimensions={1:self.nparticles_truth_selected}
                     )
 
-                    self.WriteToDataBuffer(j,'{}.PdgId'.format(key),[GetParticleID(x) for x in truth_selected_particles],
+                    self.WriteToDataBuffer(j,'{}.PdgId'.format(key),[x.pid() for x in truth_selected_particles],
+                                            dimensions={1:self.nparticles_truth_selected}, dtype=np.dtype('i4')
+                    )
+
+                    self.WriteToDataBuffer(j,'{}.HepMC3Index'.format(key),[x.id() for x in truth_selected_particles],
                                             dimensions={1:self.nparticles_truth_selected}, dtype=np.dtype('i4')
                     )
 

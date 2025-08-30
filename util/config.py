@@ -119,7 +119,7 @@ class Configurator:
         Fetch the Pythia configuration file.
         """
         if(filename is None):
-            proc = self.config['generation']['proc']
+            proc = self.config['generation']['process']
             if('.' not in proc.split('/')[-1]):
                 proc += '.txt'
             try:
@@ -145,7 +145,7 @@ class Configurator:
 
     # Get the Pythia configuration, for a single pT bin, as a dictionary.
     # This dictionary will only control a few settings (MPI, ISR/FSR etc.),
-    # while the process settings from the 'proc' entry of config will be
+    # while the process settings from the 'process' entry of config will be
     # passed separately.
     def GetPythiaConfig(self,pt_min, pt_max,verbose=False):
         pythia_config = {}

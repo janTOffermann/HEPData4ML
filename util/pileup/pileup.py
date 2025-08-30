@@ -49,6 +49,8 @@ class PileupOverlay:
         self.selected_indices = None # transient storage for indices selected for a particular event
         self.allow_reuse = True
         self.pileup_indices = {} # accumulate the pileup event indices per event -> for output. Dictionary keys are filename
+        self.number_non_pileup_particles = {} # accumulate number of non-pileup particles per event -- can be used later for indexing purposes
+        self.n_particles_event = None # transient storage
 
         self.SetRNGSeed(rng_seed)
         self.beam_spot_sigma = None # will store the beam spot size
@@ -386,6 +388,12 @@ class PileupOverlay:
             self._pick_event_indices() # sets self.mu
             pileup_events = self._fetch_events(self.selected_indices)
 
+            # record number of particles in the event before pileup:
+            # pileup particles will be appended, and so this can be used
+            # to later determine which particles are pileup.
+            # TODO: Check that this works!
+            self.n_particles_event = len(evt.particles())
+
             # overlay pileup on this event
             # for now, use automatic displacement -- will use self.beam_spot_sigma
             evt = self._combine_event_with_pileup(evt,pileup_events)
@@ -426,8 +434,10 @@ class PileupOverlay:
             self.pileup_indices[key] = []
             self.phi_rotations[key] = []
             self.mu_values[key] = []
+            self.number_non_pileup_particles[key] = []
         self.pileup_indices[key].append(self.selected_indices)
         self.mu_values[key].append(self.mu)
+        self.number_non_pileup_particles[key].append(self.n_particles_event)
 
         # only record phi rotations if they were used -- no point in recording lots of zeros
         if(self.do_phi_rotations):
@@ -439,7 +449,7 @@ class PileupOverlay:
         A bit of a messy function, a consequence of some file naming & I/O options.
         Simply renames a key in the info dictionaries.
         """
-        for d in [self.mu_values,self.pileup_indices,self.phi_rotations]:
+        for d in [self.mu_values,self.pileup_indices,self.phi_rotations,self.number_non_pileup_particles]:
             if(old_key in d.keys()):
                 d[new_key] = d[old_key]
                 del d[old_key]
@@ -682,7 +692,6 @@ class PileupOverlay:
         mu_weights = np.array([self.mu_distribution.GetBinContent(x+1) for x in range(self.mu_distribution.GetNbinsX())])
         self.metadata_handler.AddElement('Metadata.Pileup.MuDistribution.BinEdgesLeft',mu_bins)
         self.metadata_handler.AddElement('Metadata.Pileup.MuDistribution.BinContents',mu_weights)
-
         return
 
     def GetMuValues(self):
@@ -691,7 +700,7 @@ class PileupOverlay:
     def GetPileupInfo(self):
         data = {}
         data['Pileup.Mu'] = self.mu_values
-        data['Pileup.Index'] = self.pileup_indices
+        data['Pileup.Index'] = self.pileup_indices # index w.r.t. input pileup collection
         if(self.do_phi_rotations):
             data['Pileup.PhiRotation'] = self.phi_rotations
         return data
@@ -701,7 +710,7 @@ class PileupOverlay:
 
         f = h5.File(h5_file,'r+')
         keys = list(f.keys())
-        nevents = f[keys[0]].shape[0]
+        # nevents = f[keys[0]].shape[0]
         data = self.GetPileupInfo()
 
         for key,value_dict in data.items():
@@ -722,6 +731,16 @@ class PileupOverlay:
                 f.create_dataset(key,data=value_array,compression='gzip',compression_opts=copts)
             else:
                 f.create_dataset(key,data=value,compression='gzip',compression_opts=copts)
+
+        # With pileup information added, we can actually determine which entries in StableTruthParticles
+        # came from pileup, so we can now do some post-processing to add that in
+        particle_index_keys = [x for x in f.keys() if 'HepMC3Index' in x]
+
+        for key in particle_index_keys:
+            key_prefix = '.'.join(key.split('.')[:-1])
+            pileup_flag_key = '{}.IsPileup'.format(key_prefix)
+            is_pileup = np.array(f[key][:] > np.array(self.number_non_pileup_particles[file_key])[:,np.newaxis],dtype=bool) # indices use 1-indexing
+            f.create_dataset(pileup_flag_key,data=is_pileup,dtype=bool,compression='gzip',compression_opts=copts)
 
         f.close()
 

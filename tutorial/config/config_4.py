@@ -5,7 +5,7 @@ import util.pileup.pileup as pu
 
 config = {
     'generation' : {
-        'proc' : 'Top_Wqq', # Filename. Can also correspond to a card name in the util/pythia_templates subdirectory.
+        'process' : 'Top_Wqq', # Filename. Can also correspond to a card name in the util/pythia_templates subdirectory.
         'hadronization' : True, # Pythia8 hadronization flag
         'mpi' : True, # Pythia8 multi-parton interactions flag
         'isr' : True, # Pythia8 initial-state radiation flag
@@ -30,8 +30,8 @@ config = {
 
     # NOTE: Object names (keys) should not have periods (".") in them. These are used internally to indicate objects' properties ("leaves" in ROOT-speak), and including these in names may break stuff down-the-line (such as in the visualization scripts).
     'reconstruction' : {
-        'n_stable' : 200, # max number of stable truth-level particles to save per event (HDF5 doesn't support jagged arrays)
-        'n_delphes': [200], # max number of Delphes objects to save per event -- list corresponding to entries in 'delphes_output'. If single value, will be broadcast to appropriate shape.
+        'n_stable' : 4000, # max number of stable truth-level particles to save per event (HDF5 doesn't support jagged arrays)
+        'n_delphes': [400], # max number of Delphes objects to save per event -- list corresponding to entries in 'delphes_output'. If single value, will be broadcast to appropriate shape.
         'fastjet_dir' : None, # Directory containing the Fastjet installation. If None, will build in a local directory "external/fastjet". Note that the Fastjet installation you use must have the Python bindings set up.
         'n_truth' : 1 + 60, # Maximum number of truth particles to save per event. (HDF5 doesn't support jagged arrays)
         'event_filter' : None, # Deprecated.
