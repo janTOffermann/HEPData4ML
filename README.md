@@ -1,6 +1,8 @@
 # HEPData4ML
 
-This package is meant to provide a relatively easy way to generate Monte Carlo datasets for high-energy physics (HEP) studies, such as (but not limited to) development of machine learning methods.
+This package is meant to provide a way to generate Monte Carlo datasets for high-energy physics (HEP) studies, such as (but not limited to) development of machine learning methods.
+
+Plenty of solutions to this problem already exist; this package is meant to provide a relatively easy-to-use one, and produces output files replete with plenty of metadata to help document how they were created (something all too often missing from public benchmark datasets!).
 
 ## Overview
 
@@ -9,11 +11,9 @@ It uses
 - the [Pythia8](https://pythia.org) Monte Carlo generator to perform matrix element generation and showering/hadronization,
 - the [DELPHES](https://cp3.irmp.ucl.ac.be/projects/delphes) library for fast detector simulation, and
 - the [fastjet](http://fastjet.fr) library for jet clustering.
-Future updates will allow for the supply of externally-produced HepMC3 files (as a replacement of the generation/showering step).
+The package is designed for flexibility and steps can be excluded from the workflow; e.g. one can start with pre-existing HepMC3 files, and just run fast detector simulation and object reconstruction.
 
-While the code on the main branch is currently structured to pick out a single jet per event, the `devel_full_event` branch features a much more general design, that saves entire events -- including possibly multiple jet collections that the user specifies.
-
-Most options are specified in a Python configuration file (herein referred to as the "config file") akin, for example, to the "steering" files used by the Athena software package in the ATLAS collaboration. By default, this resides in `config/config.py`, although alternative files can be used.
+Much of the configuration is specified in a Python configuration file (herein referred to as the "config file") akin, for example, to the steering files used by the Athena software package in the ATLAS collaboration. By default, this resides in `config/config.py`, although alternative files can be used. Being a Python file, the config file can hold complex objects -- and thus is a nice way to define what can be pretty intricate configurations for how what types of particles you want to save to output, how to reconstruct jets, et cetera.
 
 The final output of this package -- under normal running mode -- is an "n-tuple" in HDF5 format. Future updates may include support for a ROOT-based format, which may lend itself better to jagged arrays; the HDF5 files currently hold particle and jet properties in numpy arrays, which are truncated/zero-padded to user-specified sizes.
 
