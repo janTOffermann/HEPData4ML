@@ -5,7 +5,7 @@ import util.pileup.pileup as pu
 
 config = {
     'generation' : {
-        'proc' : 'Top_Wqq', # Filename. Can also correspond to a card name in the util/pythia_templates subdirectory.
+        'process' : 'Top_Wqq', # Filename. Can also correspond to a card name in the util/pythia_templates subdirectory.
         'hadronization' : True, # Pythia8 hadronization flag
         'mpi' : True, # Pythia8 multi-parton interactions flag
         'isr' : True, # Pythia8 initial-state radiation flag

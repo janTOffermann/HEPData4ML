@@ -167,7 +167,9 @@ def PythiaWrapperToHepMC(pythia_wrapper:'PythiaWrapper', event_number:int) -> 'h
     converter.fill_next_event1(pythia_wrapper.GetPythia(),hepev,event_number)
     return hepev
 
-def ExtractHepMCEvents(files:list,get_nevents:bool=False, silent:bool=False):
+def ExtractHepMCEvents(files:Union[str,List[str]],get_nevents:bool=False, silent:bool=False):
+    if(isinstance(files,str)):
+        files = [files]
     events = []
     nevents = 0
     for file in files:
@@ -280,7 +282,6 @@ def ParticleToEndVertex(particle:'hm.GenParticle'):
 
     end_vertex_position = end_vertex.position()
     return rt.Math.XYZTVector(end_vertex_position.x(), end_vertex_position.y(), end_vertex_position.z(), end_vertex_position.t())
-
 
 def GetParticleID(particle:'hm.GenParticle'):
     return particle.pid()
