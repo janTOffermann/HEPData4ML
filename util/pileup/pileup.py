@@ -1,5 +1,6 @@
 import ROOT as rt
 import uproot as ur
+import awkward as ak
 import numpy as np
 import h5py as h5
 import glob,sys,os,pathlib,itertools
@@ -80,6 +81,16 @@ class PileupOverlay:
 
         self.metadata_handler = None
         self.configurator = None
+
+        self.condor_flag = False
+        self.condor_job_number = None
+        self.condor_njobs = None
+        self.condor_warning = False
+
+    def SetHTCondorInfo(self,flag:bool, job_number:int, njobs:int):
+        self.condor_flag = flag
+        self.condor_job_number = job_number
+        self.condor_njobs = njobs # the total number of jobs in this batch; can be useful for divvying up pileup events
 
     def SetMetadataHandler(self,handler:'MetaDataHandler'):
         self.metadata_handler = handler
@@ -757,6 +768,11 @@ class PileupOverlaySingle(PileupOverlay):
     pre-formed pileup events. This may be faster than on-the-fly
     mixing, as it allows one to pre-compute the full pileup.
     """
+
+    def __init__(self, pileup_files = None, rng_seed = 1, mu_file = None):
+        super().__init__(pileup_files, rng_seed, mu_file)
+        self.print_prefix = 'PileupOverlaySingle: '
+
     def _sample_mu_distribution(self):
         self.mu = 1 # just forces sampling of a single event from the file
 
@@ -784,22 +800,75 @@ class PileupOverlayPtFilter(PileupOverlay):
     def __init__(self, pileup_files:Optional[Union[str,list]]=None,rng_seed:int=1,mu_file:str=None, pt_cut=35., precompute=False):
 
         super(PileupOverlayPtFilter,self).__init__(pileup_files,rng_seed,mu_file)
+        self.print_prefix = 'PileupOverlayPtFilter: '
+
+        # For this class, we will enforce that the pileup_files are ROOT format and not ASCII.
+        self._filter_files()
 
         self.pt_cut = pt_cut # GeV
         self.jet_finder = TruthJetFinder('anti_kt',0.4)
         self.event_usage_mask = np.full(self.n_total,False,dtype=bool) # keep track of whether or not an event has been used
         self.leading_pt = np.full(self.n_total,-999.)
         self.precompute = precompute
+        self.found_pt = None
+
+        # This member variable gives us a way of only allowing this object to take every n'th pileup event with pt > pt_cut.
+        # In practice, this can be leveraged by condor jobs to make sure that multiple jobs are reading from different subsets
+        # of the high-pt subset of events.
+        self.high_pt_stride = None # TODO: Better name for variable?
+        self.forbidden_event_mask = np.full(self.n_total, False, dtype=bool) # True == forbidden
 
         # Create an internal histogram, to keep track of the leading jet kinematics -- can be interesting for diagnosis of issues.
         self._initialize_histogram()
+
+    def _filter_files(self):
+        files_filtered = []
+        for file in self.files:
+            is_root = file.split('.')[-1] == 'root'
+            if(not is_root):
+                self._print('Warning: Input pileup file {} not identified as a ROOT file. Removing...'.format(file))
+                continue
+            files_filtered.append(file)
+        self.files = files_filtered
 
     def Initialize(self):
         self.jet_finder.SetConfigurator(self.configurator)
         self.jet_finder.Initialize()
 
+        self._init_event_mask()
+
         if(self.precompute):
             self._precompute_leading_pt()
+
+        # if this is being used in a condor job, st the high_pt_stride
+        if(self.condor_flag):
+
+            # We'll base the stride off of the generation RNG seed, which HTCondor will automatically
+            # TODO: This won't quite work since there's an RNG offset -- need to find out how to deal with that.
+            self.high_pt_stride = None
+
+    def _init_event_mask(self):
+        """
+        Initializes the event mask: this is only really relevant for HTCondor jobs, in which
+        case we will mask out certain "high-pT" events, so that each job will read a unique subset.
+        """
+        if(not self.condor_flag):
+            return
+
+        # For HTCondor usage, we need to know the leading jet pt upfront, because we need to use this to divvy
+        # up the high-pT events.
+        self.precompute = True # just for bookkeeping sake
+        self._precompute_leading_pt()
+
+        # Now, mask out certain high-pT events.
+        high_pt_indices = np.where(self.leading_pt > self.pt_cut)[0]
+        forbidden_indices = high_pt_indices[np.where(np.mod(high_pt_indices,self.condor_njobs) != self.condor_job_number)[0]]
+        self.forbidden_event_mask[forbidden_indices] = True
+
+        # the reset function will (re)initialize the mask to all True, but always mask out
+        # the events marked by self.forbidden_event_mask.
+        self._reset_mask()
+        return
 
     def _initialize_histogram(self):
         binning = (100,0.,100.)
@@ -821,8 +890,14 @@ class PileupOverlayPtFilter(PileupOverlay):
 
     def _reset_mask(self):
         self.event_mask = np.full(self.n_total,True,dtype=bool)
+        self.event_mask[self.forbidden_event_mask] = False
 
     def _fill_leading_pt(self,indices=None):
+
+        if(self.condor_flag and not self.condor_warning):
+            self._print('Warning: Computing leading jet pT for pileup within an HTCondor job.')
+            self._print(' It is typically better to do this as a pre-processing step before the job.')
+            self.condor_warning = True
 
         if(indices is None):
             indices = self.selected_indices
@@ -845,8 +920,8 @@ class PileupOverlayPtFilter(PileupOverlay):
             self.jet_finder.Process(momenta)
             self.leading_pt[index] = np.max( [momentum[0] for momentum in self.jet_finder.jet_vectors_cyl.values() ] )
             self.hist_pt.Fill(self.leading_pt[index])
-            if(self.leading_pt[index] > self.pt_cut):
-                self._print('pt > {} GeV @ index = {}'.format(self.pt_cut,index))
+            # if(self.leading_pt[index] > self.pt_cut):
+            #     self._print('pt > {} GeV @ index = {}'.format(self.pt_cut,index))
         return
 
     def _update_mask(self):
@@ -857,16 +932,70 @@ class PileupOverlayPtFilter(PileupOverlay):
         self.event_mask[masked_indices] = False
 
     def _precompute_leading_pt(self):
-        # We'll batch things.
-        batch_size = 100 # configurable?
-        index_ranges = [(i, min(i + batch_size, self.n_total)) for i in range(0, self.n_total, batch_size)]
-
+        self.found_pt = 0
         self._print('Pre-computing leading jet pT for all input pileup events.')
+        self._print(' Will write results to the input pileup files, in tree "leading_jet_pt_tree".')
+        self._print(' (If this tree already exists, will simply read its contents into memory.).')
 
-        for i,index_range in enumerate(index_ranges):
-            indices = range(*index_range)
-            self._fill_leading_pt(indices)
-            printProgressBarColor(i+1,len(index_ranges),'Pre-computing jet pT:',decimals=2)
+        prefix = 'Pre-computing pileup leading jet pT:'
+        printProgressBarColor(0,len(self.files),prefix,decimals=2)
+        for i,file in enumerate(self.files):
+            self._precompute_leading_pt_single(i)
+            printProgressBarColor(i+1,len(self.files),prefix,decimals=2)
+        self._print('Leading jet pT found in in {}/{} input files.'.format(self.found_pt,len(self.files)))
+
+    def _precompute_leading_pt_single(self,i:int):
+        tree_name = 'leading_jet_pt_tree'
+        branch_name = 'LeadingJetPt'
+        file = self.files[i]
+
+        # Get the global event indices that correspond to this file.
+        indices = np.arange(self.first_idx[file],self.first_idx[file]+self.n_dict[file])
+
+        f = rt.TFile(file,'READ')
+        keys = [x.GetName() for x in f.GetListOfKeys()]
+
+        if(tree_name in keys):
+            # Check that the tree has the right number of entries
+            t = f.Get(tree_name)
+            nentries = t.GetEntries()
+            if(nentries == len(indices)):
+                self.found_pt +=1
+                f.Close()
+                # read in the results from the tree to the buffer
+                self._copy_pt_to_buffer(i,tree_name,branch_name)
+                return
+        f.Close()
+
+        self._fill_leading_pt(indices) # fills the buffer in memory, at indices
+
+        # In practice, multiple HTCondor jobs running our script could be reading in the same
+        # collection of pileup files -- so writing to them might cause issues if multiple jobs
+        # are trying to write simultaneously. To avoid that, we'll only do the writing if this
+        # is *not* an HTCondor job, or if it is job 0 in a batch.
+        # The latter case is technically still dangerous if there are multiple batches simultaneously
+        # writing to the same file, but for now is a risk we will take.
+        if((not self.condor_flag) or (self.condor_flag and self.condor_job_number == 0)):
+            f = rt.TFile(file,'UPDATE')
+            t = rt.TTree(tree_name,tree_name)
+            buffer = np.zeros(1)
+            t.Branch(branch_name,buffer,'{}/D'.format(branch_name))
+            for j,idx in enumerate(indices):
+                buffer[0] = self.leading_pt[idx]
+                t.Fill()
+            f.cd()
+            t.Write('',rt.TTree.kOverwrite)
+            f.Close()
+        return
+
+    def _copy_pt_to_buffer(self,i:int,tree_name:str,branch_name:str):
+        file = self.files[i]
+        indices = np.arange(self.first_idx[file],self.first_idx[file]+self.n_dict[file])
+
+        f = ur.open(file)
+        self.leading_pt[indices] = ak.to_numpy(f[tree_name][branch_name].array())[:]
+        f.close()
+        return
 
     def Process(self, inputs, outputs=None):
         super().Process(inputs, outputs)
@@ -892,6 +1021,8 @@ class PileupOverlayFromGenerator(PileupOverlay):
     def __init__(self, rng_seed:int=1,mu_file:Optional[str]=None, pythia_config_file:Optional[str]=None):
 
         super(PileupOverlayFromGenerator,self).__init__(None,rng_seed,mu_file)
+        self.print_prefix = 'PileupOverlayFromGenerator: '
+
         self.require_pileup_input = False
         self.pythia_config_file = pythia_config_file
         self.SetUsePhiRotations(False) # no reason to use these as we're generating new events on-the-fly
