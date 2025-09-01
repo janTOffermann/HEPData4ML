@@ -42,6 +42,11 @@ def main(args):
     parser.add_argument('-rng',          '--rng',               type=int,          default=None,             help='Pythia RNG seed. Overides the config file.')
     parser.add_argument('-pileup',       '--pileupFiles',       type=str,          default=None,             help='Glob-compatible string for input pileup files, for the pileup step. Overides the config file.')
 
+    # Flag for when running as a parallelized job. Shouldn't need to be touched by user.
+    parser.add_argument('-condor','--condor', action='store_true',help='Flag to be set when this is an HTCondor job; for advanced usage (you typically should *not* set this, for internal use.).')
+    parser.add_argument('-condor_job_number','--condor_job_number', type=int, default= None,help='Number of this HTCondor job; for advanced usage (you typically should *not* set this, for internal use.).')
+    parser.add_argument('-n_condor_jobs','--n_condor_jobs', type=int, default= None,help='Number of HTCondor jobs; for advanced usage (you typically should *not* set this, for internal use.).')
+
     args = vars(parser.parse_args())
 
     metadata_handler = MetaDataHandler()
@@ -77,6 +82,12 @@ def main(args):
 
     pythia_rng = args['rng']
     pileup_files = args['pileupFiles']
+
+    # Arguments to be used by HTCondor jobs.
+    # TODO: Maybe find another way to handle these? A wrapper script for condor?
+    is_condor_job = args['condor']
+    condor_job_number = args['condor_job_number']
+    n_condor_jobs = args['n_condor_jobs']
 
     # Configurator class, used for fetching information from our config file.
     # We import this from a user-supplied file, by default it is config/config.py.
@@ -233,6 +244,7 @@ def main(args):
             pileup_handler.SetOutputDirectory(outdir)
             pileup_handler.SetMetadataHandler(metadata_handler)
             pileup_handler.SetConfigurator(configurator)
+            pileup_handler.SetHTCondorInfo(is_condor_job,condor_job_number,n_condor_jobs)
 
             if(pileup_files is not None): # overriding config file
                 pileup_handler.SetPileupFiles(pileup_files)

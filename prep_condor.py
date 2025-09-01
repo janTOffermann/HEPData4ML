@@ -79,17 +79,18 @@ def main(args):
         '{}', #$4 RNG seed for generation. (can be used to overwrite the builtin config file)
         split, #$5 whether or not to split final HDF5 file into train/validation/test files.
         '{}', #$6 Pythia config (can be used to overwrite the builtin config file)
-        '{}' #$7 Event index offset.
+        '{}' #$7 Event index offset,
+        '{}' #$8 Job number.
     ) # double-quotes for silly condor argument syntax
     with open(jobs_filename,'w') as f:
-        rng_counter = 0
+        job_counter = 0
         for i,pythia_config in enumerate(pythia_configs):
             for j in range(njobs):
-                rng = rng_seed + rng_counter
+                rng = rng_seed + job_counter
                 event_idx_offset = event_idx_offset_initial + j * (len(ptbins) - 1) * nevents # len(ptbins) gives # of bin edges, which is number of bins + 1
-                command_arguments = template.format(rng,pythia_config,event_idx_offset) + '\n'
+                command_arguments = template.format(rng,pythia_config,event_idx_offset,job_counter) + '\n'
                 f.write(command_arguments)
-                rng_counter += 1
+                job_counter += 1
 
     # Move configuration file to the run directory.
     #TODO: Currently assumes file has name "config.py" when running later, but this assumption
