@@ -2,9 +2,9 @@ import sys,os,time,datetime,re,pathlib
 sys.path.append(str(pathlib.Path(os.path.dirname(os.path.abspath(__file__)) + '/../../').resolve()))
 import argparse as ap
 import subprocess as sub
-from util.generation import Generator
+from util.generation.generation import Generator
 from util.reconstruction.conversion import Processor
-from util.config import Configurator, GetConfigDictionary
+from util.config.config import Configurator, GetConfigDictionary
 
 def none_or_str(value): # see https://stackoverflow.com/a/48295546
     if value == 'None':
@@ -86,13 +86,6 @@ def main(args):
         # hep_file = 'events_{}-{}.hepmc'.format(float_to_str(pt_min),float_to_str(pt_max))
 
         generator = Generator(pt_min,pt_max, configurator, pythia_rng,pythia_config_file=pythia_config,verbose=verbose)
-        generator.SetEventSelection(configurator.GetEventSelection())
-        generator.SetTruthSelection(configurator.GetParticleSelection())
-        generator.SetFinalStateSelection(configurator.GetFinalStateSelection())
-        generator.SetEventFilter(configurator.GetEventFilter())
-        generator.SetEventFilterFlag(configurator.GetEventFilterFlag())
-        generator.SetJetConfig(configurator.GetJetConfig())
-        generator.SetNTruth(configurator.GetNPars()['n_truth'])
 
         # get some actual printouts
         generator.pythia_config['Print:quiet'] = 'off'

@@ -6,7 +6,7 @@ from util.reconstruction.post_processing.jets import TruthJetFinder
 from typing import TYPE_CHECKING
 
 if(TYPE_CHECKING):
-    from util.config import Configurator
+    from util.config.config import Configurator
     from util.pythia.utils import PythiaWrapper
 
 class DefaultFilter:

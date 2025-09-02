@@ -1,10 +1,10 @@
 
-import sys,os,glob
+import sys,os
 import argparse as ap
 
 sys.path.append( os.path.dirname(os.path.abspath(__file__)) + '/../..' )
 from util.pileup.pileup import PileupOverlayPtFilter
-from util.config import GetConfigDictionary, Configurator
+from util.config.config import Configurator
 
 def main(args):
     parser = ap.ArgumentParser()

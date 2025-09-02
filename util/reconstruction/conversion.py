@@ -10,14 +10,14 @@ from typing import Union, Optional, List, TYPE_CHECKING
 
 if(TYPE_CHECKING):
     import sys
-    from util.config import Configurator
+    from util.config.config import Configurator
     from util.hepmc.setup import HepMCSetup
     setup = HepMCSetup(verbose=False)
     python_dir = setup.GetPythonDirectory()
     if(python_dir not in sys.path):
         sys.path = [setup.GetPythonDirectory()] + sys.path # prepend, to make sure we pick this one up first
     from pyHepMC3 import HepMC3 as hm
-    from util.meta import MetaDataHandler
+    from util.metadata.meta import MetaDataHandler
 
 class Processor:
     """

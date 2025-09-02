@@ -10,8 +10,8 @@ from util.qol_utils.progress_bar import printProgressBarColor
 from typing import Optional,TYPE_CHECKING
 
 if TYPE_CHECKING: # Only imported during type checking -- avoids risk of circular imports, limits unnecessary imports
-    from util.config import Configurator
-    from util.meta import MetaDataHandler
+    from util.config.config import Configurator
+    from util.metadata.meta import MetaDataHandler
 
 class PythiaGenerator:
     """
@@ -63,7 +63,6 @@ class PythiaGenerator:
         self.writer = Pythia8HepMC3Writer()
 
         self.SetFilename('events.hepmc')
-        self.SetEventFilterFlagFilename() # will give a default name
         self.filename_fullpath = None
 
         # self.diagnostic_plots = True
@@ -134,7 +133,6 @@ class PythiaGenerator:
     def SetDefaultFilenames(self):
         self.SetOutputDirectory(dir)
         self.SetFilename('events.hepmc')
-        self.SetEventFilterFlagFilename()
 
     def SetProgressBar(self,flag:bool):
         self.progress_bar = flag
@@ -143,12 +141,8 @@ class PythiaGenerator:
         if(dir is None): dir = os.getcwd()
         self.outdir = dir
 
-    def SetFilename(self,name:str, rename_extra_files:bool=True):
-        # if('.hepmc' not in name):
-        #     name = '{}.hepmc'.format(name)
+    def SetFilename(self,name:str):
         self.filename = name
-        if(rename_extra_files):
-            self.SetEventFilterFlagFilename(None)
 
         if(self.writer is not None):
             self.writer.SetFilename('{}/{}'.format(self.outdir,self.filename))
@@ -159,14 +153,6 @@ class PythiaGenerator:
 
     def GetHistFilename(self):
         return self.hist_filename
-
-    def SetEventFilterFlagFilename(self,name:Optional[str]=None):
-        if(name is None): self.event_filter_flag_filename = self.filename.replace('.hepmc','_event_filter_flag.h5')
-        else: self.event_filter_flag_filename = name
-        return
-
-    def GetEventFilterFlagFilename(self):
-        return self.event_filter_flag_filename
 
     def _generate_citations(self):
         """
@@ -260,18 +246,11 @@ class PythiaGenerator:
 
             self.pythia.Generate() # generate an event!
 
-            # # Here, we optionally apply pileup (or more generally, merging in some other event(s)).
-            # if(self.pileup_handler is not None):
-            #     #TODO: This needs to be reworked.
-            #     self.pileup_handler(self.pythia)
-
             # ==========================================
-            # Now we apply an (optional) "event filter". This applies some condition to the set
-            # of truth and final-state particles selected above, and requires that the event pass
-            # this condition. If not we will count the event as failed, and generate another.
+            # Now we apply an (optional) "event filter", requiring that our event passes it.
+            # If it does not, we will count the event as failed, and generate another.
             # ==========================================
             if(self.event_filter is not None):
-                print('Running event filter.')
                 passed_filter = self.event_filter(self.pythia)
                 if(not passed_filter):
                     n_fail += 1
@@ -280,11 +259,8 @@ class PythiaGenerator:
             # ==========================================
             # Now lets create the HepMC event.
             # ==========================================
-            # hepmc_event = PythiaWrapperToPyHepMC(self.pythia,i_real)
-
             hepmc_event = hm.GenEvent()
             self.hepmc_converter.fill_next_event1(self.pythia.GetPythia(),hepmc_event,i_real)
-            # hepmc_event = PythiaWrapperToHepMC(self.pythia,i_real)
 
             # Fill the memory buffer with this event.
             self.FillEventBuffer(hepmc_event)
@@ -293,7 +269,6 @@ class PythiaGenerator:
             if(self.GetCurrentBufferSize() == self.buffer_size):
                 header = (self.loop_number == 0) and (not self.header_status)
                 self.WriteEventBufferToFile(header=header,footer=False)
-
 
             if(self.progress_bar): printProgressBarColor(i_real,nevents_disp, prefix=self.prefix, suffix=self.suffix, length=self.bl)
 

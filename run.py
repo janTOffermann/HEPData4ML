@@ -1,14 +1,14 @@
 import sys,os,pathlib,time,datetime,re,shlex
 import argparse as ap
 import subprocess as sub
-from util.generation import PythiaGenerator
-from util.simulation import DelphesSimulator
+from util.generation.generation import PythiaGenerator
+from util.simulation.simulation import DelphesSimulator
 from util.reconstruction.conversion import Processor
-from util.hdf5 import RemoveFailedFromHDF5, SplitH5, AddEventIndices, AddBranch, ConcatenateH5
+from util.hdf5.hdf5 import RemoveFailedFromHDF5, SplitH5, AddEventIndices, AddBranch, ConcatenateH5
 from util.hepmc.hepmc import CompressHepMC
-from util.config import Configurator,GetConfigFileContent, GetConfigDictionary
-from util.args import parse_mc_steps, FloatListAction, none_or_str
-from util.meta import MetaDataHandler, AddMetaDataWithReference
+from util.config.config import Configurator,GetConfigFileContent, GetConfigDictionary
+from util.config.args import parse_mc_steps, FloatListAction, none_or_str
+from util.metadata.meta import MetaDataHandler, AddMetaDataWithReference
 
 # Convenience function for file naming
 def float_to_str(value):
@@ -128,11 +128,6 @@ def main(args):
     if(nevents_per_bin >= 100): h5_conversion_verbosity = 1
     elif(nevents_per_bin >= 10000): h5_conversion_verbosity = 2
 
-    # Keep track of some files we create.
-    hepmc_files = []
-    delphes_files = []
-    filter_flag_files = [] # only used in certain cases, these files hold a boolean flag given by the "event_filter_flag"
-
     # Prepare the output directory.
     if(outdir is None): outdir = os.getcwd()
     else: os.makedirs(outdir,exist_ok=True)
@@ -160,6 +155,7 @@ def main(args):
     #=========================
     # STEP 1: Generation
     #=========================
+    hepmc_files = []
     if('generation' in steps):
 
         if(verbose):
@@ -206,7 +202,7 @@ def main(args):
         generator.SetMetadataHandler(metadata_handler)
 
         generator.SetOutputDirectory(outdir)
-        generator.SetFilename(hep_file, rename_extra_files=False)
+        generator.SetFilename(hep_file)
         generator.SetProgressBar(progress_bar)
 
         hepfile_exists = pathlib.Path('{}/{}'.format(outdir,hep_file)).exists()
@@ -218,7 +214,6 @@ def main(args):
         if(generate):
             generator.Generate(nevents_per_bin)
 
-        filter_flag_files.append(generator.GetEventFilterFlagFilename())
         hepmc_files.append(hep_file)
 
     #===================================
@@ -270,7 +265,7 @@ def main(args):
     #===============================
     # STEP 3: Simulation (optional)
     #===============================
-
+    delphes_files = []
     simulation_type=None
     if('simulation' in steps):
         simulator = None
@@ -293,7 +288,7 @@ def main(args):
         if(verbose): print('\nRunning recoonstruction and producing final HDF5 output.\n')
         processor = Processor(configurator)
         processor.SetNentriesPerChunk(10) # the larger this is, the larger the chunks in memory (and higher the memory usage)
-        processor.SetDelphesFiles(delphes_files)
+        processor.SetDelphesFiles(delphes_files) # TODO: Handle case of no delphes_files?
         processor.SetOutputDirectory(outdir)
         processor.SetMetadataHandler(metadata_handler)
 

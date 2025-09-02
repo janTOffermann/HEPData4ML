@@ -2,7 +2,7 @@ import sys,os,pathlib
 import argparse as ap
 import subprocess as sub
 from util.condor import condor_utils
-from util.args import parse_mc_steps, FloatListAction
+from util.config.args import parse_mc_steps, FloatListAction
 
 def main(args):
     parser = ap.ArgumentParser()

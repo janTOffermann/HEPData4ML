@@ -10,7 +10,7 @@ class VectorCalcsManager:
         self.verbose = verbose
         self.lib_extensions = ['so','dylib']
         self.build_script = 'build.sh'
-        self.script_dir = os.path.realpath(os.path.dirname(os.path.realpath(__file__)) + '/root/vcalcs')
+        self.script_dir = os.path.realpath(os.path.dirname(os.path.realpath(__file__)) + '/../root/vcalcs')
         self.cmake_template = self.script_dir + '/../cmake_templates/CMakeLists_vectorcalcs.txt'
         self.status = False
 
