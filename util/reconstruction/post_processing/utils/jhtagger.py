@@ -7,7 +7,6 @@ import ROOT as rt
 from util.math.embedding import embed_array_inplace
 from util.qol_utils.progress_bar import printProgressBar, printProgressWithOutput
 
-
 if TYPE_CHECKING: # Only imported during type checking -- avoids circular imports we'd otherwise get, since jets imports this file
     from util.reconstruction.post_processing.jets import JetFinder
 
@@ -26,7 +25,7 @@ class JHTaggerSetup:
 
     def SetDirectory(self,dir):
         if(dir is None):
-            dir = os.path.dirname(os.path.abspath(__file__)) + '/../../root/jhtagger'
+            dir = os.path.dirname(os.path.abspath(__file__)) + '/../../../root/jhtagger'
         self.dir = dir
         self.logfile = '{}/log.stdout'.format(self.dir)
         self.errfile = '{}/log.stderr'.format(self.dir)
@@ -56,7 +55,7 @@ class JHTaggerSetup:
 
         # TODO: Clean this up. Somehow put information from fastjet setup back into configurator?
         if(fastjet_dir is None):
-            fastjet_dir = os.path.dirname(os.path.abspath(__file__)) + '/../../../external/fastjet'
+            fastjet_dir = os.path.dirname(os.path.abspath(__file__)) + '/../../../../external/fastjet'
 
         # TODO: This might crash if fastjet is not built yet? Could be an issue for a first run, need to test!
         fastjet_lib = glob.glob('{}/**/lib'.format(fastjet_dir),recursive=True)[0]
