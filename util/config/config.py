@@ -221,10 +221,10 @@ class Configurator:
         return self.config['reconstruction']['post_processing']
 
     def GetEventFilter(self):
-        return self.config['reconstruction']['event_filter']
-
-    def GetEventFilterFlag(self):
-        return self.config['reconstruction']['event_filter_flag']
+        try:
+            return self.config['generation']['event_filter']
+        except:
+            return None
 
     def GetDelphesRngSeed(self):
         return self.config['simulation']['delphes_rng_seed']

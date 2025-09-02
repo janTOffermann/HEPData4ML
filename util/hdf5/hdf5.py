@@ -3,7 +3,6 @@ import subprocess as sub
 import numpy as np
 import h5py as h5
 
-
 def ConcatenateH5(input_file_patterns,output_file,cwd=None,delete_inputs=False,compression='gzip',copts=9,ignore_keys=None,verbose=False, silent_drop=False):
     # Determine what are the input files.
     input_files = []
@@ -102,7 +101,6 @@ def ConcatenateH5(input_file_patterns,output_file,cwd=None,delete_inputs=False,c
             sub.check_call(['rm',f])
 
     return
-
 
 def MergeH5(target_file, input_file, cwd=None, delete_stats_file=False, compression='gzip',copts=9):
     if(cwd is not None):

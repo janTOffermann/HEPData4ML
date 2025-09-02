@@ -7,14 +7,14 @@ import glob,sys,os,pathlib,itertools
 import subprocess as sub
 from util.qol_utils.progress_bar import printProgressBarColor
 from util.qol_utils.pdg import DatabasePDG
-from util.meta import MetaDataHandler
-from util.config import Configurator
+from util.metadata.meta import MetaDataHandler
+from util.config.config import Configurator
 from util.math.rotations import RotateVector
 from util.reconstruction.post_processing.jets import TruthJetFinder
 from util.hepmc.setup import HepMCSetup, prepend_to_pythonpath
 from util.hepmc.readers import ReaderAscii, ReaderRootTree # our wrappers for the HepMC3 reader classes
 from util.hepmc.hepmc import ParticleToVector
-from util.generation import PythiaGenerator
+from util.generation.generation import PythiaGenerator
 from typing import List, Union, Tuple, Optional, TYPE_CHECKING
 
 if(TYPE_CHECKING):
