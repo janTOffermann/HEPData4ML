@@ -1,14 +1,10 @@
-import os,glob,pathlib
-import subprocess as sub
 import numpy as np
 import ROOT as rt
 import h5py as h5
-from util.calcs import embed_array_inplace
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING: # Only imported during type checking -- avoids circular imports we'd otherwise get, since jets imports this file
     from util.reconstruction.post_processing.jets import JetFinder
-
 
 class ContainmentTagger:
     """

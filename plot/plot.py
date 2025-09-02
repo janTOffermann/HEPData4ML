@@ -13,7 +13,7 @@ from plot_util.plot_util import RN, MetaDataHandler,Plotter
 path_prefix = os.path.dirname(os.path.abspath(__file__)) + '/../'
 if(path_prefix not in sys.path): sys.path.append(path_prefix)
 from util.qol_utils.pdg import pdg_names
-from util.calcs import Calculator
+from util.math.calculator import Calculator
 
 def DeltaR(vec1,vec2):
     n = vec1.shape[0]

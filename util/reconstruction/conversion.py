@@ -2,7 +2,7 @@ import glob, itertools
 import numpy as np
 import h5py as h5
 import ROOT as rt
-from util.calcs import embed_array
+from util.math.embedding import embed_array
 from util.buffer import IndexableLazyLoader
 from util.qol_utils.progress_bar import printProgressBarColor
 from util.hepmc.hepmc import ExtractHepMCEvents, ExtractHepMCParticles, ParticleToVector, ParticleToProductionVertex, ParticleToEndVertex, IsStable

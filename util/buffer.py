@@ -8,7 +8,7 @@ from abc import ABC, abstractmethod
 # import os
 # this_dir = os.path.dirname(os.path.abspath(__file__))
 # sys.path.append(str(pathlib.Path('{}/../'.format(this_dir)).absolute()))
-from util.calcs import embed_array
+from util.math.embedding import embed_array
 
 # Classes for data buffers, to be used by the post-processors (such as JetFinder).
 # NOTE: Our HepMC -> HDF5 conversion in conversion.py also uses some buffering logic,
