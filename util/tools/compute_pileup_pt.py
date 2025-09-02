@@ -9,19 +9,19 @@ from util.config import GetConfigDictionary, Configurator
 def main(args):
     parser = ap.ArgumentParser()
     parser.add_argument('-i','--inputFiles',type=str,help='Glob-compatible string for input HepMC3/ROOT pileup files.',required=True)
+    parser.add_argument('-fastjet','--fastjetDir',type=str,help='FastJet installation directory. Defaults to `None`, which will use local install.',default=None)
     args = vars(parser.parse_args())
 
     input_files = args['inputFiles']
+    fastjet_dir = args['fastjetDir']
 
     # Create a configurator -- used under-the-hood by pileup_handler for some FastJet configuration.
-    # config_dictionary = GetConfigDictionary(config_file)
-    # configurator = Configurator(config_dictionary=config_dictionary)
-    config_dictionary = {'reconstruction':{'fastjet_dir':None}}
+    config_dictionary = {'reconstruction':{'fastjet_dir':fastjet_dir}}
     configurator = Configurator(config_dictionary=config_dictionary)
 
     pileup_handler = PileupOverlayPtFilter(input_files,precompute=True)
     pileup_handler.SetConfigurator(configurator)
-    pileup_handler.Initialize()
+    pileup_handler.Initialize() # this will launch the computation of the leading jet pt
 
     return
 

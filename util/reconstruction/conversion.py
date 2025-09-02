@@ -1,10 +1,7 @@
-import os
-import glob, uuid, itertools
+import glob, itertools
 import numpy as np
 import h5py as h5
 import ROOT as rt
-import uproot as ur
-import subprocess as sub
 from util.calcs import embed_array
 from util.buffer import IndexableLazyLoader
 from util.qol_utils.progress_bar import printProgressBarColor

@@ -129,7 +129,7 @@ Note that certain arguments, such as `--pythia_config`, are redundant with the i
 ### The config file
 As noted above, most of the configuration is handled by a config file, by default that in `config/config.py`. Here is the annotated example file that ships with this repository:
 ```
-import util.post_processing.jets as jets
+import util.reconstruction.post_processing.jets as jets
 import util.particle_selection.particle_selection as parsel
 import util.particle_selection.selection_algos as algos
 import util.pileup.pileup as pu

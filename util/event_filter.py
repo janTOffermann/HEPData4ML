@@ -2,7 +2,7 @@
 # it can be thrown out instead of being written to the HepMC file -- and it is not counted towards the
 # total number of events we have generated.
 import numpy as np
-from util.post_processing.jets import TruthJetFinder
+from util.reconstruction.post_processing.jets import TruthJetFinder
 from typing import TYPE_CHECKING
 
 if(TYPE_CHECKING):

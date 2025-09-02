@@ -184,11 +184,6 @@ class Configurator:
     def GetParticleSelection(self):
         return self.config['reconstruction']['particle_selection']
 
-    # def GetJetConfig(self):
-    #     return_dict = {}
-    #     for key in ['jet_radius','jet_min_pt','jet_max_eta','jet_n_par','jet_selection']: return_dict[key] = self.config['reconstruction'][key]
-    #     return return_dict
-
     def GetSimulationType(self):
         return self.config['simulation']['type'].lower()
 

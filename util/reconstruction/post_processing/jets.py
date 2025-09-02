@@ -10,12 +10,12 @@ from util.qol_utils.progress_bar import printProgressBarColor
 from util.buffer import Buffer
 from util.meta import AddMetaDataWithReference, GetMetadata
 
-import util.post_processing.utils.ghost_association as ghost_assoc
-import util.post_processing.utils.softdrop as softdrop
-import util.post_processing.utils.jhtagger as jhtagger
-import util.post_processing.utils.jet_filter as jet_filter
-import util.post_processing.utils.containment as containment
-import util.post_processing.utils.simple_btag as simple_btag
+import util.reconstruction.post_processing.utils.ghost_association as ghost_assoc
+import util.reconstruction.post_processing.utils.softdrop as softdrop
+import util.reconstruction.post_processing.utils.jhtagger as jhtagger
+import util.reconstruction.post_processing.utils.jet_filter as jet_filter
+import util.reconstruction.post_processing.utils.containment as containment
+import util.reconstruction.post_processing.utils.simple_btag as simple_btag
 
 if(TYPE_CHECKING):
     from util.meta import MetaDataHandler
@@ -560,8 +560,8 @@ class JetFinder(JetFinderBase):
 class TruthJetFinder(JetFinderBase):
     """
     A simple jet-finding class, for use with event filters.
-    See the JetFinder in util/post_processing/jets.py for a more
-    complete example (made to work with HDF5 input files).
+    See the JetFinder in util/reconstruction/post_processing/jets.py
+    for a more complete example (made to work with HDF5 input files).
     """
 
     def __init__(self, jet_algorithm:str='anti_kt',radius:float=0.4, jet_name:str='AK04Jets', n_jets_max:Optional[int]=None,fastjet_dir:Optional[str]=None):

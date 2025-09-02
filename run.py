@@ -3,7 +3,7 @@ import argparse as ap
 import subprocess as sub
 from util.generation import PythiaGenerator
 from util.simulation import DelphesSimulator
-from util.conversion import Processor
+from util.reconstruction.conversion import Processor
 from util.hdf5 import RemoveFailedFromHDF5, SplitH5, AddEventIndices, AddBranch, ConcatenateH5
 from util.hepmc.hepmc import CompressHepMC
 from util.config import Configurator,GetConfigFileContent, GetConfigDictionary

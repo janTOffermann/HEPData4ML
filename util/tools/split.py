@@ -1,7 +1,7 @@
 import sys,os
 import argparse as ap
 sys.path.append(os.path.dirname(os.path.abspath(__file__)) + '/../..')
-from util.conversion import SplitH5
+from util.reconstruction.conversion import SplitH5
 
 def main(args):
     parser = ap.ArgumentParser()
