@@ -10,7 +10,7 @@ from util.qol_utils.pdg import DatabasePDG
 from util.meta import MetaDataHandler
 from util.config import Configurator
 from util.math.rotations import RotateVector
-from util.post_processing.jets import TruthJetFinder
+from util.reconstruction.post_processing.jets import TruthJetFinder
 from util.hepmc.setup import HepMCSetup, prepend_to_pythonpath
 from util.hepmc.readers import ReaderAscii, ReaderRootTree # our wrappers for the HepMC3 reader classes
 from util.hepmc.hepmc import ParticleToVector

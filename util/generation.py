@@ -4,7 +4,7 @@ import subprocess as sub
 from util.pythia.utils import PythiaWrapper
 from util.hepmc.hepmc import Pythia8HepMC3Writer
 from util.hepmc.Pythia8ToHepMC3 import Pythia8ToHepMC3
-from util.hepmc.setup import HepMCSetup, uncache_hepmc3, prepend_to_pythonpath
+from util.hepmc.setup import HepMCSetup, prepend_to_pythonpath
 
 from util.qol_utils.progress_bar import printProgressBarColor
 from typing import Optional,TYPE_CHECKING

@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Optional, Union
 # from numpy.typing import NDArray
 
 if TYPE_CHECKING: # Only imported during type checking -- avoids circular imports we'd otherwise get, since jets imports this file
-    from util.post_processing.jets import JetFinder
+    from util.reconstruction.post_processing.jets import JetFinder
 
 # TODO: Something seems broken, ghost is (occasionally?) throwing off <jet_name>.Constituents.Collection.
 #       Appears at end of Constituents.Pmu, but not end of that branch.

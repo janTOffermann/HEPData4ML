@@ -2,7 +2,7 @@ import numpy as np
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING: # Only imported during type checking -- avoids circular imports we'd otherwise get, since jets imports this file
-    from util.post_processing.jets import JetFinder
+    from util.reconstruction.post_processing.jets import JetFinder
 
 
 class PtFilter:

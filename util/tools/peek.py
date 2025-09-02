@@ -3,7 +3,7 @@ sys.path.append(str(pathlib.Path(os.path.dirname(os.path.abspath(__file__)) + '/
 import argparse as ap
 import subprocess as sub
 from util.generation import Generator
-from util.conversion import Processor
+from util.reconstruction.conversion import Processor
 from util.config import Configurator, GetConfigDictionary
 
 def none_or_str(value): # see https://stackoverflow.com/a/48295546
