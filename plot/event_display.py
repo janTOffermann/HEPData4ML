@@ -8,7 +8,7 @@ import argparse as ap
 path_prefix = os.path.dirname(os.path.abspath(__file__)) + '/../'
 if(path_prefix not in sys.path): sys.path.append(path_prefix)
 from util.qol_utils.qol_util import RN
-from util.calcs import Calculator
+from util.math.calculator import Calculator
 
 def JetCurveInThetaEdges(eta0=0,radius=0.8):
     edge_1 = 2. * np.arctan(np.exp(-radius + eta0)) - 0.5 * np.pi + 1.0e-12

@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 import subprocess as sub
 import numpy as np
 import ROOT as rt
-from util.calcs import embed_array_inplace
+from util.math.embedding import embed_array_inplace
 from util.qol_utils.progress_bar import printProgressBar, printProgressWithOutput
 
 

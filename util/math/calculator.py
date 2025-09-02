@@ -41,7 +41,6 @@ def embed_array_inplace(array, target, padding_value=0):
     target[slices] = array_np[slices]
     return
 
-
 class Calculator:
 # Note: Some functions have a funny-looking structure - they
 #       will try to use our custom "VectorCalcs" C++/ROOT library,
