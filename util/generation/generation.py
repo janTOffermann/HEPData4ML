@@ -93,12 +93,6 @@ class PythiaGenerator:
         self.citations = {}
         self._generate_citations()
 
-        # Variables related to handling of pileup.
-        # TODO: Might want to eventually reorganize this, or move it into a separate class?
-        # self.pileup_handler = self.configurator.GetPileupHandling()
-
-        # self.calculator = Calculator(use_vectorcalcs=self.configurator.GetUseVectorCalcs())
-
     def SetPtMin(self,pt_min):
         self.pt_min = pt_min
 
@@ -183,7 +177,10 @@ class PythiaGenerator:
         into a list of strings ready to be input to Pythia8.
         """
         self.pythia_config = self.configurator.GetPythiaConfig(self.pt_min,self.pt_max, verbose)
-        self.SetPythiaConfigFile(file=config_file)
+        self.SetPythiaConfigFile(file=config_file) # sets from the Python config file if "config_file = None"
+
+        if(self.pythia_config_file is None): # special case
+            return # not going to init the generator -- will need to handle this later on
 
         # Optionally set the Pythia RNG seed to something other than what's in the config.
         # TODO: Can we make this more tidy?
@@ -244,23 +241,25 @@ class PythiaGenerator:
 
         for i in range(nevents):
 
-            self.pythia.Generate() # generate an event!
+            if(self.pythia.GetStatus()): # if false, pythia generator is not initialized -> will produce an empty HepMC event
+                self.pythia.Generate() # generate an event!
 
-            # ==========================================
-            # Now we apply an (optional) "event filter", requiring that our event passes it.
-            # If it does not, we will count the event as failed, and generate another.
-            # ==========================================
-            if(self.event_filter is not None):
-                passed_filter = self.event_filter(self.pythia)
-                if(not passed_filter):
-                    n_fail += 1
-                    continue
+                # ==========================================
+                # Now we apply an (optional) "event filter", requiring that our event passes it.
+                # If it does not, we will count the event as failed, and generate another.
+                # ==========================================
+                if(self.event_filter is not None):
+                    passed_filter = self.event_filter(self.pythia)
+                    if(not passed_filter):
+                        n_fail += 1
+                        continue
 
             # ==========================================
             # Now lets create the HepMC event.
             # ==========================================
             hepmc_event = hm.GenEvent()
-            self.hepmc_converter.fill_next_event1(self.pythia.GetPythia(),hepmc_event,i_real)
+            if(self.pythia.GetStatus()):
+                self.hepmc_converter.fill_next_event1(self.pythia.GetPythia(),hepmc_event,i_real)
 
             # Fill the memory buffer with this event.
             self.FillEventBuffer(hepmc_event)
@@ -275,8 +274,12 @@ class PythiaGenerator:
             # Record this event's weight and process code from Pythia.
             #TODO: Consider removing this, or adjusting how it is handled -- if the user provides
             #      externally-produced HepMC files, they won't have these things.
-            self.weights[i_real-1] = self.pythia.GetEventWeight() # convert from 1-indexing to 0-indxing
-            self.process_codes[i_real-1] = self.pythia.GetProcessCode() # convert from 1-indexing to 0-indxing
+            if(self.pythia.GetStatus()):
+                self.weights[i_real-1] = self.pythia.GetEventWeight() # convert from 1-indexing to 0-indxing
+                self.process_codes[i_real-1] = self.pythia.GetProcessCode() # convert from 1-indexing to 0-indxing
+            else:
+                self.weights[i_real-1] = 1.
+                self.process_codes[i_real-1] = -1
 
             i_real += 1 # If success, increase i_real -- this is a counter for the number of successful events
 
