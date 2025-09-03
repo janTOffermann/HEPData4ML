@@ -67,6 +67,9 @@ def main(args):
     os.makedirs(rundir,exist_ok=True)
     os.makedirs(outdir,exist_ok=True)
 
+    # Prepare a plaintext file with all the different sets of arguments, for the various jobs.
+    jobs_filename = '{}/arguments.txt'.format(rundir)
+
     # Determine the total number of jobs.
     with open(jobs_filename,'w') as f:
         job_counter = 0
@@ -75,12 +78,10 @@ def main(args):
                 job_counter += 1
     njobs_total = job_counter
 
-    # Prepare a plaintext file with all the different sets of arguments, for the various jobs.
-    jobs_filename = '{}/arguments.txt'.format(rundir)
     ptbins_str = ','.join([str(x) for x in ptbins])
     steps_str = ','.join(steps)
 
-    template = '{} {} {} {} {} {} {}'.format(
+    template = '{} {} {} {} {} {} {} {} {}'.format(
         nevents, # $1 Number of events per pT bin.
         ptbins_str, #$2 pT bins (list of bin edges)
         steps_str, #3 steps to run

@@ -35,7 +35,7 @@ class PileupOverlay:
     like what is done in Monte Carlo sample preparation for the CMS experiment.
     """
 
-    def __init__(self, pileup_files:Optional[Union[str,list]]=None,rng_seed:int=1,mu_file:str=None):
+    def __init__(self, pileup_files:Optional[Union[str,list]]=None,rng_seed:int=1,mu_input:str=None):
 
         # Upon start, make sure that hepmc is set up
         self._init_hepmc()
@@ -61,9 +61,9 @@ class PileupOverlay:
         self.phi_rotations = {} # accumulate the phi rotations per event -> for output. Dictionary keys are filename
 
         # Set up the distribution for # of interactions per crossing
-        self.mu_file = mu_file
         self.available_mu_values = None
         self.mu_probabilities = None
+        self.mu_input = mu_input
         self._init_mu_distribution()
         self.mu = None # transient storage for the current value of mu
         self.mu_values = {} # will store a list of all used mu values
@@ -161,9 +161,17 @@ class PileupOverlay:
         return
 
     def _index_root(self,file):
+        tree_name = "hepmc3_tree"
+        # self._print('_index_root: file = ' + file)
         f = rt.TFile(file,"READ")
-        t = f.Get("hepmc3_tree")
-        n = t.GetEntries()
+        keys = [x.GetName() for x in f.GetListOfKeys()]
+        if(tree_name not in keys):
+            # remove this file from the input list entirely
+            self.files = [x for x in self.files if x != file]
+            return
+        else:
+            t = f.Get("hepmc3_tree")
+            n = t.GetEntries()
         f.Close()
         self.first_idx[file] = self.n_total
         self.n_dict[file] = n
@@ -189,11 +197,29 @@ class PileupOverlay:
         """
         self.beam_spot_sigma = (dt,dx,dy,dz)
 
-    def _init_mu_distribution(self):
-        hist_name = 'SimplePileup_mu'
+    def _init_mu_from_file(self,file_name, hist_name=None):
+        if(hist_name is None):
+            hist_name = 'PileupOverlay_mu'
+        try:
+            f = rt.TFile(file_name,"READ")
+            self.mu_distribution = f.Get(hist_name).Clone()
+            self.mu_distribution.SetDirectory(0)
+            f.Close()
+        except:
+            self._print("Error: failed to read histogram {} from file {}.".format(hist_name,file_name))
+            self._print("Falling back on default mu distribution.")
+            self.mu_input = None
+            self._init_mu_distribution()
 
-        if(self.mu_file is None):
+
+    def _init_mu_distribution(self):
+
+        # Multiple kinds of information to parse.
+
+        # None: use default distribution
+        if(self.mu_input is None):
             # default
+            hist_name = 'PileupOverlay_mu_default'
             nbins = 80
             self.mu_distribution = rt.TH1F(hist_name,'',nbins,0,nbins)
             # very approximate for Run 2,
@@ -203,17 +229,28 @@ class PileupOverlay:
             for i in range(nbins):
                 self.mu_distribution.SetBinContent(i+1,self._gaussian(i,mu,sigma))
 
+        # String: interpret as a filepath, optionally with histogram name after a colon
+        elif(isinstance(self.mu_input,str)):
+            file_name = self.mu_input.split(':')[0]
+            hist_name = None
+            if(':' in self.mu_input):
+                hist_name = self.mu_input.split(':')[-1]
+            self._init_mu_from_file(file_name,hist_name)
+
+        elif(isinstance(self.mu_input,list) or isinstance(self.mu_input,tuple) or isinstance(self.mu_input,np.ndarray)):
+            if(len(self.mu_input) == 2):
+                hist_name = 'PileupOverlay_mu'
+                nbins = 80
+                self.mu_distribution = rt.TH1F(hist_name,'',nbins,0,nbins)
+                mu = self.mu_input[0]
+                sigma = self.mu_input[1]
+                for i in range(nbins):
+                    self.mu_distribution.SetBinContent(i+1,self._gaussian(i,mu,sigma))
         else:
-            try:
-                f = rt.TFile(self.mu_file,"READ")
-                self.mu_distribution = f.Get(hist_name).Clone()
-                self.mu_distribution.SetDirectory(0)
-                f.Close()
-            except:
-                print("Error: SimplePileup failed to read histogram {} from file {}.".format(hist_name,self.mu_file))
-                print("Falling back on default mu distribution.")
-                self.mu_file = None
-                self._init_mu_distribution()
+            self._print("mu_input not understood.")
+            self._print("Falling back on default mu distribution.")
+            self.mu_input = None
+            self._init_mu_distribution()
 
         n = self.mu_distribution.GetNbinsX()
         mu_min = self.mu_distribution.GetXaxis().GetBinLowEdge(1)
@@ -518,7 +555,9 @@ class PileupOverlay:
         events.clear()
         return
 
-    def _gaussian(self,x,mu,sig,A=None):
+    def _gaussian(self,x,mu,sig,A=None,require_positive=True):
+        if(require_positive and x < 0.):
+            return 0.
         if(A is None): A = 1. / (np.sqrt(2.0 * np.pi))
         return A * np.exp(-np.square((x - mu) / sig) / 2)
 
@@ -597,7 +636,8 @@ class PileupOverlay:
 
         main_event_displacement = np.random.normal(0,beam_spot_sigma,4)
         sumpt2 = self._sumpt2(main_event)
-        main_event_displacement[1:3] /= sumpt2 # adjust the x- and y-displacements, to make them smaller based on sum of pt2 of charged particles. A little unclear on units/scale here...
+        if(sumpt2 > 0.):
+            main_event_displacement[1:3] /= sumpt2 # adjust the x- and y-displacements, to make them smaller based on sum of pt2 of charged particles. A little unclear on units/scale here... #TODO: Check this? Based on some Delphes code
         combined_event.shift_position_by(hm.FourVector(*np.roll(main_event_displacement,-1))) # using np.roll to get from (t,x,y,z) to (x,y,z,t)
         # self._displace_event(combined_event,*main_event_displacement)
 
@@ -769,8 +809,8 @@ class PileupOverlaySingle(PileupOverlay):
     mixing, as it allows one to pre-compute the full pileup.
     """
 
-    def __init__(self, pileup_files = None, rng_seed = 1, mu_file = None):
-        super().__init__(pileup_files, rng_seed, mu_file)
+    def __init__(self, pileup_files = None, rng_seed = 1, mu_input = None):
+        super().__init__(pileup_files, rng_seed, mu_input)
         self.print_prefix = 'PileupOverlaySingle: '
 
     def _sample_mu_distribution(self):
@@ -797,9 +837,9 @@ class PileupOverlayPtFilter(PileupOverlay):
     # of running more slowly (since this involves an extra layer
     # of jet clustering).
 
-    def __init__(self, pileup_files:Optional[Union[str,list]]=None,rng_seed:int=1,mu_file:str=None, pt_cut=35., precompute=False):
+    def __init__(self, pileup_files:Optional[Union[str,list]]=None,rng_seed:int=1,mu_input:str=None, pt_cut=35., precompute=False):
 
-        super(PileupOverlayPtFilter,self).__init__(pileup_files,rng_seed,mu_file)
+        super(PileupOverlayPtFilter,self).__init__(pileup_files,rng_seed,mu_input)
         self.print_prefix = 'PileupOverlayPtFilter: '
 
         # For this class, we will enforce that the pileup_files are ROOT format and not ASCII.
@@ -1018,9 +1058,9 @@ class PileupOverlayFromGenerator(PileupOverlay):
     on-the-fly.
     """
 
-    def __init__(self, rng_seed:int=1,mu_file:Optional[str]=None, pythia_config_file:Optional[str]=None):
+    def __init__(self, rng_seed:int=1,mu_input:Optional[str]=None, pythia_config_file:Optional[str]=None):
 
-        super(PileupOverlayFromGenerator,self).__init__(None,rng_seed,mu_file)
+        super(PileupOverlayFromGenerator,self).__init__(None,rng_seed,mu_input)
         self.print_prefix = 'PileupOverlayFromGenerator: '
 
         self.require_pileup_input = False
