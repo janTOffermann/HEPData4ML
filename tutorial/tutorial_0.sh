@@ -36,5 +36,4 @@ python $script \
   -sp 0 \
   -index_offset 0 \
   -config $config \
-  --verbose 0 \
- --steps "generation"
+  --steps "generation"
