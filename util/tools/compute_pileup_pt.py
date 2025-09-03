@@ -14,11 +14,22 @@ def main(args):
     parser.add_argument('-i','--inputFiles',type=str,help='Glob-compatible string for input HepMC3/ROOT pileup files.',required=True)
     parser.add_argument('-o','--outputDirectory',type=str,help='Output directory. If provided, will copy input files there first, and act on those.',default=None)
     parser.add_argument('-fastjet','--fastjetDir',type=str,help='FastJet installation directory. Defaults to `None`, which will use local install.',default=None)
+
+    parser.add_argument('-condor','--condor',action='store_true',help='Whether or not to prep condor jobs to run this in parallel.')
+    parser.add_argument('-r','--runDirectory',type=str,default=None,help='[condor only] Run directory.')
+    parser.add_argument('-m','--mode',type=int,default=-1,help='[condor only] Running mode.')
+    parser.add_argument('-n','--nFiles',type=int,default=-1,help='Number of files to run on.')
+
+
     args = vars(parser.parse_args())
 
     input_files = args['inputFiles']
     output_directory = args['outputDirectory']
     fastjet_dir = args['fastjetDir']
+    condor = args['condor']
+    run_directory = args['runDirectory']
+    run_mode = args['mode']
+    n_files = args['nFiles']
 
     # Create a configurator -- used under-the-hood by pileup_handler for some FastJet configuration.
     config_dictionary = {'reconstruction':{'fastjet_dir':fastjet_dir}}
@@ -30,20 +41,33 @@ def main(args):
         os.makedirs(output_directory,exist_ok=True)
         input_file_list = glob.glob(input_files,recursive=True)
 
-        for i,file in input_file_list:
+        for i,file in enumerate(input_file_list):
+            if(n_files > 0 and i >= n_files):
+                break
 
             new_file = '{}/{}'.format(output_directory,file.split('/')[-1])
             if(pathlib.Path(new_file).exists()):
                 print('Warning: Output file {} already exists.'.format(new_file))
             else:
+                print('Copying input file {}/{} to output (where it will be modified by job).'.format(i+1,len(input_file_list)))
                 command = ['cp',file,new_file]
                 sub.check_call(command)
             input_files_new.append(new_file)
         input_files = input_files_new
 
-    pileup_handler = PileupOverlayPtFilter(input_files,precompute=True)
-    pileup_handler.SetConfigurator(configurator)
-    pileup_handler.Initialize() # this will launch the computation of the leading jet pt
+    if(not condor):
+        pileup_handler = PileupOverlayPtFilter(input_files,precompute=True)
+        pileup_handler.SetConfigurator(configurator)
+        pileup_handler.Initialize() # this will launch the computation of the leading jet pt
+        return
+
+    assert(run_directory is not None)
+
+    condor_runner = CondorRunner()
+    condor_runner.SetRunDirectory(run_directory)
+    condor_runner.SetInputFiles(input_files)
+    condor_runner.SetPayloadMode(run_mode)
+    condor_runner.Prepare()
 
     return
 
@@ -54,6 +78,12 @@ class CondorRunner:
         self.batch_name = 'HEPData4ML::compute_pileup_pt'
         self.requirements = None
         self.payload_mode = 0
+        self.payload_string = ''
+        self.this_dir = os.path.dirname(os.path.abspath(__file__))
+        self.njobs = 0
+
+        self.git_branch = None
+        self.condor_template = None
 
     def SetPayloadMode(self,val:int):
         self.payload_mode = val
@@ -71,35 +101,47 @@ class CondorRunner:
     def SetRunDirectory(self,val:str):
         self.rundir = val
 
-    def SetOutputDirectory(self,val:str):
-        self.outdir = val
-
     def SetCondorTemplate(self,val:str):
-        self.condor_template = val
+        path = pathlib.Path(val)
 
-    def run_condor(self):
+        if(not path.exists()):
+            print('Warning: Condor template {} does not exist.'.format(val))
+            assert False
+        self.condor_template = str(pathlib.Path(val).absolute())
 
-        this_dir = os.path.dirname(os.path.abspath(__file__))
+    def Prepare(self):
 
         # check that the template submission file exists
         if(self.condor_template is None):
-            self.SetCondorTemplate('{}/../util/condor/condor_templates/condor_template.sub'.format(this_dir))
+            self.SetCondorTemplate('{}/../../util/condor/condor_templates/condor_template.sub'.format(self.this_dir))
         if(not pathlib.Path(self.condor_template).exists()):
             print('Error: Condor submission file template not found: {}'.format(self.condor_template))
             return
 
         # Prepare the job and output directories.
         os.makedirs(self.rundir,exist_ok=True)
-        os.makedirs(self.outdir,exist_ok=True)
 
         # Prepare a plaintext file with all the different sets of arguments, for the various jobs.
         arguments_filename = '{}/arguments.txt'.format(self.rundir)
         with open(arguments_filename,'w') as f:
             for i,input_file in enumerate(self.input_files):
-                f.write('{}\n'.format(input_file))
+                f.write('{}\n'.format(str(pathlib.Path(input_file).absolute())))
+                self.njobs += 1
 
-    def _write_condor_submission_file(self):
+        # Prepare the payload & its options.
+        self._payload()
 
+        # Prepare the condor submission file.
+        self._write_condor_submission_file()
+
+        # Copy executable to the run directory
+        self._copy_executable()
+
+        # Make subdirs.
+        self._prepare_subdirs()
+
+
+    def _payload(self):
         ######################
         # Handling the payload
         ######################
@@ -115,35 +157,36 @@ class CondorRunner:
         # shipped to some temporary directory but rather run directly out of "initialdir",
         # this might be preferrable or necessary.
 
-        payload_string = ''
-        if(git_branch is None): git_branch = GetGitBranch()
+        if(self.git_branch is None): self.git_branch = GetGitBranch()
 
-        if(payload_mode == 1):
+        if(self.payload_mode == 1):
             print(63 * '-')
             print('HEPData4ML repository will be cloned internally by condor jobs.')
             print(63 * '-')
 
-        elif(payload_mode == 2):
+        elif(self.payload_mode == 2):
             # We have to do a local git clone
             payload = 'payload.tar.gz'
             gitdir = 'HEPData4ML'
-            PreparePayloadFromClone(self.rundir,payload,gitdir,branch=git_branch)
-            payload_string = ', ../{}'.format(payload)
+            PreparePayloadFromClone(self.rundir,payload,gitdir,branch=self.git_branch)
+            self.payload_string = ', ../{}'.format(payload)
 
-        elif(payload_mode == 3):
+        elif(self.payload_mode == 3):
             # The "local" run mode -- a bit special, originally designed for Brown University BRUX system.
             # We will point the workers at this repo.
-            this_dir = os.path.dirname(os.path.abspath(__file__))
-            gitdir = str(pathlib.Path('{}/../../'.format(this_dir)).absolute())
-            payload_mode = gitdir
-            git_branch = ''
+            self.this_dir = os.path.dirname(os.path.abspath(__file__))
+            gitdir = str(pathlib.Path('{}/../../'.format(self.this_dir)).absolute())
+            self.payload_mode = gitdir
+            self.git_branch = ''
 
         else:
             # We have to ship the local repo.
             payload = 'payload.tar.gz'
             gitdir = 'HEPData4ML'
             PreparePayload(self.rundir,payload,gitdir)
-            payload_string = ', ../{}'.format(payload)
+            self.payload_string = ', ../{}'.format(payload)
+
+    def _write_condor_submission_file(self):
 
         ########################
         # Condor submission file
@@ -155,10 +198,10 @@ class CondorRunner:
 
         # We are recycling a template file for the main script, so we change the arguments section
         for i,line in enumerate(condor_submit_lines):
-            if('arguments') in line:
-                condor_submit_lines[i] = 'arguments               = "$(job_arguments) $(Process) $PAYLOAD_MODE $GIT_BRANCH"'
+            if('arguments' in line and 'queue' not in line):
+                condor_submit_lines[i] = 'arguments               = "$(job_arguments) $(Process) $PAYLOAD_MODE $GIT_BRANCH"\n'
             elif('transfer_input_files') in line:
-                condor_submit_lines[i] = 'transfer_input_files    = $PAYLOAD_STRING'
+                condor_submit_lines[i] = 'transfer_input_files    = $PAYLOAD_STRING\n'
 
         # The short queue is something specific to the UChicago Analysis Facility condor queue.
         short_queue_line = ' +queue="short"'
@@ -175,25 +218,31 @@ class CondorRunner:
 
         for i,line in enumerate(condor_submit_lines):
             condor_submit_lines[i] = condor_submit_lines[i].replace("$BATCH_NAME",batch_line + '\n')
-            condor_submit_lines[i] = condor_submit_lines[i].replace("$OUTDIR",self.outdir)
             condor_submit_lines[i] = condor_submit_lines[i].replace('$ADDITIONS',short_queue_line + '\n')
-            condor_submit_lines[i] = condor_submit_lines[i].replace("$PAYLOAD_MODE",str(payload_mode))
-            condor_submit_lines[i] = condor_submit_lines[i].replace("$PAYLOAD_STRING",payload_string)
-            condor_submit_lines[i] = condor_submit_lines[i].replace("$GIT_BRANCH",git_branch)
+            condor_submit_lines[i] = condor_submit_lines[i].replace("$PAYLOAD_MODE",str(self.payload_mode))
+            condor_submit_lines[i] = condor_submit_lines[i].replace("$PAYLOAD_STRING",self.payload_string)
+            condor_submit_lines[i] = condor_submit_lines[i].replace("$GIT_BRANCH",self.git_branch)
             condor_submit_lines[i] = condor_submit_lines[i].replace('$REQUIREMENTS',requirements_string)
+            condor_submit_lines[i] = condor_submit_lines[i].replace('$N_CPU',str(1))
+
 
         condor_submit_file = '{}/condor.sub'.format(self.rundir)
         with open(condor_submit_file,'w') as f:
             for line in condor_submit_lines:
                 f.write(line)
 
+
+    def _copy_executable(self):
         # Copy the condor executable to the job folder.
-        executable = '{}/util/condor/executables/compute_pileup_pt.sh'.format(this_dir)
-        comm = ['cp',executable,self.rundir]
+        executable = '{}/../../util/condor/executables/compute_pileup_pt.sh'.format(self.this_dir)
+        comm = ['cp',executable,self.rundir + '/condor_job.sh']
         sub.check_call(comm)
 
-
-
+    def _prepare_subdirs(self):
+        for i in range(self.njobs):
+            subdir = '{}/job{}'.format(self.rundir,i)
+            os.makedirs(subdir,exist_ok=True)
+        return
 
 if(__name__=='__main__'):
     main(sys.argv)
