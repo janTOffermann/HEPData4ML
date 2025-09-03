@@ -8,12 +8,15 @@
 # $5 whether or not to split final HDF5 file into train/validation/test files. Only relevant if making the HDF5 file.
 # $6 Pythia config (can be used to overwrite the builtin config file)
 # $7 Event index offset.
-# $8 Configuration file (Python).
-# $9 Output directory (for the condor job).
-# $10 Process number (for naming the output).
-# $11 OpenBLAS max thread count (for multithreading).
-# $12 Git option. Determines if we do a git clone here, or if the code has been shipped in as a tarball.
-# $13 Git branch.
+# $8 Job number (TODO: redundant with Process number).
+# $9 Total number of jobs.
+
+# $10 Configuration file (Python).
+# $11 Output directory (for the condor job).
+# $12 Process number (for naming the output).
+# $13 OpenBLAS max thread count (for multithreading).
+# $14 Git option. Determines if we do a git clone here, or if the code has been shipped in as a tarball.
+# $15 Git branch.
 #
 
 nevents_per_bin=$1
@@ -23,12 +26,14 @@ rng_seed=$4
 do_split=$5
 pythia_config=$6
 event_idx_offset=$7
-config_file=$8
-outdir=$9
-proc_number=${10}
-openblas_max_thread=${11}
-git_option=${12}
-git_branch=${13}
+job_number=$8
+njobs_total=$9
+config_file=${10}
+outdir=${11}
+proc_number=${12}
+openblas_max_thread=${13}
+git_option=${14}
+git_branch=${15}
 
 local_mode=0
 
@@ -81,11 +86,13 @@ python ${gitdir}/run.py \
   -rng ${rng_seed} \
   -pb 1 \
   --split 0 \
-  -del_delphes $delete_delphes \
   -pc ${pythia_config} \
-  -df 1 \
+  -df \
   --index_offset ${event_idx_offset} \
-  --config ${config_file}
+  --config ${config_file} \
+  --condor \
+  --condor_job_number ${job_number} \
+  --n_condor_jobs ${njobs_total}
 
 copy_script=${gitdir}/util/condor/copy_output.py
 

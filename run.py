@@ -24,7 +24,7 @@ def main(args):
     parser.add_argument('-p',            '--ptbins',            action = FloatListAction, default=[-1,-1], nargs='*',    help='Transverse momentum bin edges, for outgoing particles of the hard process. Can be a list of floats, or a string of comma- or space-separated floats. In GeV.')
     parser.add_argument('-o',            '--outfile',           type=str,          default='events.h5',      help='Output HDF5 file name.')
     parser.add_argument('-O',            '--outdir',            type=none_or_str,  default=None,             help='Output directory.')
-    parser.add_argument('-v',            '--verbose',           type=int,          default=0,                help='Verbosity.')
+    parser.add_argument('-v',            '--verbose',           action='store_true',                         help='Verbosity.')
     parser.add_argument('-f',            '--force',             type=int,          default=0,                help='Whether or not to force generation -- if true, will possibly overwrite existing HepMC files in output directory.')
     parser.add_argument('-c',            '--compress',          type=int,          default=0,                help='Whether or not to compress HepMC files from the generation step.')
     parser.add_argument('-npc',          '--nentries_per_chunk',type=int,          default=int(1e4),         help='Number of entries to process per chunk, for jet clustering & conversion to HDF5.')
@@ -32,7 +32,7 @@ def main(args):
     parser.add_argument('-sp',           '--split',             type=int,          default=1,                help='Whether or not to split HDF5 file into training/validation/testing files.')
     parser.add_argument('-tf',           '--train_fraction',    type=float,        default=0.7,              help='Fraction of events to place in the training file.')
     parser.add_argument('-vf',           '--val_fraction',      type=float,        default=0.2,              help='Fraction of events to place in the validation file.')
-    parser.add_argument('-df',           '--delete_full',       type=int,          default=0,                help='Whether or not to delete the full HDF5 file after splitting into train/validation/testing files.')
+    parser.add_argument('-df',           '--delete_full',       action='store_true',                         help='Whether or not to delete the full HDF5 file after splitting into train/validation/testing files.')
     parser.add_argument('-co',           '--compression_opts',  type=int,          default=7,                help='Compression option for final HDF5 file (0-9). Higher value means more compression.')
     parser.add_argument('-pc',           '--pythia_config',     type=none_or_str,  default=None,             help='Path to Pythia configuration template (for setting the process).')
     parser.add_argument('-index_offset', '--index_offset',      type=int,          default=0,                help='Offset for Event.Index.')
@@ -57,7 +57,7 @@ def main(args):
     pt_bin_edges = args['ptbins']
     h5_file = args['outfile']
     outdir = args['outdir']
-    verbose = args['verbose'] > 0
+    verbose = args['verbose']
     compress_hepmc = args['compress']
     force = args['force']
     nentries_per_chunk = args['nentries_per_chunk']
@@ -73,7 +73,7 @@ def main(args):
     train_frac = args['train_fraction']
     val_frac = args['val_fraction']
     test_frac = 1. - train_frac - val_frac
-    delete_full = args['delete_full'] > 0
+    delete_full = args['delete_full']
     if(not split_files): delete_full = False # otherwise we are throwing out all the final files
 
     if(test_frac < 0. and split_files):
