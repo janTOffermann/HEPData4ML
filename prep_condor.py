@@ -67,6 +67,14 @@ def main(args):
     os.makedirs(rundir,exist_ok=True)
     os.makedirs(outdir,exist_ok=True)
 
+    # Determine the total number of jobs.
+    with open(jobs_filename,'w') as f:
+        job_counter = 0
+        for i,pythia_config in enumerate(pythia_configs):
+            for j in range(njobs):
+                job_counter += 1
+    njobs_total = job_counter
+
     # Prepare a plaintext file with all the different sets of arguments, for the various jobs.
     jobs_filename = '{}/arguments.txt'.format(rundir)
     ptbins_str = ','.join([str(x) for x in ptbins])
@@ -79,8 +87,9 @@ def main(args):
         '{}', #$4 RNG seed for generation. (can be used to overwrite the builtin config file)
         split, #$5 whether or not to split final HDF5 file into train/validation/test files.
         '{}', #$6 Pythia config (can be used to overwrite the builtin config file)
-        '{}' #$7 Event index offset,
-        '{}' #$8 Job number.
+        '{}', #$7 Event index offset,
+        '{}', #$8 Job number,
+        str(njobs_total) #$9 Total number of jobs.
     ) # double-quotes for silly condor argument syntax
     with open(jobs_filename,'w') as f:
         job_counter = 0
@@ -188,7 +197,7 @@ def main(args):
             f.write(line)
 
     # Copy the condor executable to the job folder.
-    executable = '{}/util/condor/condor_job.sh'.format(this_dir)
+    executable = '{}/util/condor/executables/condor_job.sh'.format(this_dir)
     comm = ['cp',executable,rundir]
     sub.check_call(comm)
 
