@@ -136,8 +136,8 @@ class ReaderRootTree:
 
         Args:
             event: a HepMC3 event into which we'll read the results.
-            event_number: If specified, skip to this event number before reading.
-                         If None, read the next event.
+            event_number: If specified, read event at this index.
+                         If None, just read the next event.
         """
 
         # With custom HepMC3, we can just do this
@@ -145,7 +145,7 @@ class ReaderRootTree:
             self._reader.read_event(event)
             self._current_event_number += 1
         else:
-            self._reader.read_event(event,event_number) # doesn't affect _current_event_number, because it doesn't affect the state of the underlying reader!
+            self._reader.read_event(event,event_number)
 
         return
 
