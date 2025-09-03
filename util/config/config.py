@@ -120,6 +120,8 @@ class Configurator:
         """
         if(filename is None):
             proc = self.config['generation']['process']
+            if(proc is None):
+                return proc
             if('.' not in proc.split('/')[-1]):
                 proc += '.txt'
             try:
@@ -136,6 +138,8 @@ class Configurator:
 
     def GetPythiaConfigFileContents(self,filename=None):
         filepath = self.GetPythiaConfigFile(filename)
+        if(filepath is None):
+            return None
         with open(filepath,'r') as f:
             contents = f.readlines()
         return ''.join(contents)

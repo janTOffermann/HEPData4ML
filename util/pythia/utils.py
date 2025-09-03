@@ -17,6 +17,9 @@ class PythiaWrapper:
         self.SetVerbose(verbose)
         self.initialized = False
 
+    def GetStatus(self):
+        return self.initialized
+
     def GetPythia(self):
         return self.pythia
 
