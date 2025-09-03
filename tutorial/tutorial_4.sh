@@ -36,5 +36,4 @@ python $script \
   -pb 1 \
   -sp 0 \
   -index_offset 0 \
-  -config $config \
-  --verbose 0
+  -config $config
