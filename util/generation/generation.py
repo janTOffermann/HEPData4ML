@@ -241,7 +241,8 @@ class PythiaGenerator:
 
         for i in range(nevents):
 
-            if(self.pythia.GetStatus()): # if false, pythia generator is not initialized -> will produce an empty HepMC event
+            print('####### i = ', i)
+            if(self.pythia.IsInitialized()): # if false, pythia generator is not initialized -> will produce an empty HepMC event
                 self.pythia.Generate() # generate an event!
 
                 # ==========================================
@@ -258,7 +259,8 @@ class PythiaGenerator:
             # Now lets create the HepMC event.
             # ==========================================
             hepmc_event = hm.GenEvent()
-            if(self.pythia.GetStatus()):
+            if(self.pythia.IsInitialized()):
+                print('>>>>>>>>>> Filling hepmc_event from Pythia')
                 self.hepmc_converter.fill_next_event1(self.pythia.GetPythia(),hepmc_event,i_real)
 
             # Fill the memory buffer with this event.
@@ -274,8 +276,9 @@ class PythiaGenerator:
             # Record this event's weight and process code from Pythia.
             #TODO: Consider removing this, or adjusting how it is handled -- if the user provides
             #      externally-produced HepMC files, they won't have these things.
-            if(self.pythia.GetStatus()):
+            if(self.pythia.IsInitialized()):
                 self.weights[i_real-1] = self.pythia.GetEventWeight() # convert from 1-indexing to 0-indxing
+                print('self.weights[i_real-1] = ',self.weights[i_real-1])
                 self.process_codes[i_real-1] = self.pythia.GetProcessCode() # convert from 1-indexing to 0-indxing
             else:
                 self.weights[i_real-1] = 1.
