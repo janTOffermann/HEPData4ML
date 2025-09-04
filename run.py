@@ -253,7 +253,11 @@ def main(args):
             if(hasattr(pileup_handler,'Initialize')):
                 pileup_handler.Initialize()
 
-            if(pileup_handler.GetRNGSeed() < 0): # use the Pythia rng seed
+            # Special cases, where we use the Pythia RNG seed
+            if(pileup_handler.GetRNGSeed() < 0): # Case 1: Seed in the config file is negative.
+                pileup_handler.SetRNGSeed(pythia_rng)
+
+            elif(args['rng'] is not None): # Case 2: The Pythia RNG seed was specified at command line -- in practice we may want to then use this for pileup too (e.g. HTCondor usage).
                 pileup_handler.SetRNGSeed(pythia_rng)
 
             pileup_handler.Process(hepmc_files)
