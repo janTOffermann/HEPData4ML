@@ -35,7 +35,7 @@ class PileupOverlay:
     like what is done in Monte Carlo sample preparation for the CMS experiment.
     """
 
-    def __init__(self, pileup_files:Optional[Union[str,list]]=None,rng_seed:int=1,mu_input:str=None):
+    def __init__(self, pileup_files:Optional[Union[str,list]]=None,rng_seed:int=1,mu_input:str=None, add_stable_only=False):
 
         # Upon start, make sure that hepmc is set up
         self._init_hepmc()
@@ -46,6 +46,8 @@ class PileupOverlay:
         self.require_pileup_input = True
         self.files = None
         self.SetPileupFiles(pileup_files)
+
+        self.SetAddStableOnly(add_stable_only)
 
         self.selected_indices = None # transient storage for indices selected for a particular event
         self.allow_reuse = True
@@ -86,6 +88,9 @@ class PileupOverlay:
         self.condor_job_number = None
         self.condor_njobs = None
         self.condor_warning = False
+
+    def SetAddStableOnly(self,flag:bool):
+        self.filter_stable = flag
 
     def SetHTCondorInfo(self,flag:bool, job_number:int, njobs:int):
         self.condor_flag = flag
@@ -429,8 +434,6 @@ class PileupOverlay:
             evt = hm.GenEvent()
             reader.read_event(evt)
             if(reader.failed()):
-                # if(self.verbosity > 0 and nevents is not None):
-                #     printProgressBarColor(nevents,nevents,'Adding pileup:',decimals=2)
                 break
 
             self._pick_event_indices() # sets self.mu
@@ -687,6 +690,10 @@ class PileupOverlay:
         # Copy particles and establish relationships
         for particle in pileup_event.particles():
 
+            if(self.filter_stable):
+                if(particle.status() != 1):
+                    continue
+
             old_momentum = np.array([getattr(particle.momentum(),method)() for method in ['e','px','py','pz']])
             if(self.do_phi_rotations):
                 new_momentum = hm.FourVector(*np.roll(RotateVector(old_momentum,phi_rotation_angle,0.,0.),-1))
@@ -809,8 +816,8 @@ class PileupOverlaySingle(PileupOverlay):
     mixing, as it allows one to pre-compute the full pileup.
     """
 
-    def __init__(self, pileup_files = None, rng_seed = 1, mu_input = None):
-        super().__init__(pileup_files, rng_seed, mu_input)
+    def __init__(self, pileup_files = None, rng_seed = 1, mu_input = None, add_stable_only=False):
+        super().__init__(pileup_files, rng_seed, mu_input, add_stable_only)
         self.print_prefix = 'PileupOverlaySingle: '
 
     def _sample_mu_distribution(self):
@@ -837,9 +844,9 @@ class PileupOverlayPtFilter(PileupOverlay):
     # of running more slowly (since this involves an extra layer
     # of jet clustering).
 
-    def __init__(self, pileup_files:Optional[Union[str,list]]=None,rng_seed:int=1,mu_input:str=None, pt_cut=35., precompute=False):
+    def __init__(self, pileup_files:Optional[Union[str,list]]=None,rng_seed:int=1,mu_input:str=None, pt_cut=35., precompute=False, add_stable_only=False):
 
-        super(PileupOverlayPtFilter,self).__init__(pileup_files,rng_seed,mu_input)
+        super(PileupOverlayPtFilter,self).__init__(pileup_files,rng_seed,mu_input, add_stable_only)
         self.print_prefix = 'PileupOverlayPtFilter: '
 
         # For this class, we will enforce that the pileup_files are ROOT format and not ASCII.
@@ -1058,9 +1065,9 @@ class PileupOverlayFromGenerator(PileupOverlay):
     on-the-fly.
     """
 
-    def __init__(self, rng_seed:int=1,mu_input:Optional[str]=None, pythia_config_file:Optional[str]=None):
+    def __init__(self, rng_seed:int=1,mu_input:Optional[str]=None, pythia_config_file:Optional[str]=None, add_stable_only=False):
 
-        super(PileupOverlayFromGenerator,self).__init__(None,rng_seed,mu_input)
+        super(PileupOverlayFromGenerator,self).__init__(None,rng_seed,mu_input,add_stable_only)
         self.print_prefix = 'PileupOverlayFromGenerator: '
 
         self.require_pileup_input = False
