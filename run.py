@@ -260,15 +260,33 @@ def main(args):
             elif(args['rng'] is not None): # Case 2: The Pythia RNG seed was specified at command line -- in practice we may want to then use this for pileup too (e.g. HTCondor usage).
                 pileup_handler.SetRNGSeed(pythia_rng)
 
-            pileup_handler.Process(hepmc_files)
+            pileup_handler.Process(hepmc_files) # will overwrite the hepmc_files
 
-            # Now we fetch some information from the pileup handler, that will propagate into the final dataset:
+            # TODO: Now we fetch some information from the pileup handler, that will propagate into the final dataset:
             # info on the number of interactions per bunch crossing, the actual indices of pileup events used,
             # plus some other optional pieces of info that depend on what handler we used and how it was configured.
+
+            #===================================
+            # STEP 2.5: Metadata for HepMC3/ROOT
+            #===================================
+            # Similar to Step 1.5 -- we again add metadata to HepMC3/ROOT files.
+            # We need to do this again since, if we're doing this pileup step,
+            # the HepMC3/ROOT files have been overwritten. Plus, there's more
+            # metadata to add to them now.
+            if(hepmc_extension == 'root'):
+                metadata_handler.AddMetaDataToROOTFiles(hepmc_files,cwd=outdir)
 
     #===============================
     # STEP 3: Simulation (optional)
     #===============================
+    #
+    # Here is where we invoke detector simulation.
+    # For now, the only option is fast detector simulation
+    # with Delphes.
+    # Note that some of the of the code in Step 4 is specialized
+    # for handling Delphes output; if other detector sims are
+    # introduced this may require some add-ons for Step 4.
+    #
     delphes_files = []
     simulation_type=None
     if('simulation' in steps):
@@ -284,9 +302,15 @@ def main(args):
             simulator.Process()
             delphes_files = simulator.GetOutputFiles()
 
-    #======================================================
+    #=========================================================
     # STEP 4: HDF5 conversion + Reconstruction/Post-processing
-    #======================================================
+    #=========================================================
+    #
+    # A lot of stuff happens here. We produce the (HDF5) n-tuples.
+    # This is also where we'll run things like jet clustering, which
+    # will act upon those n-tuples and add new branches to them.
+    #
+
     if('reconstruction' in steps):
         # Do reco and put everything into an HDF5 file. # TODO: Support formats other than HDF5? Consider ROOT ntuple output.
         if(verbose): print('\nRunning recoonstruction and producing final HDF5 output.\n')
@@ -328,7 +352,6 @@ def main(args):
             h5_file_individual = '/'.join((outdir,h5_file_individual))
             h5_files.append(h5_file_individual)
 
-        # print('\n\tConcatenating HDF5 files. Will drop the "Event.Index" key, \n\tthis was used internally for any post-processing steps.\n\tIndices will be recomputed and added at the end.')
         ConcatenateH5(h5_files,'/'.join((outdir,h5_file)),copts=compression_opts,delete_inputs=delete_individual_h5,ignore_keys=['Event.Index'],verbose=False,silent_drop=True)
 
         #Cleanup: Compress the HepMC files.
