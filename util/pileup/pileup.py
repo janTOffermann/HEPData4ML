@@ -507,9 +507,9 @@ class PileupOverlay:
 
     def Process(self,inputs,outputs=None):
         replace_inputs = False
+        final_outputs = []
         if(outputs is None):
             replace_inputs = True
-            final_outputs = []
             outputs = [] # temporary filenames
             for input in inputs:
                 file_extension = input.split('.')[-1]
@@ -529,7 +529,7 @@ class PileupOverlay:
                     output_old = '{}/{}'.format(self.outdir,output)
                     output_new = '{}/{}'.format(self.outdir,input)
 
-                os.unlink(input_fullpath)
+                os.unlink(input_fullpath) # TODO: This destroys the generation metadata at the HepMC3 level. Need to transfer.
                 command = ['mv',output_old,output_new]
                 sub.check_call(command)
 
@@ -538,6 +538,10 @@ class PileupOverlay:
                 if(output in self.mu_values.keys()):
                     self._migrate_pileup_info(output,input)
                 final_outputs.append(input) # TODO: a little messy in terms of code
+            else:
+                final_outputs.append(output)
+
+        self.AddPileupInfoToHepMC3ROOT()
 
         self._writeMetadata()
         return
@@ -729,6 +733,9 @@ class PileupOverlay:
             target_event.add_vertex(vtx)
 
     def _writeMetadata(self):
+        """
+        Writes metadata to the metadata handler.
+        """
         pileup_metadata = {}
         if(self.metadata_handler is None):
             self._print('Unable to write metadata; no handler was provided.')
@@ -762,6 +769,77 @@ class PileupOverlay:
         if(self.do_phi_rotations):
             data['Pileup.PhiRotation'] = self.phi_rotations
         return data
+
+    def AddPileupInfoToHepMC3ROOT(self):
+        """
+        If producing output HepMC3/ROOT files, we actually add the
+        pileup information (mu, indices etc.) to the HepMC3/ROOT file itself,
+        in a separate tree. Note that we currently add this to the HDF5 files
+        in an independent manner, but this may be helpful for debugging purposes
+        and in the future could be the way to propagate the information to the
+        final n-tuple.
+        """
+
+        # NOTE: With our current structure of GetPileupInfo() output, it would be
+        # most natural to iterate over branches, and iterate over files in a nested loop.
+        # However, for I/O reasons it's nicer to iterate over the files. Given how the
+        # output is structured, it is safe to do this as we can assume each nested dict has
+        # the same keys -- but this is generally kind of clunky code! -Jan
+        data = self.GetPileupInfo()
+        files = data[list(data.keys())[0]].keys() # NOTE: These are filenames *without* directories (as usual in this cocde).
+
+        for i,file in enumerate(files):
+
+            filename_full = '{}/{}'.format(self.outdir,file)
+
+            f = rt.TFile(filename_full,'UPDATE')
+            t = rt.TTree('PileupInfo','Pileup information from {}'.format(self.print_prefix.split(':')[0]))
+
+            buffer_dict = {}
+
+            for branch in data.keys():
+                value = data[branch][file]
+
+                is_nested_list = False
+                if(isinstance(value[0],list)):
+                    is_nested_list = True
+                elif(isinstance(value[0],np.ndarray)):
+                    is_nested_list = True
+
+                if(is_nested_list):
+                    #NOTE: Assuming dim=2
+
+                    if(isinstance(value[0][0],int)): # NOTE: Would break if length==0. Would this ever happen?
+                        buffer_dict[branch] = rt.std.vector('int')()
+                    else:
+                        buffer_dict[branch] = rt.std.vector('double')()
+                    t.Branch(branch,buffer_dict[branch])
+
+                else:
+                    # simple 1D array
+                    if(isinstance(value[0],int)):
+                        buffer_dict[branch] = np.zeros(1,dtype=int)
+                        t.Branch(branch,buffer_dict[branch],'{}/I'.format(branch))
+
+                    else:
+                        buffer_dict[branch] = np.zeros(1,dtype=float)
+                        t.Branch(branch,buffer_dict[branch],'{}/D'.format(branch))
+
+            # branch buffers are created, time to fill
+            nentries = len(data[list(data.keys())[0]][file])
+            for j in range(nentries):
+                for branch in buffer_dict.keys():
+
+                    if(isinstance(buffer_dict[branch], np.ndarray)):
+                        buffer_dict[branch][0] = data[branch][file][j]
+                    else:
+                        for k,entry in enumerate(data[branch][file][j]):
+                            buffer_dict[branch].push_back(entry)
+
+                t.Fill()
+            t.Write()
+            f.Close()
+        return
 
     def AddPileupInfoToH5(self,h5_file,file_key, cwd=None,copts=9):
         if(cwd is not None): h5_file = '{}/{}'.format(cwd,h5_file)
@@ -855,7 +933,7 @@ class PileupOverlayPtFilter(PileupOverlay):
         self.pt_cut = pt_cut # GeV
         self.jet_finder = TruthJetFinder('anti_kt',0.4)
         self.event_usage_mask = np.full(self.n_total,False,dtype=bool) # keep track of whether or not an event has been used
-        self.leading_pt = np.full(self.n_total,-999.)
+        self.leading_pt = np.full(self.n_total,-999.) # TODO: Also create a dictionary, and incorporate in GetPileupInfo()?
         self.precompute = precompute
         self.found_pt = None
 
