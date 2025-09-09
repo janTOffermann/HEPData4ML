@@ -1,14 +1,17 @@
 import sys,os,pathlib,time,datetime,re,shlex
 import argparse as ap
 import subprocess as sub
+from contextlib import nullcontext
 from util.generation.generation import PythiaGenerator
 from util.simulation.simulation import DelphesSimulator
 from util.reconstruction.conversion import Processor
-from util.hdf5.hdf5 import RemoveFailedFromHDF5, SplitH5, AddEventIndices, AddBranch, ConcatenateH5
+from util.hdf5.hdf5 import RemoveFailedFromHDF5, SplitH5, AddEventIndices, ConcatenateH5
 from util.hepmc.hepmc import CompressHepMC
 from util.config.config import Configurator,GetConfigFileContent, GetConfigDictionary
 from util.config.args import parse_mc_steps, FloatListAction, none_or_str
 from util.metadata.meta import MetaDataHandler, AddMetaDataWithReference
+
+from util.misc.timing import profiling_context
 
 # Convenience function for file naming
 def float_to_str(value):
@@ -85,14 +88,13 @@ def main(args):
     parser.add_argument('-condor_job_number','--condor_job_number', type=int, default= None,help='Number of this HTCondor job; for advanced usage (you typically should *not* set this, for internal use.).')
     parser.add_argument('-n_condor_jobs','--n_condor_jobs', type=int, default= None,help='Number of HTCondor jobs; for advanced usage (you typically should *not* set this, for internal use.).')
 
+    # Time profiling
+    parser.add_argument('-profile','--profile',action='store_true')
+
     args = vars(parser.parse_args())
 
     timer = BasicTimer()
     timer.start_main()
-
-    # Keep track of some timestamps, for giving a sense of how long each step takes.
-    # TODO: Would be nice to do some more in-depth profiling somehow.
-    timestamps = {}
 
     metadata_handler = MetaDataHandler()
 
@@ -132,6 +134,8 @@ def main(args):
     is_condor_job = args['condor']
     condor_job_number = args['condor_job_number']
     n_condor_jobs = args['n_condor_jobs']
+
+    do_profile = args['profile']
 
     # Configurator class, used for fetching information from our config file.
     # We import this from a user-supplied file, by default it is config/config.py.
@@ -189,271 +193,269 @@ def main(args):
     comm = ['cp','{}/config/config.py'.format(this_dir),'{}/config.py'.format(outdir)]
     sub.check_call(comm)
 
-    #=========================
-    # STEP 0: Metadata
-    #=========================
-    # We can now stash some things away in the metadata handler.
-    metadata_handler.AddElement('Metadata.CommandLineArguments'," ".join(map(shlex.quote, sys.argv[1:])))
-    metadata_handler.AddElement('Metadata.ConfigurationFile','\n'.join(GetConfigFileContent(config_file)))
+    # Optional time profiling.
+    profile_context = profiling_context() if do_profile else nullcontext()
 
-    #=========================
-    # STEP 1: Generation
-    #=========================
-    hepmc_files = []
-    if('generation' in steps):
-        timer.start_timestamp('generation')
+    with profile_context as profiler:
+        #=========================
+        # STEP 0: Metadata
+        #=========================
+        # We can now stash some things away in the metadata handler.
+        metadata_handler.AddElement('Metadata.CommandLineArguments'," ".join(map(shlex.quote, sys.argv[1:])))
+        metadata_handler.AddElement('Metadata.ConfigurationFile','\n'.join(GetConfigFileContent(config_file)))
 
-        if(verbose):
-            print('\n=================================')
-            print('Running Pythia8 event generation.')
-            print('=================================\n')
+        #=========================
+        # STEP 1: Generation
+        #=========================
+        hepmc_files = []
+        if('generation' in steps):
+            timer.start_timestamp('generation')
 
-        if(pythia_rng is not None):
-            print('\tSetting Pythia RNG seed to {}. (overriding config)'.format(pythia_rng))
+            if(verbose):
+                print('\n=================================')
+                print('Running Pythia8 event generation.')
+                print('=================================\n')
+
+            if(pythia_rng is not None):
+                print('\tSetting Pythia RNG seed to {}. (overriding config)'.format(pythia_rng))
+            else:
+                pythia_rng = configurator.GetPythiaRNGSeed()
+            if(pythia_config is not None):
+                print('\tSetting Pythia process configuration from {}. (overriding config)'.format(pythia_config))
+
+            if(verbose):
+                print('\tGenerating {} events per {} bin, with the following bin edges (in GeV):'.format(nevents_per_bin,'\\hat{p_T}'))
+                for bin_edge in pt_bin_edges:
+                    print('\t\t{}'.format(bin_edge))
+                print()
+
         else:
-            pythia_rng = configurator.GetPythiaRNGSeed()
-        if(pythia_config is not None):
-            print('\tSetting Pythia process configuration from {}. (overriding config)'.format(pythia_config))
+            pythia_rng = -1 # TODO: Make this better -- currently this means seed is unknown!
 
-        if(verbose):
-            print('\tGenerating {} events per {} bin, with the following bin edges (in GeV):'.format(nevents_per_bin,'\\hat{p_T}'))
-            for bin_edge in pt_bin_edges:
-                print('\t\t{}'.format(bin_edge))
-            print()
+        # Stash some stuff in metadata.
+        # TODO: Would be nice to do this within the PythiaGenerator()?
+        metadata_handler.AddElement('Metadata.Generation.PythiaRandomSeed',pythia_rng)
+        metadata_handler.AddElement('Metadata.Generation.PythiaConfiguration',configurator.GetPythiaConfigFileContents(pythia_config))
 
-    else:
-        pythia_rng = -1 # TODO: Make this better -- currently this means seed is unknown!
-
-    # Stash some stuff in metadata.
-    # TODO: Would be nice to do this within the PythiaGenerator()?
-    metadata_handler.AddElement('Metadata.Generation.PythiaRandomSeed',pythia_rng)
-    metadata_handler.AddElement('Metadata.Generation.PythiaConfiguration',configurator.GetPythiaConfigFileContents(pythia_config))
-
-    print()
-    for i in range(nbins):
-        # Generate a HepMC file containing our events.
-        # If the user has opted not to do generation, the HepMC3 files must already exist (and have the right names).
-        # TODO: Make the no-generation option more flexible, to pick up any existing HepMC3 files in the cwd.
-        pt_min = pt_bin_edges[i]
-        pt_max = pt_bin_edges[i+1]
-
-        hepmc_extension = 'hepmc'
-        if(configurator.GetHepMCFormat().lower() == 'root'):
-            hepmc_extension = 'root'
-
-        hep_file = 'events_{}.{}'.format(i,hepmc_extension)
-
-        generator = PythiaGenerator(pt_min,pt_max, configurator, pythia_rng,pythia_config_file=pythia_config)
-        generator.SetMetadataHandler(metadata_handler)
-
-        generator.SetOutputDirectory(outdir)
-        generator.SetFilename(hep_file)
-        generator.SetProgressBar(progress_bar)
-
-        hepfile_exists = pathlib.Path('{}/{}'.format(outdir,hep_file)).exists()
-        generate = 'generation' in steps
-        if(hepfile_exists and not force):
-            print('\tHepMC3 file {}/{} already found, skipping its generation.'.format(outdir,hep_file))
-            generate = False
-
-        if(generate):
-            generator.Generate(nevents_per_bin)
-
-        hepmc_files.append(hep_file)
-
-    if('generation' in steps):
-        timer.end_timestamp('generation')
-
-    #===================================
-    # STEP 1.5: Metadata for HepMC3/ROOT
-    #===================================
-    # If HepMC3/ROOT files were generated, we stash the metadata in them too.
-    # This is particularly helpful for the pileup step, as it can read this metadata
-    # if using these files in another run.
-    # Note that if plaintext HepMC3 was used, this feature is unavailable, and it may
-    # make the final dataset harder to reproduce (since you won't directly have info on
-    # how the pileup_handlers' input files were created!).
-    if(hepmc_extension == 'root'):
-        metadata_handler.AddMetaDataToROOTFiles(hepmc_files,cwd=outdir)
-
-    #===============================
-    # STEP 2: Pileup (optional)
-    #===============================
-    if('pileup' in steps):
-        timer.start_timestamp('pileup')
-        pileup_handler = configurator.GetPileupHandler()
-
-        if(pileup_handler is not None): # if it's set to None, we just skip the pileup step
-            pileup_handler.SetInputDirectory(outdir)
-            pileup_handler.SetOutputDirectory(outdir)
-            pileup_handler.SetMetadataHandler(metadata_handler)
-            pileup_handler.SetConfigurator(configurator)
-            pileup_handler.SetHTCondorInfo(is_condor_job,condor_job_number,n_condor_jobs)
-
-            if(pileup_files is not None): # overriding config file
-                pileup_handler.SetPileupFiles(pileup_files)
-
-            # TODO: Maybe rework this code, it's a bit ugly to have to check attributes like this? -Jan
-            if(hasattr(pileup_handler,'SetGenerator')):
-                pileup_handler.SetGenerator(generator)
-
-            # Some pileup handlers might require some extra initialization after construction,
-            # that leverages the configurator.
-            if(hasattr(pileup_handler,'Initialize')):
-                pileup_handler.Initialize()
-
-            # Special cases, where we use the Pythia RNG seed
-            if(pileup_handler.GetRNGSeed() < 0): # Case 1: Seed in the config file is negative.
-                pileup_handler.SetRNGSeed(pythia_rng)
-
-            elif(args['rng'] is not None): # Case 2: The Pythia RNG seed was specified at command line -- in practice we may want to then use this for pileup too (e.g. HTCondor usage).
-                pileup_handler.SetRNGSeed(pythia_rng)
-
-            pileup_handler.Process(hepmc_files) # will overwrite the hepmc_files
-
-            # TODO: Now we fetch some information from the pileup handler, that will propagate into the final dataset:
-            # info on the number of interactions per bunch crossing, the actual indices of pileup events used,
-            # plus some other optional pieces of info that depend on what handler we used and how it was configured.
-
-            #===================================
-            # STEP 2.5: Metadata for HepMC3/ROOT
-            #===================================
-            # Similar to Step 1.5 -- we again add metadata to HepMC3/ROOT files.
-            # We need to do this again since, if we're doing this pileup step,
-            # the HepMC3/ROOT files have been overwritten. Plus, there's more
-            # metadata to add to them now.
-            if(hepmc_extension == 'root'):
-                metadata_handler.AddMetaDataToROOTFiles(hepmc_files,cwd=outdir)
-        timer.end_timestamp('pileup')
-
-    #===============================
-    # STEP 3: Simulation (optional)
-    #===============================
-    #
-    # Here is where we invoke detector simulation.
-    # For now, the only option is fast detector simulation
-    # with Delphes.
-    # Note that some of the of the code in Step 4 is specialized
-    # for handling Delphes output; if other detector sims are
-    # introduced this may require some add-ons for Step 4.
-    #
-    delphes_files = []
-    simulation_type=None
-    if('simulation' in steps):
-        timer.start_timestamp('simulation')
-        simulator = None
-        simulation_type = configurator.GetSimulationType()
-        if(simulation_type == 'delphes'):
-            sim_logfile = '{}/delphes.log'.format(outdir)
-            simulator = DelphesSimulator(configurator,outdir,logfile=sim_logfile)
-
-        if(simulator is not None):
-            simulator.SetMetadataHandler(metadata_handler)
-            simulator.SetInputs(hepmc_files)
-            simulator.Process()
-            delphes_files = simulator.GetOutputFiles()
-        timer.end_timestamp('simulation')
-
-    #=========================================================
-    # STEP 4: HDF5 conversion + Reconstruction/Post-processing
-    #=========================================================
-    #
-    # A lot of stuff happens here. We produce the (HDF5) n-tuples.
-    # This is also where we'll run things like jet clustering, which
-    # will act upon those n-tuples and add new branches to them.
-    #
-
-    if('reconstruction' in steps):
-        timer.start_timestamp('reconstruction')
-        # Do reco and put everything into an HDF5 file. # TODO: Support formats other than HDF5? Consider ROOT ntuple output.
-        if(verbose): print('\nRunning recoonstruction and producing final HDF5 output.\n')
-        processor = Processor(configurator)
-        processor.SetNentriesPerChunk(10) # the larger this is, the larger the chunks in memory (and higher the memory usage)
-        processor.SetDelphesFiles(delphes_files) # TODO: Handle case of no delphes_files?
-        processor.SetOutputDirectory(outdir)
-        processor.SetMetadataHandler(metadata_handler)
-
-        h5_files = []
-        print('\nProducing separate HDF5 files for each pT bin, and then concatenating these.')
-        delete_individual_h5 = True
-        nentries_per_chunk = int(nentries_per_chunk/nbins)
-
-        for i, hepmc_file in enumerate(hepmc_files):
-            # TODO: Rework this a little. Should just generically loop over HepMC files, since they might have an external source and not be pt-binned.
+        print()
+        for i in range(nbins):
+            # Generate a HepMC file containing our events.
+            # If the user has opted not to do generation, the HepMC3 files must already exist (and have the right names).
+            # TODO: Make the no-generation option more flexible, to pick up any existing HepMC3 files in the cwd.
             pt_min = pt_bin_edges[i]
             pt_max = pt_bin_edges[i+1]
 
-            h5_file_individual = '.'.join(hepmc_file.split('/')[-1].split('.')[:-1]) + '.h5'
+            hepmc_extension = 'hepmc'
+            if(configurator.GetHepMCFormat().lower() == 'root'):
+                hepmc_extension = 'root'
 
-            processor.SetProgressBarPrefix('\tConverting HepMC3 -> HDF5 for file {}/{}:'.format(i+1,len(hepmc_files)))
+            hep_file = 'events_{}.{}'.format(i,hepmc_extension)
 
-            processor.Process(hepmc_file,h5_file_individual,verbosity=h5_conversion_verbosity)
+            generator = PythiaGenerator(pt_min,pt_max, configurator, pythia_rng,pythia_config_file=pythia_config)
+            generator.SetMetadataHandler(metadata_handler)
 
-            # To each HDF5 event file, we will add event indices. These may be useful/necessary for the post-processing step.
-            # We will remove these indices when concatenating files, since as one of our last steps we'll add indices again
-            # but with respect to the full event listing (not just w.r.t. events in each generation pT bin).
-            AddEventIndices(h5_file_individual,cwd=outdir,copts=compression_opts)
+            generator.SetOutputDirectory(outdir)
+            generator.SetFilename(hep_file)
+            generator.SetProgressBar(progress_bar)
 
-            # Optional post-processing. Any post-processing steps have been configured in the config file, config/config.py.
-            processor.PostProcess(hepmc_file,[h5_file_individual])
+            hepfile_exists = pathlib.Path('{}/{}'.format(outdir,hep_file)).exists()
+            generate = 'generation' in steps
+            if(hepfile_exists and not force):
+                print('\tHepMC3 file {}/{} already found, skipping its generation.'.format(outdir,hep_file))
+                generate = False
 
-            # Add information from the pileup handler (if any).
-            # TODO: This may need a little reworking? The handling of filenames might be a little fragile.
-            if(pileup_handler is not None):
-                pileup_handler.AddPileupInfoToH5(h5_file_individual,cwd=outdir,file_key=hepmc_file)
+            if(generate):
+                generator.Generate(nevents_per_bin)
 
-            h5_file_individual = '/'.join((outdir,h5_file_individual))
-            h5_files.append(h5_file_individual)
+            hepmc_files.append(hep_file)
 
-        ConcatenateH5(h5_files,'/'.join((outdir,h5_file)),copts=compression_opts,delete_inputs=delete_individual_h5,ignore_keys=['Event.Index'],verbose=False,silent_drop=True)
+        if('generation' in steps):
+            timer.end_timestamp('generation')
 
-        #Cleanup: Compress the HepMC files.
-        if(compress_hepmc): CompressHepMC(hepmc_files,True,cwd=outdir)
+        #===================================
+        # STEP 1.5: Metadata for HepMC3/ROOT
+        #===================================
+        # If HepMC3/ROOT files were generated, we stash the metadata in them too.
+        # This is particularly helpful for the pileup step, as it can read this metadata
+        # if using these files in another run.
+        # Note that if plaintext HepMC3 was used, this feature is unavailable, and it may
+        # make the final dataset harder to reproduce (since you won't directly have info on
+        # how the pileup_handlers' input files were created!).
+        if(hepmc_extension == 'root'):
+            metadata_handler.AddMetaDataToROOTFiles(hepmc_files,cwd=outdir)
 
-        # Add some event indices to our dataset.
-        if(index_offset < 0): index_offset = 0
-        print('\tAdding event indices to file {}.'.format('/'.join((outdir,h5_file))))
-        print('\t\tStarting at Event.Index = {}.'.format(index_offset))
-        AddEventIndices(h5_file,cwd=outdir,copts=compression_opts,offset=index_offset)
+        #===============================
+        # STEP 2: Pileup (optional)
+        #===============================
+        if('pileup' in steps):
+            timer.start_timestamp('pileup')
+            pileup_handler = configurator.GetPileupHandler()
 
-        # Remove any failed events (e.g. detector-level events with no jets passing cuts).
-        # print('\tRemoving any failed events from file {}.\n\tThese may be events where there weren\'t any jets passing the requested cuts.'.format('/'.join((outdir,h5_file))))
-        print('\tRemoving any failed events from file {}.'.format('/'.join((outdir,h5_file))))
-        RemoveFailedFromHDF5(h5_file,cwd=outdir)
+            if(pileup_handler is not None): # if it's set to None, we just skip the pileup step
+                pileup_handler.SetInputDirectory(outdir)
+                pileup_handler.SetOutputDirectory(outdir)
+                pileup_handler.SetMetadataHandler(metadata_handler)
+                pileup_handler.SetConfigurator(configurator)
+                pileup_handler.SetHTCondorInfo(is_condor_job,condor_job_number,n_condor_jobs)
 
-        #======================================================
-        # STEP 4.5: Metadata (into HDF5).
-        #======================================================
-        # Now, add some metadata to the file -- we use the HDF5 file attributes to store lists of metadata, and create columns that reference these lists.
-        # This is handled correctly by metadata.
-        for key,val in metadata_handler.GetMetaData().items():
-            AddMetaDataWithReference(h5_file,cwd=outdir,value=val,key=key)
+                if(pileup_files is not None): # overriding config file
+                    pileup_handler.SetPileupFiles(pileup_files)
 
-        # TODO: Might want to think about offering the ability to split upstream files too? Could be complicated...
-        if(split_files):
-            # Now split the HDF5 file into training, testing and validation samples.
-            split_ratio = (train_frac,val_frac,test_frac)
-            print("\tSplitting HDF5 file {} into training, validation and testing samples:".format('/'.join((outdir,h5_file))))
-            train_name = 'train.h5'
-            val_name = 'valid.h5'
-            test_name = 'test.h5'
-            SplitH5(h5_file, split_ratio,cwd=outdir,copts=compression_opts, train_name=train_name,val_name=val_name,test_name=test_name,verbose=True,seed=configurator.GetSplitSeed())
+                # TODO: Maybe rework this code, it's a bit ugly to have to check attributes like this? -Jan
+                if(hasattr(pileup_handler,'SetGenerator')):
+                    pileup_handler.SetGenerator(generator)
 
-        # Optionally delete the full HDF5 file.
-        if(delete_full):
-            comm = ['rm','{}/{}'.format(outdir,h5_file)]
-            sub.check_call(comm)
-        timer.end_timestamp('reconstruction')
+                # Some pileup handlers might require some extra initialization after construction,
+                # that leverages the configurator.
+                if(hasattr(pileup_handler,'Initialize')):
+                    pileup_handler.Initialize()
 
-    timer.end_main()
-    timer.summarize_time()
-    # end_time = time.time()
-    # elapsed_time = end_time - start_time
-    # elapsed_time_readable = str(datetime.timedelta(seconds=elapsed_time))
-    # print('\n#############################')
-    # print('Done. Time elapsed = {:.1f} seconds.'.format(elapsed_time))
-    # print('({})'.format(elapsed_time_readable))
-    # print('#############################\n')
+                # Special cases, where we use the Pythia RNG seed
+                if(pileup_handler.GetRNGSeed() < 0): # Case 1: Seed in the config file is negative.
+                    pileup_handler.SetRNGSeed(pythia_rng)
+
+                elif(args['rng'] is not None): # Case 2: The Pythia RNG seed was specified at command line -- in practice we may want to then use this for pileup too (e.g. HTCondor usage).
+                    pileup_handler.SetRNGSeed(pythia_rng)
+
+                pileup_handler.Process(hepmc_files) # will overwrite the hepmc_files
+
+                # TODO: Now we fetch some information from the pileup handler, that will propagate into the final dataset:
+                # info on the number of interactions per bunch crossing, the actual indices of pileup events used,
+                # plus some other optional pieces of info that depend on what handler we used and how it was configured.
+
+                #===================================
+                # STEP 2.5: Metadata for HepMC3/ROOT
+                #===================================
+                # Similar to Step 1.5 -- we again add metadata to HepMC3/ROOT files.
+                # We need to do this again since, if we're doing this pileup step,
+                # the HepMC3/ROOT files have been overwritten. Plus, there's more
+                # metadata to add to them now.
+                if(hepmc_extension == 'root'):
+                    metadata_handler.AddMetaDataToROOTFiles(hepmc_files,cwd=outdir)
+            timer.end_timestamp('pileup')
+
+        #===============================
+        # STEP 3: Simulation (optional)
+        #===============================
+        #
+        # Here is where we invoke detector simulation.
+        # For now, the only option is fast detector simulation
+        # with Delphes.
+        # Note that some of the of the code in Step 4 is specialized
+        # for handling Delphes output; if other detector sims are
+        # introduced this may require some add-ons for Step 4.
+        #
+        delphes_files = []
+        simulation_type=None
+        if('simulation' in steps):
+            timer.start_timestamp('simulation')
+            simulator = None
+            simulation_type = configurator.GetSimulationType()
+            if(simulation_type == 'delphes'):
+                sim_logfile = '{}/delphes.log'.format(outdir)
+                simulator = DelphesSimulator(configurator,outdir,logfile=sim_logfile)
+
+            if(simulator is not None):
+                simulator.SetMetadataHandler(metadata_handler)
+                simulator.SetInputs(hepmc_files)
+                simulator.Process()
+                delphes_files = simulator.GetOutputFiles()
+            timer.end_timestamp('simulation')
+
+        #=========================================================
+        # STEP 4: HDF5 conversion + Reconstruction/Post-processing
+        #=========================================================
+        #
+        # A lot of stuff happens here. We produce the (HDF5) n-tuples.
+        # This is also where we'll run things like jet clustering, which
+        # will act upon those n-tuples and add new branches to them.
+        #
+
+        if('reconstruction' in steps):
+            timer.start_timestamp('reconstruction')
+            # Do reco and put everything into an HDF5 file. # TODO: Support formats other than HDF5? Consider ROOT ntuple output.
+            if(verbose): print('\nRunning recoonstruction and producing final HDF5 output.\n')
+            processor = Processor(configurator)
+            processor.SetNentriesPerChunk(10) # the larger this is, the larger the chunks in memory (and higher the memory usage)
+            processor.SetDelphesFiles(delphes_files) # TODO: Handle case of no delphes_files?
+            processor.SetOutputDirectory(outdir)
+            processor.SetMetadataHandler(metadata_handler)
+
+            h5_files = []
+            print('\nProducing separate HDF5 files for each pT bin, and then concatenating these.')
+            delete_individual_h5 = True
+            nentries_per_chunk = int(nentries_per_chunk/nbins)
+
+            for i, hepmc_file in enumerate(hepmc_files):
+                # TODO: Rework this a little. Should just generically loop over HepMC files, since they might have an external source and not be pt-binned.
+                pt_min = pt_bin_edges[i]
+                pt_max = pt_bin_edges[i+1]
+
+                h5_file_individual = '.'.join(hepmc_file.split('/')[-1].split('.')[:-1]) + '.h5'
+
+                processor.SetProgressBarPrefix('\tConverting HepMC3 -> HDF5 for file {}/{}:'.format(i+1,len(hepmc_files)))
+
+                processor.Process(hepmc_file,h5_file_individual,verbosity=h5_conversion_verbosity)
+
+                # To each HDF5 event file, we will add event indices. These may be useful/necessary for the post-processing step.
+                # We will remove these indices when concatenating files, since as one of our last steps we'll add indices again
+                # but with respect to the full event listing (not just w.r.t. events in each generation pT bin).
+                AddEventIndices(h5_file_individual,cwd=outdir,copts=compression_opts)
+
+                # Optional post-processing. Any post-processing steps have been configured in the config file, config/config.py.
+                processor.PostProcess(hepmc_file,[h5_file_individual])
+
+                # Add information from the pileup handler (if any).
+                # TODO: This may need a little reworking? The handling of filenames might be a little fragile.
+                if(pileup_handler is not None):
+                    pileup_handler.AddPileupInfoToH5(h5_file_individual,cwd=outdir,file_key=hepmc_file)
+
+                h5_file_individual = '/'.join((outdir,h5_file_individual))
+                h5_files.append(h5_file_individual)
+
+            ConcatenateH5(h5_files,'/'.join((outdir,h5_file)),copts=compression_opts,delete_inputs=delete_individual_h5,ignore_keys=['Event.Index'],verbose=False,silent_drop=True)
+
+            #Cleanup: Compress the HepMC files.
+            if(compress_hepmc): CompressHepMC(hepmc_files,True,cwd=outdir)
+
+            # Add some event indices to our dataset.
+            if(index_offset < 0): index_offset = 0
+            print('\tAdding event indices to file {}.'.format('/'.join((outdir,h5_file))))
+            print('\t\tStarting at Event.Index = {}.'.format(index_offset))
+            AddEventIndices(h5_file,cwd=outdir,copts=compression_opts,offset=index_offset)
+
+            # Remove any failed events (e.g. detector-level events with no jets passing cuts).
+            # print('\tRemoving any failed events from file {}.\n\tThese may be events where there weren\'t any jets passing the requested cuts.'.format('/'.join((outdir,h5_file))))
+            print('\tRemoving any failed events from file {}.'.format('/'.join((outdir,h5_file))))
+            RemoveFailedFromHDF5(h5_file,cwd=outdir)
+
+            #======================================================
+            # STEP 4.5: Metadata (into HDF5).
+            #======================================================
+            # Now, add some metadata to the file -- we use the HDF5 file attributes to store lists of metadata, and create columns that reference these lists.
+            # This is handled correctly by metadata.
+            for key,val in metadata_handler.GetMetaData().items():
+                AddMetaDataWithReference(h5_file,cwd=outdir,value=val,key=key)
+
+            # TODO: Might want to think about offering the ability to split upstream files too? Could be complicated...
+            if(split_files):
+                # Now split the HDF5 file into training, testing and validation samples.
+                split_ratio = (train_frac,val_frac,test_frac)
+                print("\tSplitting HDF5 file {} into training, validation and testing samples:".format('/'.join((outdir,h5_file))))
+                train_name = 'train.h5'
+                val_name = 'valid.h5'
+                test_name = 'test.h5'
+                SplitH5(h5_file, split_ratio,cwd=outdir,copts=compression_opts, train_name=train_name,val_name=val_name,test_name=test_name,verbose=True,seed=configurator.GetSplitSeed())
+
+            # Optionally delete the full HDF5 file.
+            if(delete_full):
+                comm = ['rm','{}/{}'.format(outdir,h5_file)]
+                sub.check_call(comm)
+            timer.end_timestamp('reconstruction')
+        timer.end_main()
+        timer.summarize_time()
+
+        if(profiler is not None): profiler.report()
 
 if __name__ == '__main__':
     main(sys.argv)
