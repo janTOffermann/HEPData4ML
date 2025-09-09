@@ -16,6 +16,44 @@ def float_to_str(value):
     value_str = value_str.replace('.',',')
     return re.sub(',0$','',value_str)
 
+class BasicTimer:
+    def __init__(self):
+        self.dict = {}
+
+    def start_main(self):
+        self.start_time = time.time()
+
+    def end_main(self):
+        self.end_time = time.time()
+
+    # Function to help with timestamps (for our very basic profiling)
+    def start_timestamp(self, key):
+        if(key) not in self.dict.keys():
+            self.dict[key] = {}
+        self.dict[key]['start'] = time.time()
+
+    def end_timestamp(self, key):
+        if(key) not in self.dict.keys():
+            self.dict[key] = {}
+        self.dict[key]['end'] = time.time()
+
+    def _summarize_main(self):
+        elapsed_time = self.end_time - self.start_time
+        elapsed_time_readable = str(datetime.timedelta(seconds=elapsed_time))
+        print('Time elapsed = {:.1f} seconds.'.format(elapsed_time))
+        print('({})'.format(elapsed_time_readable))
+
+    def summarize_time(self):
+        print('\n#############################')
+        self._summarize_main()
+        print('Breakdown by step:')
+        for key in self.dict.keys():
+            elapsed_time = self.dict[key]['end'] - self.dict[key]['start']
+            elapsed_time_readable = str(datetime.timedelta(seconds=elapsed_time))
+            print('\tTime on {} step: {:.1f} seconds\t({})'.format(key, elapsed_time,elapsed_time_readable))
+        print('\n#############################')
+        return
+
 def main(args):
     parser = ap.ArgumentParser()
 
@@ -49,8 +87,14 @@ def main(args):
 
     args = vars(parser.parse_args())
 
+    timer = BasicTimer()
+    timer.start_main()
+
+    # Keep track of some timestamps, for giving a sense of how long each step takes.
+    # TODO: Would be nice to do some more in-depth profiling somehow.
+    timestamps = {}
+
     metadata_handler = MetaDataHandler()
-    start_time = time.time()
 
     steps = args['steps']
     nevents_per_bin = args['nevents']
@@ -157,6 +201,7 @@ def main(args):
     #=========================
     hepmc_files = []
     if('generation' in steps):
+        timer.start_timestamp('generation')
 
         if(verbose):
             print('\n=================================')
@@ -216,6 +261,9 @@ def main(args):
 
         hepmc_files.append(hep_file)
 
+    if('generation' in steps):
+        timer.end_timestamp('generation')
+
     #===================================
     # STEP 1.5: Metadata for HepMC3/ROOT
     #===================================
@@ -232,6 +280,7 @@ def main(args):
     # STEP 2: Pileup (optional)
     #===============================
     if('pileup' in steps):
+        timer.start_timestamp('pileup')
         pileup_handler = configurator.GetPileupHandler()
 
         if(pileup_handler is not None): # if it's set to None, we just skip the pileup step
@@ -275,6 +324,7 @@ def main(args):
             # metadata to add to them now.
             if(hepmc_extension == 'root'):
                 metadata_handler.AddMetaDataToROOTFiles(hepmc_files,cwd=outdir)
+        timer.end_timestamp('pileup')
 
     #===============================
     # STEP 3: Simulation (optional)
@@ -290,6 +340,7 @@ def main(args):
     delphes_files = []
     simulation_type=None
     if('simulation' in steps):
+        timer.start_timestamp('simulation')
         simulator = None
         simulation_type = configurator.GetSimulationType()
         if(simulation_type == 'delphes'):
@@ -301,6 +352,7 @@ def main(args):
             simulator.SetInputs(hepmc_files)
             simulator.Process()
             delphes_files = simulator.GetOutputFiles()
+        timer.end_timestamp('simulation')
 
     #=========================================================
     # STEP 4: HDF5 conversion + Reconstruction/Post-processing
@@ -312,6 +364,7 @@ def main(args):
     #
 
     if('reconstruction' in steps):
+        timer.start_timestamp('reconstruction')
         # Do reco and put everything into an HDF5 file. # TODO: Support formats other than HDF5? Consider ROOT ntuple output.
         if(verbose): print('\nRunning recoonstruction and producing final HDF5 output.\n')
         processor = Processor(configurator)
@@ -390,14 +443,17 @@ def main(args):
         if(delete_full):
             comm = ['rm','{}/{}'.format(outdir,h5_file)]
             sub.check_call(comm)
+        timer.end_timestamp('reconstruction')
 
-    end_time = time.time()
-    elapsed_time = end_time - start_time
-    elapsed_time_readable = str(datetime.timedelta(seconds=elapsed_time))
-    print('\n#############################')
-    print('Done. Time elapsed = {:.1f} seconds.'.format(elapsed_time))
-    print('({})'.format(elapsed_time_readable))
-    print('#############################\n')
+    timer.end_main()
+    timer.summarize_time()
+    # end_time = time.time()
+    # elapsed_time = end_time - start_time
+    # elapsed_time_readable = str(datetime.timedelta(seconds=elapsed_time))
+    # print('\n#############################')
+    # print('Done. Time elapsed = {:.1f} seconds.'.format(elapsed_time))
+    # print('({})'.format(elapsed_time_readable))
+    # print('#############################\n')
 
 if __name__ == '__main__':
     main(sys.argv)
