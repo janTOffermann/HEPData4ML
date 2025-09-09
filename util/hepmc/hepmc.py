@@ -9,13 +9,13 @@
 
 import numpy as np
 import ROOT as rt
-# from pyHepMC3 import HepMC3 as hm # the official Pythonic HepMC3 bindings
 import subprocess as sub
 import pathlib
 from typing import Union, Optional, List, TYPE_CHECKING
 from util.hepmc.setup import HepMCSetup, uncache_hepmc3, prepend_to_pythonpath
 from util.hepmc.readers import ReaderAscii, ReaderRootTree
 from util.hepmc.Pythia8ToHepMC3 import Pythia8ToHepMC3
+from util.misc.timing import profile_method
 
 if TYPE_CHECKING: # Only imported during type checking -- avoids risk of circular imports
     from util.pythia.utils import PythiaWrapper
@@ -167,6 +167,7 @@ def PythiaWrapperToHepMC(pythia_wrapper:'PythiaWrapper', event_number:int) -> 'h
     converter.fill_next_event1(pythia_wrapper.GetPythia(),hepev,event_number)
     return hepev
 
+@profile_method('ExtractHepMCEvents')
 def ExtractHepMCEvents(files:Union[str,List[str]],get_nevents:bool=False, silent:bool=False):
     if(isinstance(files,str)):
         files = [files]
@@ -236,6 +237,7 @@ def ExtractHepMCEventsROOT(files:Union[list,str],get_nevents:bool=False, silent:
     if(get_nevents): return events, nevents
     return events
 
+@profile_method('ExtractHepMCParticles')
 def ExtractHepMCParticles(events:List['hm.GenEvent'], nparticles_max:Optional[int]=None,selection:Optional['BaseSelector']=None):
     if(selection is not None):
 
