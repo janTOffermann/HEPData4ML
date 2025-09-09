@@ -157,6 +157,18 @@ class MetaDataHandler:
                 # TNamed for strings (name=key, title=value)
                 param = rt.TNamed(key, value)
                 user_info.Add(param)
+            elif isinstance(value,np.ndarray): # TODO: Add support for reading
+                # TList of TParameter for numpy array
+                param = rt.TList()
+                param.SetName(key)
+
+                for i,entry in enumerate(value):
+                    if(value.dtype==int):
+                        param.Add(rt.TParameter(int)('key[{}]'.format(i),entry))
+                    else: # assume float
+                        param.Add(rt.TParameter(float)('key[{}]'.format(i),entry))
+                user_info.Add(param)
+
             elif isinstance(value, dict):
                 # Convert dict to JSON string and store as TNamed
                 json_str = json.dumps(value)
@@ -164,7 +176,7 @@ class MetaDataHandler:
                 param.SetUniqueID(999)  # Custom marker for JSON data, to tell it apart from the basic string
                 user_info.Add(param)
             else:
-                self._print('Warning: _add_to_ttree() unable to add metadata associated with key={} to ROOT file.'.format(key))
+                self._print('Warning: _add_to_ttree() unable to add metadata associated with key={} to ROOT file. It is of type {}.'.format(key,type(value)))
         return
 
     def _read_from_ttree(self,tree:rt.TTree):
