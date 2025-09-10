@@ -1,13 +1,9 @@
-import sys,pathlib
+import pathlib
 import numpy as np
 import h5py as h5
 import uproot as ur
 from typing import Dict, Any, Tuple, Optional
 from abc import ABC, abstractmethod
-# Needed for the test function
-# import os
-# this_dir = os.path.dirname(os.path.abspath(__file__))
-# sys.path.append(str(pathlib.Path('{}/../'.format(this_dir)).absolute()))
 from util.math.embedding import embed_array
 
 # Classes for data buffers, to be used by the post-processors (such as JetFinder).
@@ -365,59 +361,6 @@ class Buffer:
             arr_shape = (1,) + shape
             self._initialize_array(key, arr_shape, dtype)
         return self._buffer_arrays[key]
-
-# Example usage
-def main(args):
-
-    # Create a buffer with file flush handler
-    flush_handler = HDF5FlushHandler("buffer_test.h5")
-    buffer = Buffer(buffer_size=3, flush_handler=flush_handler)
-
-    # Create arrays in buffer with some known maximum dimensionss.
-    buffer.create_array('jets.N', dtype=np.int32)  # Scalar per event
-    buffer.create_array('jets.Pmu', (10, 4), np.float64)  # Up to 10 jets, 4-momentum each
-    buffer.create_array('event.weight', dtype=np.float64)  # Event weight
-
-    # Process events
-    nevents = 8
-    buffer.SetNEvents(nevents)
-    for event_index in range(nevents):
-        # Simulate jet data for this event
-        n_jets = np.random.randint(2, 6)
-        jet_vectors = np.random.randn(n_jets, 4)  # (N_jets, 4-momentum)
-        jet_ordering = np.arange(n_jets)  # Dummy ordering
-        event_weight = np.random.uniform(0.5, 2.0)
-
-        print("Processing event {} (buffer position {})".format(event_index, event_index % buffer.buffer_size))
-
-        # Fill all branches for this event
-
-        buffer.set('jets.N',event_index,len(jet_vectors))
-        buffer.set('jets.Pmu',event_index,np.vstack([jet_vectors[i] for i in jet_ordering]))
-        buffer.set('event.weight',event_index,event_weight)
-
-        # buffer['jets.N'][event_index] = len(jet_vectors)
-
-        # # Filling this is a bit verbose -- would be nice to make a function for this,
-        # # to hide some of the details. - Jan
-        # buffer['jets.Pmu'][event_index] = embed_array(np.vstack([jet_vectors[i] for i in jet_ordering]),buffer['jets.Pmu'][event_index].shape)
-
-        # # embed_array_inplace(np.vstack([jet_vectors[i] for i in jet_ordering]),
-        # #                    buffer['jets.Pmu'][event_index])
-
-        # buffer['event.weight'][event_index] = event_weight
-
-        print("  -> Jets: {}, buffer current size: {}".format(n_jets,buffer._current_size))
-        print()
-
-    # Final flush for remaining data
-    print("Final flush of remaining {} events:".format(buffer._current_size))
-    buffer.flush()
-    print("\nBuffer info:", buffer.get_buffer_info())
-
-if __name__ == "__main__":
-    main(sys.argv)
-
 
 ########################################################
 # Uproot/dask-related stuff, for use with Delphes reading.
