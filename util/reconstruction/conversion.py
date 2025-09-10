@@ -1,7 +1,6 @@
 import glob, itertools
 import numpy as np
 import h5py as h5
-import ROOT as rt
 from util.math.embedding import embed_array
 from util.buffer import IndexableLazyLoader
 from util.qol_utils.progress_bar import printProgressBarColor
@@ -255,37 +254,31 @@ class Processor:
 
                         # Not all objects have all fields, so we do a lot of checking here.
                         if('pt' in var_map[delphes_type].keys()):
-                            with profile_block('Processor.Process.delphes_block_0'):
 
-                                with profile_block('Processor.Process.delphes_block_0.data_extraction'):
-                                    delphes_pt  = delphes_arr[var_map[delphes_type]['pt' ]][start_idxs[i]:stop_idxs[i]][j].to_numpy()
-                                    delphes_eta = delphes_arr[var_map[delphes_type]['eta']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
-                                    delphes_phi = delphes_arr[var_map[delphes_type]['phi']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
-                                    delphes_m   = np.zeros(delphes_pt.shape)
+                            delphes_pt  = delphes_arr[var_map[delphes_type]['pt' ]][start_idxs[i]:stop_idxs[i]][j].to_numpy()
+                            delphes_eta = delphes_arr[var_map[delphes_type]['eta']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
+                            delphes_phi = delphes_arr[var_map[delphes_type]['phi']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
+                            delphes_m   = np.zeros(delphes_pt.shape)
 
-                                # Rather than use rt.Math.PtEtaPhiMVector, vectorize operations with numpy.
-                                # This should be faster (although it's typically nicer to use the ROOT objects to safely
-                                # handle the coordinate conversions!). - Jan
-                                with profile_block('Processor.Process.delphes_block_0.coordinate_conversion'):
-                                    delphes_px = delphes_pt * np.cos(delphes_phi)
-                                    delphes_py = delphes_pt * np.sin(delphes_phi)
-                                    delphes_pz = delphes_pt * np.sinh(delphes_eta)
-                                    delphes_e  = np.sqrt(np.square(delphes_px) + np.square(delphes_py) + np.square(delphes_pz) + np.square(delphes_m))
+                            # Rather than use rt.Math.PtEtaPhiMVector, vectorize operations with numpy.
+                            # This should be faster (although it's typically nicer to use the ROOT objects to safely
+                            # handle the coordinate conversions!). - Jan
+                            delphes_px = delphes_pt * np.cos(delphes_phi)
+                            delphes_py = delphes_pt * np.sin(delphes_phi)
+                            delphes_pz = delphes_pt * np.sinh(delphes_eta)
+                            delphes_e  = np.sqrt(np.square(delphes_px) + np.square(delphes_py) + np.square(delphes_pz) + np.square(delphes_m))
 
-                                with profile_block('Processor.Process.delphes_block_0.write_count'):
-                                    self.WriteToDataBuffer(j,'{}.N'.format(delphes_type),len(delphes_pt))
+                            self.WriteToDataBuffer(j,'{}.N'.format(delphes_type),len(delphes_pt))
 
-                                with profile_block('Processor.Process.delphes_block_0.write_pmu'):
-                                    self.WriteToDataBuffer(j, '{}.Pmu'.format(delphes_type),
-                                                        np.column_stack([delphes_e,delphes_px,delphes_py,delphes_pz]),
-                                                        dimensions={1:self.n_delphes[k]}
-                                    )
-                                with profile_block('Processor.Process.delphes_block_0.write_pmu_cyl'):
+                            self.WriteToDataBuffer(j, '{}.Pmu'.format(delphes_type),
+                                                np.column_stack([delphes_e,delphes_px,delphes_py,delphes_pz]),
+                                                dimensions={1:self.n_delphes[k]}
+                            )
 
-                                    self.WriteToDataBuffer(j, '{}.Pmu_cyl'.format(delphes_type),
-                                                        np.column_stack([delphes_pt,delphes_eta,delphes_phi,delphes_m]),
-                                                        dimensions={1:self.n_delphes[k]}
-                                    )
+                            self.WriteToDataBuffer(j, '{}.Pmu_cyl'.format(delphes_type),
+                                                np.column_stack([delphes_pt,delphes_eta,delphes_phi,delphes_m]),
+                                                dimensions={1:self.n_delphes[k]}
+                            )
 
                         if('d0' in var_map[delphes_type].keys()):
 
@@ -367,7 +360,6 @@ class Processor:
 
                             # another opportunity to add multiplicity, if we haven't already
                             self.WriteToDataBuffer(j,'{}.N'.format(delphes_type),len(delphes_t))
-
 
             # We have now filled a chunk, time to write it.
             # If this is the first instance of the loop, we will initialize the HDF5 file.
