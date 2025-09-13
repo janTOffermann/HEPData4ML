@@ -22,8 +22,8 @@ get_script_dir()
     echo "$SCRIPT_DIR"
 }
 
-# We'll generate 10 events.
-n=10
+# We'll generate 10 events, or however many the user requests.
+n="${1:-10}"
 
 outputDirectory=$(get_script_dir)/output/tutorial_2
 script=$(get_script_dir)/../run.py
