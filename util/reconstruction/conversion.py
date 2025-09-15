@@ -161,12 +161,12 @@ class Processor:
 
                     self.WriteToDataBuffer(j,'{}.N'.format(self.stable_truth_particle_name),len(stable_particles))
 
-                    self.WriteToDataBuffer(j, '{}.Pmu'.format(self.stable_truth_particle_name), 
+                    self.WriteToDataBuffer(j, '{}.Pmu'.format(self.stable_truth_particle_name),
                                         stable_particle_momenta,
                                         dimensions={1:self.nparticles_stable}
                     )
 
-                    self.WriteToDataBuffer(j, '{}.Pmu_cyl'.format(self.stable_truth_particle_name),                                         
+                    self.WriteToDataBuffer(j, '{}.Pmu_cyl'.format(self.stable_truth_particle_name),
                                         stable_particle_momenta_cyl,
                                         dimensions={1:self.nparticles_stable}
                     )
@@ -180,7 +180,7 @@ class Processor:
                     )
 
                     prod_vertices = np.array([
-                        [x.production_vertex().position().t(),x.production_vertex().position().x(),x.production_vertex().position().y(),x.production_vertex().position().z()] 
+                        [x.production_vertex().position().t(),x.production_vertex().position().x(),x.production_vertex().position().y(),x.production_vertex().position().z()]
                         for x in stable_particles]
                     )
 
@@ -207,7 +207,7 @@ class Processor:
                                                 dimensions={1:self.nparticles_truth_selected}
                         )
 
-                        self.WriteToDataBuffer(j, '{}.Pmu_cyl'.format(key), 
+                        self.WriteToDataBuffer(j, '{}.Pmu_cyl'.format(key),
                                                 truth_particle_momenta_cyl,
                                                 dimensions={1:self.nparticles_truth_selected}
                         )
@@ -221,7 +221,7 @@ class Processor:
                         )
 
                         prod_vertices = np.array([
-                                    [x.production_vertex().position().t(),x.production_vertex().position().x(),x.production_vertex().position().y(),x.production_vertex().position().z()] 
+                                    [x.production_vertex().position().t(),x.production_vertex().position().x(),x.production_vertex().position().y(),x.production_vertex().position().z()]
                                     for x in truth_selected_particles]
                                 )
 
@@ -266,9 +266,9 @@ class Processor:
                                 if('pt' in var_map[delphes_type].keys()):
 
                                     with profile_block('Processor.Process: {} [pt]'.format(delphes_type)):
-                                        delphes_pt  = delphes_arr[var_map[delphes_type]['pt' ]][start_idxs[i]:stop_idxs[i]][j].to_numpy()
-                                        delphes_eta = delphes_arr[var_map[delphes_type]['eta']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
-                                        delphes_phi = delphes_arr[var_map[delphes_type]['phi']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
+                                        delphes_pt  = delphes_arr[var_map[delphes_type]['pt' ]][start_idxs[i]+j].to_numpy().astype(float)
+                                        delphes_eta = delphes_arr[var_map[delphes_type]['eta']][start_idxs[i]+j].to_numpy().astype(float)
+                                        delphes_phi = delphes_arr[var_map[delphes_type]['phi']][start_idxs[i]+j].to_numpy().astype(float)
                                         delphes_m   = np.zeros(delphes_pt.shape)
 
                                         # Rather than use rt.Math.PtEtaPhiMVector, vectorize operations with numpy.
@@ -277,7 +277,7 @@ class Processor:
                                         delphes_px = delphes_pt * np.cos(delphes_phi)
                                         delphes_py = delphes_pt * np.sin(delphes_phi)
                                         delphes_pz = delphes_pt * np.sinh(delphes_eta)
-                                        delphes_e  = np.sqrt(np.square(delphes_px) + np.square(delphes_py) + np.square(delphes_pz) + np.square(delphes_m))
+                                        delphes_e  = np.sqrt(np.square(delphes_px) + np.square(delphes_py) + np.square(delphes_pz)) # masses set to zero -> can leave out
 
                                         self.WriteToDataBuffer(j,'{}.N'.format(delphes_type),len(delphes_pt))
 
@@ -295,10 +295,10 @@ class Processor:
                                     with profile_block('Processor.Process: {} [d0]'.format(delphes_type)):
 
 
-                                        delphes_d0  = delphes_arr[var_map[delphes_type]['d0']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
-                                        delphes_z0  = delphes_arr[var_map[delphes_type]['z0']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
-                                        delphes_d0e  = delphes_arr[var_map[delphes_type]['errord0']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
-                                        delphes_z0e  = delphes_arr[var_map[delphes_type]['errorz0']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
+                                        delphes_d0  = delphes_arr[var_map[delphes_type]['d0']][start_idxs[i]+j].to_numpy()
+                                        delphes_z0  = delphes_arr[var_map[delphes_type]['z0']][start_idxs[i]+j].to_numpy()
+                                        delphes_d0e  = delphes_arr[var_map[delphes_type]['errord0']][start_idxs[i]+j].to_numpy()
+                                        delphes_z0e  = delphes_arr[var_map[delphes_type]['errorz0']][start_idxs[i]+j].to_numpy()
 
                                         self.WriteToDataBuffer(j, '{}.D0'.format(delphes_type), delphes_d0, dimensions={1:self.n_delphes[k]})
                                         self.WriteToDataBuffer(j, '{}.D0.Error'.format(delphes_type), delphes_d0e, dimensions={1:self.n_delphes[k]})
@@ -308,9 +308,9 @@ class Processor:
                                 if('xd' in var_map[delphes_type].keys()):
                                     with profile_block('Processor.Process: {} [xd]'.format(delphes_type)):
 
-                                        delphes_xd  = delphes_arr[var_map[delphes_type]['xd']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
-                                        delphes_yd  = delphes_arr[var_map[delphes_type]['yd']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
-                                        delphes_zd  = delphes_arr[var_map[delphes_type]['zd']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
+                                        delphes_xd  = delphes_arr[var_map[delphes_type]['xd']][start_idxs[i]+j].to_numpy()
+                                        delphes_yd  = delphes_arr[var_map[delphes_type]['yd']][start_idxs[i]+j].to_numpy()
+                                        delphes_zd  = delphes_arr[var_map[delphes_type]['zd']][start_idxs[i]+j].to_numpy()
 
                                         # store 3-position of closest approach as a vector (Xd, Yd, Zd). Unfortunately Delphes' ParticlePropagator computes Td but doesn't save it...?!
                                         #  NOTE: Could consider adding in Td on my own branch of Delphes -- already use this for some other things.
@@ -337,29 +337,29 @@ class Processor:
                                         )
 
                                 if('charge' in var_map[delphes_type].keys()):
-                                    delphes_charge = delphes_arr[var_map[delphes_type]['charge']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
+                                    delphes_charge = delphes_arr[var_map[delphes_type]['charge']][start_idxs[i]+j].to_numpy()
                                     self.WriteToDataBuffer(j, '{}.Charge'.format(delphes_type), delphes_charge, dimensions={1:self.n_delphes[k]}, dtype=float)
 
                                 if('pid' in var_map[delphes_type].keys()):
-                                    delphes_pid  = delphes_arr[var_map[delphes_type]['pid']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
+                                    delphes_pid  = delphes_arr[var_map[delphes_type]['pid']][start_idxs[i]+j].to_numpy()
                                     self.WriteToDataBuffer(j, '{}.PdgId'.format(delphes_type), delphes_pid, dimensions={1:self.n_delphes[k]}, dtype=np.dtype('i4'))
 
                                 if('eem' in var_map[delphes_type].keys()): # assume Eem and Ehad together
-                                    delphes_e_em   = delphes_arr[var_map[delphes_type]['eem' ]][start_idxs[i]:stop_idxs[i]][j].to_numpy()
+                                    delphes_e_em   = delphes_arr[var_map[delphes_type]['eem' ]][start_idxs[i]+j].to_numpy()
                                     self.WriteToDataBuffer(j, '{}.E.EM'.format(delphes_type), delphes_e_em, dimensions={1:self.n_delphes[k]}, dtype=float)
 
                                 if('ehad' in var_map[delphes_type].keys()):
-                                    delphes_e_had  = delphes_arr[var_map[delphes_type]['ehad']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
+                                    delphes_e_had  = delphes_arr[var_map[delphes_type]['ehad']][start_idxs[i]+j].to_numpy()
                                     self.WriteToDataBuffer(j, '{}.E.Hadronic'.format(delphes_type), delphes_e_had, dimensions={1:self.n_delphes[k]}, dtype=float)
 
                                 if('etrk' in var_map[delphes_type].keys()):
-                                    delphes_e_trk  = delphes_arr[var_map[delphes_type]['etrk']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
+                                    delphes_e_trk  = delphes_arr[var_map[delphes_type]['etrk']][start_idxs[i]+j].to_numpy()
                                     self.WriteToDataBuffer(j, '{}.E.Track'.format(delphes_type), delphes_e_trk, dimensions={1:self.n_delphes[k]}, dtype=float)
 
                                 # Calorimeter towers indicate their edges in (eta,phi).
                                 if('edges' in var_map[delphes_type].keys()):
                                     with profile_block('Processor.Process: {} [edges]'.format(delphes_type)):
-                                        delphes_edges  = delphes_arr[var_map[delphes_type]['edges']][start_idxs[i]:stop_idxs[i]][j].to_numpy()
+                                        delphes_edges  = delphes_arr[var_map[delphes_type]['edges']][start_idxs[i]+j].to_numpy()
                                         # separate eta and phi edges -- I think this is clearer for later reference
                                         self.WriteToDataBuffer(j, '{}.Edges.Eta'.format(delphes_type), delphes_edges[:,:2], dimensions={1:self.n_delphes[k]})
                                         self.WriteToDataBuffer(j, '{}.Edges.Phi'.format(delphes_type), delphes_edges[:,2:4], dimensions={1:self.n_delphes[k]})
@@ -367,10 +367,10 @@ class Processor:
                                 # Certain objects record their position in (t,x,y,z). Note that tracks *do not* do this (those are all zero for them).
                                 if('x' in var_map[delphes_type].keys() and not is_track):
                                     with profile_block('Processor.Process: {} [x]'.format(delphes_type)):
-                                        delphes_t  = delphes_arr[var_map[delphes_type]['t' ]][start_idxs[i]:stop_idxs[i]][j].to_numpy()
-                                        delphes_x  = delphes_arr[var_map[delphes_type]['x' ]][start_idxs[i]:stop_idxs[i]][j].to_numpy()
-                                        delphes_y  = delphes_arr[var_map[delphes_type]['y' ]][start_idxs[i]:stop_idxs[i]][j].to_numpy()
-                                        delphes_z  = delphes_arr[var_map[delphes_type]['z' ]][start_idxs[i]:stop_idxs[i]][j].to_numpy()
+                                        delphes_t  = delphes_arr[var_map[delphes_type]['t' ]][start_idxs[i]+j].to_numpy()
+                                        delphes_x  = delphes_arr[var_map[delphes_type]['x' ]][start_idxs[i]+j].to_numpy()
+                                        delphes_y  = delphes_arr[var_map[delphes_type]['y' ]][start_idxs[i]+j].to_numpy()
+                                        delphes_z  = delphes_arr[var_map[delphes_type]['z' ]][start_idxs[i]+j].to_numpy()
 
                                         self.WriteToDataBuffer(j, '{}.Xmu'.format(delphes_type),
                                                             np.column_stack([delphes_t,delphes_x,delphes_y,delphes_z]),
@@ -538,7 +538,6 @@ class Processor:
 
     def PrepIndexRanges(self,nentries,nentries_per_chunk):
         nchunks = int(np.ceil(nentries / nentries_per_chunk))
-        print('nchunks = ',nchunks)
         start_idxs = np.zeros(nchunks,dtype = np.dtype('i8'))
         for i in range(1,start_idxs.shape[0]): start_idxs[i] = start_idxs[i-1] + nentries_per_chunk
         stop_idxs = start_idxs + nentries_per_chunk
