@@ -15,7 +15,7 @@ from typing import Union, Optional, List, TYPE_CHECKING
 from util.hepmc.setup import HepMCSetup, uncache_hepmc3, prepend_to_pythonpath
 from util.hepmc.readers import ReaderAscii, ReaderRootTree
 from util.hepmc.Pythia8ToHepMC3 import Pythia8ToHepMC3
-from util.misc.timing import profile_method
+from util.misc.timing import profile_method, profile_block
 
 if TYPE_CHECKING: # Only imported during type checking -- avoids risk of circular imports
     from util.pythia.utils import PythiaWrapper
@@ -238,41 +238,29 @@ def ExtractHepMCEventsROOT(files:Union[list,str],get_nevents:bool=False, silent:
     return events
 
 @profile_method('ExtractHepMCParticles')
-def ExtractHepMCParticles(events:List['hm.GenEvent'], nparticles_max:Optional[int]=None,selection:Optional['BaseSelector']=None):
-    if(selection is not None):
-
-        particles = [
-            [ev.particles()[x] for x in np.atleast_1d(selection(ev))]# if x>0] # TODO: use intertools.compress() -- tried before, but it didn't work as expected?
-            for ev in events
-        ]
-        if(nparticles_max is not None):
-            particles = [x[:int(np.minimum(len(x),nparticles_max))] for x in particles]
-
+def ExtractHepMCParticles(events: List['hm.GenEvent'], nparticles_max: Optional[int] = None, selection: Optional['BaseSelector'] = None):
+    if selection is not None:
+        particles = []
+        for ev in events:
+            ev_particles = ev.particles()
+            indices = selection(ev)
+            
+            # Truncate indices first - avoid accessing unnecessary particles
+            if nparticles_max is not None and len(indices) > nparticles_max:
+                indices = indices[:nparticles_max]
+            
+            selected = [ev_particles[i] for i in indices]
+            particles.append(selected)
     else:
         particles = [
-            ev.particles()[:int(np.minimum(len(ev.particles()),nparticles_max))]
+            ev.particles()[:nparticles_max] if nparticles_max else ev.particles()
             for ev in events
         ]
     return particles
 
-# ======================
-# Some utility functions,
-# Originally had pyhepmc support,
-# these have become a little redundant.
-#=======================
-
-def ParticleToVector(particle:'hm.GenParticle'):
-    return rt.Math.PxPyPzEVector(particle.momentum().px(), particle.momentum().py(), particle.momentum().pz(), particle.momentum().e())
-
 def ParticleToProductionVertex(particle:'hm.GenParticle'):
     prod_vertex_position = particle.production_vertex().position()
     return rt.Math.XYZTVector(prod_vertex_position.x(), prod_vertex_position.y(), prod_vertex_position.z(), prod_vertex_position.t())
-
-def IsStable(particle:'hm.GenParticle'):
-    """
-    Check stability via status.
-    """
-    return particle.status() == 1
 
 def ParticleToEndVertex(particle:'hm.GenParticle'):
     """
@@ -284,6 +272,3 @@ def ParticleToEndVertex(particle:'hm.GenParticle'):
 
     end_vertex_position = end_vertex.position()
     return rt.Math.XYZTVector(end_vertex_position.x(), end_vertex_position.y(), end_vertex_position.z(), end_vertex_position.t())
-
-def GetParticleID(particle:'hm.GenParticle'):
-    return particle.pid()
