@@ -6,7 +6,7 @@ from typing import Any, Optional, List, Tuple, Annotated, Union, TYPE_CHECKING #
 from numpy.typing import NDArray
 from util.fastjet.jetfinderbase import JetFinderBase
 from util.qol_utils.progress_bar import printProgressBarColor
-from util.buffer import Buffer
+from util.buffer.output import OutputBuffer
 
 import util.reconstruction.post_processing.utils.ghost_association as ghost_assoc
 import util.reconstruction.post_processing.utils.softdrop as softdrop
@@ -45,7 +45,7 @@ class JetFinder(JetFinderBase):
         self.fastjet_dir = fastjet_dir
         self.fastjet_init_flag = False
 
-        self.buffer = Buffer(100) # TODO: Make buffer size configurable
+        self.buffer = OutputBuffer(100) # TODO: Make buffer size configurable
 
         self.input_collection_arrays = None
         self.input_vecs = None
