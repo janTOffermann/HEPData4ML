@@ -13,7 +13,6 @@ from util.math.rotations import RotateVector
 from util.reconstruction.post_processing.jets import TruthJetFinder
 from util.hepmc.setup import HepMCSetup, prepend_to_pythonpath
 from util.hepmc.readers import ReaderAscii, ReaderRootTree # our wrappers for the HepMC3 reader classes
-from util.hepmc.hepmc import ParticleToVector
 from util.generation.generation import PythiaGenerator
 from typing import List, Union, Tuple, Optional, TYPE_CHECKING
 
@@ -1035,14 +1034,9 @@ class PileupOverlayPtFilter(PileupOverlay):
             event_particles = event.particles()
             status = np.array([x.status() for x in event_particles])
             stable_particles = list(itertools.compress(event_particles, status == 1))
-            stable_particle_vecs = [ParticleToVector(x) for x in stable_particles]
+            stable_particle_momenta = np.array([[particle.momentum().e(), particle.momentum().px(), particle.momentum().py(), particle.momentum().pz()] for particle in stable_particles])
 
-            momenta = np.vstack([
-                    [getattr(vec, method)() for vec in stable_particle_vecs]
-                    for method in ['E','Px','Py','Pz']
-                ]).T
-
-            self.jet_finder.Process(momenta)
+            self.jet_finder.Process(stable_particle_momenta)
             self.leading_pt[index] = np.max( [momentum[0] for momentum in self.jet_finder.jet_vectors_cyl.values() ] )
             self.hist_pt.Fill(self.leading_pt[index])
             # if(self.leading_pt[index] > self.pt_cut):
