@@ -243,7 +243,7 @@ class JetFinder(JetFinderBase):
             self.ClearUserInfo()
 
             # Gather the different input collections together, into one array of four-momenta.
-            self.input_vecs = np.vstack([self.input_collection_arrays[key][self._i] for key in self.input_collections]) # NOTE: Using self.input_collections_array.keys() can be dangerous, due to modifications/additions to keys by things like GhostAssociation(). Those should not touch self.input_collections, for this reason.
+            self.SetInputs(np.vstack([self.input_collection_arrays[key][self._i] for key in self.input_collections])) # NOTE: Using self.input_collections_array.keys() can be dangerous, due to modifications/additions to keys by things like GhostAssociation(). Those should not touch self.input_collections, for this reason.
 
             # Optional modification of inputs. May be harnessed by some special configurations.
             self._modifyInputs()

@@ -120,6 +120,11 @@ class JetFinderBase:
         self._initialize_fastjet()
         import fastjet as fj # hacky, but will work because _setupFastJet() was run in __init__()
 
+        # # Need to make sure the inputs have the right dtype, need float64 and not float32.
+        # # Ideally, one should fix this upstream...
+        # if(self.input_vecs.dtype != np.dtype('float64')):
+        #     self.input_vecs = np.array(self.input_vecs,dtype=np.dtype('float64'))
+
         # vecs has format (E,px,py,pz) -- FastJet uses (px,py,pz,E) so we must modify it. Using np.roll.
         pj = [fj.PseudoJet(*x) for x in np.roll(self.input_vecs,-1,axis=-1)]
 
