@@ -6,7 +6,7 @@ from typing import Dict, Any, Tuple, Optional
 from abc import ABC, abstractmethod
 from util.math.embedding import embed_array
 
-# Classes for data buffers, to be used by the post-processors (such as JetFinder).
+# Classes for output data buffers, to be used by the post-processors (such as JetFinder).
 # NOTE: Our HepMC -> HDF5 conversion in conversion.py also uses some buffering logic,
 #       but it doesn't implement this class. Maybe it can eventually be updated? - Jan
 
@@ -37,13 +37,12 @@ class BufferFlushHandler(ABC):
     def _print(self,val:str):
         print('{} {}'.format(self.print_prefix,val))
 
-
 class DummyFlushHandler(BufferFlushHandler):
     """Example flush handler that prints what would be written to file."""
 
     def __init__(self, filename: str):
         self.filename = filename
-        self.verbose = False
+        self.verbose = True
         self.print_prefix = 'DummyFlushHandler:'
 
     def flush(self, data: Dict[str, np.ndarray], start_event: int, end_event: int, nevents: int):
@@ -100,7 +99,7 @@ class BufferArray:
     A wrapper around numpy arrays that handles circular buffer indexing automatically.
     """
 
-    def __init__(self, array: np.ndarray, buffer: 'Buffer'):
+    def __init__(self, array: np.ndarray, buffer: 'OutputBuffer'):
         self._array = array
         self._buffer = buffer
         self.print_prefix = 'BufferArray:'
@@ -203,7 +202,7 @@ class BufferArray:
     def _print(self,val:str):
         print('{} {}'.format(self.print_prefix,val))
 
-class Buffer:
+class OutputBuffer:
     """
     A dictionary-like buffer that maintains fixed-size numpy arrays and
     automatically flushes data when the buffer fills up.
@@ -388,65 +387,3 @@ class Buffer:
 
     def _print(self,val:str):
         print('{} {}'.format(self.print_prefix,val))
-
-########################################################
-# Uproot/dask-related stuff, for use with Delphes reading.
-########################################################
-
-class IndexableLazyLoader:
-    def __init__(self, files, tree_path, expressions):
-        self.files = files
-        self.tree_path = tree_path
-        self.expressions = expressions
-        self._cached_branches = {}
-        self._total_entries = None
-
-        # Get field info by checking what actually exists
-        with ur.open(files[0]) as f:
-            available_expressions = [expr for expr in expressions if expr in f[tree_path]]
-        self.fields = available_expressions
-
-    def __getitem__(self, branch_name):
-        """Return a branch that can be sliced"""
-        if branch_name not in self._cached_branches:
-            self._cached_branches[branch_name] = LazyBranch(self.files, self.tree_path, branch_name)
-        return self._cached_branches[branch_name]
-
-    def __len__(self):
-        """Return total number of entries across all files"""
-        if self._total_entries is None:
-            total = 0
-            for file_path in self.files:
-                with ur.open(file_path) as f:
-                    total += f[self.tree_path].num_entries
-            self._total_entries = total
-        return self._total_entries
-
-class LazyBranch:
-    def __init__(self, files, tree_path, branch_name):
-        self.files = files
-        self.tree_path = tree_path
-        self.branch_name = branch_name
-        self._cached_data = None
-
-    def __getitem__(self, slice_obj):
-        """Handle slicing like delphes_arr[branch][start:stop]"""
-        if self._cached_data is None:
-            # Load the entire branch when first accessed
-            self._cached_data = ur.concatenate(self.files,
-                                             expressions=[self.branch_name],
-                                             tree_path=self.tree_path,
-                                             library="ak")[self.branch_name]
-        return self._cached_data[slice_obj]
-
-    def __len__(self):
-        """Return length of this branch (same as total entries)"""
-        if self._cached_data is not None:
-            return len(self._cached_data)
-        else:
-            # Calculate without loading the data
-            total = 0
-            for file_path in self.files:
-                with ur.open(file_path) as f:
-                    total += f[self.tree_path].num_entries
-            return total
