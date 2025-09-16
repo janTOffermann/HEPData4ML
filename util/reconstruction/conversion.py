@@ -63,6 +63,16 @@ class Processor:
         # Temporary vector -- for handling coordinate conversions
         self.tmp_vector = rt.Math.PxPyPzEVector()
 
+        # Compression level for HDF5, 0 (least) to 9 (most)
+        self.copts = 0
+
+    def SetH5Compression(self,val:int):
+        if(val > 9):
+            val = 9
+        elif(val < 0):
+            val = 0
+        self.copts = int
+
     def SetMetadataHandler(self,handler:'MetaDataHandler'):
         self.metadata_handler = handler
 
@@ -376,7 +386,7 @@ class Processor:
             # NOTE: We assume that after this first loop, we've generated all the necessary keys.
             #       Probably a safe assumption for now.
             if(i == 0):
-                dsets = self.PrepH5File(h5_file,nentries,self.data)
+                dsets = self.PrepH5File(h5_file,nentries,self.data,copts=self.copts)
 
             with h5.File(h5_file, 'a') as f:
                 for key in dsets.keys():
@@ -450,37 +460,6 @@ class Processor:
 
         return
 
-    def MergeEventFilterFlag(self,h5_file,event_filter_flag_files,copts=9):
-        if(type(event_filter_flag_files) not in [list,tuple]):
-            event_filter_flag_files = [event_filter_flag_files]
-        f = h5.File('{}/{}'.format(self.outdir,h5_file),'a')
-        keys = list(f.keys())
-
-        try:
-            g = [h5.File('{}/{}'.format(self.outdir,x),'r') for x in event_filter_flag_files]
-        except:
-            pass
-            f.close()
-            return
-
-        gkeys = list(g[0].keys())
-
-        keys_to_merge = []
-        for key in gkeys:
-            if(key in keys):
-                print('\tWarning: Found key {} among the event_filter_flag keys, but this matches an existing key in the dataset. Skipping.'.format(key))
-                continue
-            keys_to_merge.append(key)
-
-        for key in keys_to_merge:
-            data = np.concatenate([x[key][:] for x in g],axis=0)
-            f.create_dataset(key,data=data,compression='gzip',compression_opts=copts)
-
-        f.close()
-        for x in g:
-            x.close()
-        return
-
     @profile_method('Processor.PrepDelphesArrays')
     def PrepDelphesArrays(self,):
         types = self.configurator.GetDelphesObjects()
@@ -517,14 +496,14 @@ class Processor:
                 var_map[key][var.lower()] = branch
         return delphes_arr, var_map
 
-    def PrepH5File(self,filename,nentries,data_buffer):
+    def PrepH5File(self,filename,nentries,data_buffer,copts=0):
         dsets = {}
         with h5.File(filename, 'w') as f:
             for key, val in data_buffer.items():
                 shape = list(val.shape)
                 shape[0] = nentries
                 shape = tuple(shape)
-                dsets[key] = f.create_dataset(key, shape, val.dtype,compression='gzip')
+                dsets[key] = f.create_dataset(key, shape, val.dtype,compression='gzip',compression_opts=copts)
         return dsets
 
     def PrepIndexRanges(self,nentries,nentries_per_chunk):

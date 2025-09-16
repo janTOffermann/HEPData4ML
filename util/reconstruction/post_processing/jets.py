@@ -7,6 +7,7 @@ from numpy.typing import NDArray
 from util.fastjet.jetfinderbase import JetFinderBase
 from util.qol_utils.progress_bar import printProgressBarColor
 from util.buffer.output import OutputBuffer
+from util.misc.timing import profile_method
 
 import util.reconstruction.post_processing.utils.ghost_association as ghost_assoc
 import util.reconstruction.post_processing.utils.softdrop as softdrop
@@ -26,8 +27,7 @@ class JetFinder(JetFinderBase):
 
     def __init__(self, input_collections:List[str]=['StableTruthParticles'], jet_algorithm:str='anti_kt',radius:float=0.4, jet_name:str='AK04Jets', n_jets_max:int=10,save_constituents:bool=True, fastjet_dir:Optional[str]=None,verbose:bool=False):
 
-        # TODO: super init?
-
+        super(JetFinder,self).__init__(fastjet_dir)
         self.status = False
 
         self.SetInputCollections(input_collections)
@@ -36,32 +36,29 @@ class JetFinder(JetFinderBase):
         self.radius = radius
         self.constituents_flag = save_constituents
         self.n_jets_max = n_jets_max # max number of jets to save per event (will be pt-ordered)
-        self.n_constituents_max = 200 # max number of constituents to save per jet
+        self.n_constituents_max = 200 # max number of constituents to save per jet # TODO: Make configurable
 
         self.single_jet = False # if true, self.n_jets_max = 1 & will remove the "number of jets" dimension (dim 1). Accessed by certain post-processors.
         if(self.n_jets_max == 1):
             self.single_jet = True # turn on if there's only 1 jet saved per event -- no real need for the extra dimension then
 
         self.fastjet_dir = fastjet_dir
-        self.fastjet_init_flag = False
 
         self.buffer = OutputBuffer(100) # TODO: Make buffer size configurable
 
         self.input_collection_arrays = None
-        self.input_vecs = None
+        self.input_collection_arrays_rap_phi = None
         self.constituent_indices_dict = None
 
         self.SetVerbosity(verbose)
-        self.configurator = None
 
         self.print_prefix = '\n\tJetFinder'
         self.progress_bar_length = 50
         self.progress_bar_prefix = '\tRunning JetFinder:'
         self.progress_bar_suffix = 'Complete'
-        self.setup = None
-        self.tagger = None
+        # self.setup = None
+        # self.tagger = None
 
-        self.copts = 9
         self.error = False
 
         self._i = 0
@@ -72,6 +69,10 @@ class JetFinder(JetFinderBase):
         # Generate info on citations for algorithms
         self.citations = {}
         self._generate_citations()
+
+        # Buffer containing FastJet::PseudoJet objects -- better to use
+        self.pseudojets = None
+        self.pseudojet_init_flag = False
 
     def _print(self,val:Any):
         print('{}: {}'.format(self.print_prefix,val))
@@ -88,11 +89,23 @@ class JetFinder(JetFinderBase):
         self.buffer.SetFilename(self.h5_file)
 
     def SetInputCollections(self,collections:List[str]):
+        """
+        This function prepares the actual key names that will be used
+        to access collections' four-momenta from the (HDF5) n-tuple.
+
+        We access both the Cartesian (Pmu) and cylindrical (Pmu_cyl),
+        the former for constructing fastjet.PseudoJet objects, and the
+        latter for accessing (eta,phi) which we can give to the PseudoJets
+        to speed up certain operations where they would normally have to
+        compute rapidity and phi (we can only use this *if* we're assuming
+        eta ~= rapidity for the clustering inputs).
+        """
         if(type(collections) != list):
             collections = [collections]
-        collections = ['{}.Pmu'.format(collection) for collection in collections]
+        pmu_collections = ['{}.Pmu'.format(collection) for collection in collections]
 
-        self.input_collections = collections
+        self.input_collection_names = collections
+        self.input_collection_names_Pmu = pmu_collections
 
     def SetNConstituentsMax(self,n:int):
         self.n_constituents_max = n
@@ -126,15 +139,15 @@ class JetFinder(JetFinderBase):
         f.close()
 
         cleaned_collections = []
-        for collection in self.input_collections:
+        for collection in self.input_collection_names_Pmu:
             # we will be using the Cartesian versions of each collection for clustering
             found = collection in keys
             if(not found):
                 self._print('Warning: Did not find key {} in file {}. Disabling as input...'.format(collection,self.h5_file))
             else:
                 cleaned_collections.append(collection)
-        self.input_collections = cleaned_collections
-        if(len(self.input_collections)==0):
+        self.input_collection_names_Pmu = cleaned_collections
+        if(len(self.input_collection_names_Pmu)==0):
             self._print('Error: No input collections.')
             return False
         return True
@@ -213,9 +226,16 @@ class JetFinder(JetFinderBase):
         #       keeping the input file open the whole time.
         f = h5.File(self.h5_file,'r')
         self.input_collection_arrays = {
-            key:f[key][:] for key in self.input_collections
+            key:f[key][:] for key in self.input_collection_names_Pmu
         }
-        self.nevents = f[self.input_collections[0]].shape[0]
+        self.nevents = f[self.input_collection_names_Pmu[0]].shape[0]
+
+        # Also fetch rapidity & phi, for potentially speeding up some FastJet computations.
+        self._fetch_rapidity_phi(f)
+
+        # Get maximum size of jet inputs.
+        n_max = self._get_max_input_size()
+        self._initialize_pseudojets(n_max)
 
         # Optional modification of initialize. May be harnessed by some special configurations.
         self._modifyInitialization()
@@ -228,6 +248,55 @@ class JetFinder(JetFinderBase):
 
         self.status = True
         f.close()
+
+    def _fetch_rapidity_phi(self,f:h5.File):
+        """
+        Fetches the rapidity and phi of the jet clustering inputs.
+        These can be explicitly passed on to FastJet, and should speed
+        up the clustering -- which we ought to do if we've already
+        spent time computing these things!
+
+        Note: We use eta instead of rapidity and thus implicitly assume
+        the input 4-vecs to be massless (as they often are). However,
+        we try to fetch any existing "Rapidity"/"Rap"/"Y" branch first,
+        in case it exists.
+        """
+
+        # Phi is straightforward -- just query the cylindrical four-momenta.
+        phi = {
+            key:f['{}.Pmu_cyl'.format(key)][:,...,2] for key in self.input_collection_names
+        }
+
+        # For rapidity, fetch rapidity or pseudorapidity based on what is available.
+        full_keys = list(f.keys())
+        rapidity_keys = {}
+        for key in self.input_collection_names:
+            potential_keys = ['{}.{}'.format(key,x) for x in ['Rapidity','Rap','Y','Pmu_cyl']] # last is the fall-back
+            for key2 in potential_keys:
+                if(key2 in full_keys):
+                    rapidity_keys[key] = key2
+                    break
+        assert(len(rapidity_keys.keys()) == len(self.input_collection_names))
+        rapidity = {}
+        
+        for key,key2 in rapidity_keys.items():
+            if('Pmu_cyl' in key2):
+                rapidity[key] = f['{}.Pmu_cyl'.format(key)][:,...,2]
+            else: # TODO: This may need fixing -- as of writing this, I don't think there are any such rapidity branches! -Jan
+                rapidity[key] = f[key2][:]
+        
+        # Now put everything together
+        self.input_collection_arrays_rap_phi = {
+            key:np.stack([rapidity[key],phi[key]],axis=-1)
+            for key in self.input_collection_names
+        }
+        return
+
+    def _get_max_input_size(self):
+        f = h5.File(self.h5_file,'r')
+        sizes = {key:f['{}.N'.format(key)][:] for key in self.input_collection_names}
+        return np.max(np.sum(np.stack(list(sizes.values())), axis=0))
+        
 
     def Process(self):
         self.Initialize()
@@ -243,7 +312,8 @@ class JetFinder(JetFinderBase):
             self.ClearUserInfo()
 
             # Gather the different input collections together, into one array of four-momenta.
-            self.SetInputs(np.vstack([self.input_collection_arrays[key][self._i] for key in self.input_collections])) # NOTE: Using self.input_collections_array.keys() can be dangerous, due to modifications/additions to keys by things like GhostAssociation(). Those should not touch self.input_collections, for this reason.
+            self.SetInputs(np.vstack([self.input_collection_arrays[key][self._i] for key in self.input_collection_names_Pmu])) # NOTE: Using self.input_collections_array.keys() can be dangerous, due to modifications/additions to keys by things like GhostAssociation(). Those should not touch self.input_collections, for this reason.
+            self.SetRapidityPhi(np.vstack([self.input_collection_arrays_rap_phi[key][self._i] for key in self.input_collection_names])) # NOTE: Using self.input_collections_array.keys() can be dangerous, due to modifications/additions to keys by things like GhostAssociation(). Those should not touch self.input_collections, for this reason.
 
             # Optional modification of inputs. May be harnessed by some special configurations.
             self._modifyInputs()
@@ -331,7 +401,7 @@ class JetFinder(JetFinderBase):
         key = 'Metadata.JetCollections.InputCollections'
         if(key not in metadata.keys()):
             metadata[key] = {}
-        metadata[key][self.jet_name] = [x.replace('.Pmu','') for x in self.input_collections]
+        metadata[key][self.jet_name] = [x.replace('.Pmu','') for x in self.input_collection_names_Pmu]
 
         # Also add metadata on citations for algorithms. This is stored as a list of strings; it is not separated by jet_name,
         # as that level of granularity is probably not useful.
@@ -383,7 +453,7 @@ class JetFinder(JetFinderBase):
 
     def _computeConstituentIndices(self):
         # Precompute collection boundaries once
-        n_per_collection = [len(self.input_collection_arrays[key][self._i]) for key in self.input_collections]
+        n_per_collection = [len(self.input_collection_arrays[key][self._i]) for key in self.input_collection_names_Pmu]
         cumulative_lengths = np.cumsum([0] + n_per_collection)
 
         self.constituent_indices_dict = {}
@@ -578,11 +648,9 @@ class TruthJetFinder(JetFinderBase):
         self.fastjet_dir = fastjet_dir
         self.fastjet_init_flag = False
 
-        self.configurator = None
-
         self.print_prefix = '\n\tTruthJetFinder'
-        self.setup = None
-        self.tagger = None
+        # self.setup = None
+        # self.tagger = None
 
         self.error = False
 

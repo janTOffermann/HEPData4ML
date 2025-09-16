@@ -2,6 +2,7 @@ import sys, operator
 import numpy as np
 from util.fastjet.setup import FastJetSetup
 from typing import Optional, Any
+from util.misc.timing import profile_method, profile_block
 
 class JetFinderBase:
     """
@@ -39,9 +40,25 @@ class JetFinderBase:
         self.n_constituents_max = None
 
         self.input_vecs = None
+        self.rap_phi = None
         self.configurator = None
 
         self.jet_ordering = None
+
+        # Buffer containing FastJet::PseudoJet objects -- better to use
+        self.pseudojets = None
+        self.pseudojet_init_flag = False
+
+    def _initialize_pseudojets(self, size=1000, force=False):
+        if(self.pseudojet_init_flag and not force):
+            return
+        
+        self._initialize_fastjet()
+        import fastjet as fj
+        self.pseudojets = [fj.PseudoJet() for i in range(size)]
+        
+        self.pseudojet_init_flag = True
+        return
 
     def _initialize_fastjet(self):
 
@@ -74,6 +91,9 @@ class JetFinderBase:
 
     def SetInputs(self,vecs):
         self.input_vecs = vecs
+
+    def SetRapidityPhi(self,val):
+        self.rap_phi = val
 
     def _setupFastJet(self):
         verbose = self.configurator.GetPrintFastjet()
@@ -116,37 +136,42 @@ class JetFinderBase:
         self.jetdef = fj.JetDefinition(self.jet_algorithm, self.radius)
         return
 
+    @profile_method('JetFinderBase._clusterJets')
     def _clusterJets(self):
         self._initialize_fastjet()
         import fastjet as fj # hacky, but will work because _setupFastJet() was run in __init__()
 
-        # # Need to make sure the inputs have the right dtype, need float64 and not float32.
-        # # Ideally, one should fix this upstream...
-        # if(self.input_vecs.dtype != np.dtype('float64')):
-        #     self.input_vecs = np.array(self.input_vecs,dtype=np.dtype('float64'))
+        # Quick check to make sure our PseudoJet buffer is large enough.
+        # Ideally, we should prepare this upstream to avoid having to re-initialize.
+        n_pseudojets = len(self.input_vecs)
+        if(n_pseudojets > len(self.pseudojets)):
+            self._initialize_pseudojets(n_pseudojets,force=True) # TODO: Consider adding a safety factor?
+        
+        # Now set the PseudoJet momenta and indices -- the latter for tracing them through jet clustering.
+        # vecs has format (E,px,py,pz) -- FastJet uses (px,py,pz,E) so we must rearrange. Faster than np.roll.
+        has_rap_phi = (self.rap_phi is not None)
+        for i,x in enumerate(self.input_vecs):
+            self.pseudojets[i].reset(x[1],x[2],x[3],x[0]) # NOTE: This should reset indices -- and user info (?).
+            self.pseudojets[i].set_user_index(i)
 
-        # vecs has format (E,px,py,pz) -- FastJet uses (px,py,pz,E) so we must modify it. Using np.roll.
-        pj = [fj.PseudoJet(*x) for x in np.roll(self.input_vecs,-1,axis=-1)]
+            # If we've supplied (rapidity,phi) of inputs to JetFinderBase, we can pass these to FastJet to avoid
+            # having it recompute these quantities internally.
+            if(has_rap_phi):
+                self.pseudojets[i].set_cached_rap_phi(*self.rap_phi[i])
 
-        # Attach indices to the pseudojet objects, so that we can trace them through jet clustering.
-        # Indices will correspond to the order they were input (with zero-indexing).
-        for i,pseudojet in enumerate(pj):
-            pseudojet.set_user_index(i)
 
         # Attach any optional information to the pseudojet objects. This can be leveraged by other classes
         # or extensions.
         if(self.user_info is not None):
             for idx, val in self.user_info.items(): # in practice, val will be a dictionary itself -- allows for attaching multiple things
-                pj[idx].set_python_info(val)
+                self.pseudojets[idx].set_python_info(val)
 
-
-        # selector = fj.SelectorPtMin(jet_config['jet_min_pt']) & fj.SelectorAbsEtaMax(jet_config['jet_max_eta'])
-        # Note: Switched from the old method, this is more verbose but seems to do the same thing anyway.
-        self.cluster_sequence = fj.ClusterSequence(pj, self.jetdef) # member of class, otherwise goes out-of-scope when ref'd later
-        # self.jets = self.cluster_sequence.inclusive_jets()
-        self.jets_dict = {i:jet for i,jet in enumerate(self.cluster_sequence.inclusive_jets())}
+        with profile_block('JetFinderBase._clusterJets - ClusterSequence'): # Useful for profiling -- this time block is largely non-negotiable.
+            self.cluster_sequence = fj.ClusterSequence(self.pseudojets[:n_pseudojets], self.jetdef) # member of class, otherwise goes out-of-scope when ref'd later
+        self.jets_dict = {i:jet for i,jet in enumerate(self.cluster_sequence.inclusive_jets())} # NOTE: Repeated calls to ClusterSequence::inclusive_jets() seems OK, I think it is just an accessor.
         self.jet_ordering = np.arange(len(self.jets_dict))
         self._jetsToVectors()
+        return
 
     def _jetsToVectors(self):
         """
