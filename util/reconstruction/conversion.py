@@ -3,7 +3,7 @@ import numpy as np
 import h5py as h5
 import ROOT as rt
 from util.math.embedding import embed_array
-from util.buffer.input import IndexableLazyLoader
+from util.buffer.input import UprootBatchLoader
 from util.qol_utils.progress_bar import printProgressBarColor
 from util.hepmc.hepmc import ExtractHepMCEvents, ExtractHepMCParticles, ParticleToEndVertex
 from typing import Union, Optional, List, TYPE_CHECKING
@@ -234,10 +234,11 @@ class Processor:
                                                 dimensions={1:self.nparticles_truth_selected}, dtype=np.dtype('bool')
                         )
 
-                        self.WriteToDataBuffer(j, '{}.Decay.Xmu'.format(key), np.vstack([
-                            [getattr(vec, method)() for vec in [ParticleToEndVertex(x) for x in truth_selected_particles]]
-                            for method in ['T','X','Y','Z']
-                        ]).T,
+
+                        end_vertices = np.array([ParticleToEndVertex(x) for x in truth_selected_particles])
+
+                        self.WriteToDataBuffer(j, '{}.Decay.Xmu'.format(key),
+                                            end_vertices,
                                             dimensions={1:self.nparticles_truth_selected}
                         )
 
@@ -251,13 +252,13 @@ class Processor:
             #    attributes such as pt, while others have Et. These are the same *if* we assume
             #    the objects themselves to be massless.
             if(self.delphes):
-                with profile_block('Processor.Process: DELPHES'):
+                with profile_block('Processor.Process: Delphes'):
 
                     for j in range(len(particles)): # TODO: reusing len(particles) (== number of events in chunk), OK but looks kind of hacky
                         for k,delphes_type in enumerate(var_map.keys()): # loop over different kinds of Delphes collections
                             is_track = False
 
-                            with profile_block('Processor.Process: {}'.format(delphes_type)):
+                            with profile_block('Processor.Process: Delphes - {}'.format(delphes_type)):
 
                                 if('missinget' in delphes_type.lower()):
                                     self.n_delphes[k] = 1 # TODO: Would be nice to eliminate this dimension altogether
@@ -265,76 +266,68 @@ class Processor:
                                 # Not all objects have all fields, so we do a lot of checking here.
                                 if('pt' in var_map[delphes_type].keys()):
 
-                                    with profile_block('Processor.Process: {} [pt]'.format(delphes_type)):
-                                        delphes_pt  = delphes_arr[var_map[delphes_type]['pt' ]][start_idxs[i]+j].to_numpy().astype(float)
-                                        delphes_eta = delphes_arr[var_map[delphes_type]['eta']][start_idxs[i]+j].to_numpy().astype(float)
-                                        delphes_phi = delphes_arr[var_map[delphes_type]['phi']][start_idxs[i]+j].to_numpy().astype(float)
-                                        delphes_m   = np.zeros(delphes_pt.shape)
+                                    delphes_pt  = delphes_arr[var_map[delphes_type]['pt' ]][start_idxs[i]+j].to_numpy().astype(float)
+                                    delphes_eta = delphes_arr[var_map[delphes_type]['eta']][start_idxs[i]+j].to_numpy().astype(float)
+                                    delphes_phi = delphes_arr[var_map[delphes_type]['phi']][start_idxs[i]+j].to_numpy().astype(float)
+                                    delphes_m   = np.zeros(delphes_pt.shape)
 
-                                        # Rather than use rt.Math.PtEtaPhiMVector, vectorize operations with numpy.
-                                        # This should be faster (although it's typically nicer to use the ROOT objects to safely
-                                        # handle the coordinate conversions!). - Jan
-                                        delphes_px = delphes_pt * np.cos(delphes_phi)
-                                        delphes_py = delphes_pt * np.sin(delphes_phi)
-                                        delphes_pz = delphes_pt * np.sinh(delphes_eta)
-                                        delphes_e  = np.sqrt(np.square(delphes_px) + np.square(delphes_py) + np.square(delphes_pz)) # masses set to zero -> can leave out
+                                    # Rather than use rt.Math.PtEtaPhiMVector, vectorize operations with numpy.
+                                    # This should be faster (although it's typically nicer to use the ROOT objects to safely
+                                    # handle the coordinate conversions!). - Jan
+                                    delphes_px = delphes_pt * np.cos(delphes_phi)
+                                    delphes_py = delphes_pt * np.sin(delphes_phi)
+                                    delphes_pz = delphes_pt * np.sinh(delphes_eta)
+                                    delphes_e  = np.sqrt(np.square(delphes_px) + np.square(delphes_py) + np.square(delphes_pz)) # masses set to zero -> can leave out
 
-                                        self.WriteToDataBuffer(j,'{}.N'.format(delphes_type),len(delphes_pt))
+                                    self.WriteToDataBuffer(j,'{}.N'.format(delphes_type),len(delphes_pt))
 
-                                        self.WriteToDataBuffer(j, '{}.Pmu'.format(delphes_type),
-                                                            np.column_stack([delphes_e,delphes_px,delphes_py,delphes_pz]),
-                                                            dimensions={1:self.n_delphes[k]}
-                                        )
+                                    self.WriteToDataBuffer(j, '{}.Pmu'.format(delphes_type),
+                                                        np.column_stack([delphes_e,delphes_px,delphes_py,delphes_pz]),
+                                                        dimensions={1:self.n_delphes[k]}
+                                    )
 
-                                        self.WriteToDataBuffer(j, '{}.Pmu_cyl'.format(delphes_type),
-                                                            np.column_stack([delphes_pt,delphes_eta,delphes_phi,delphes_m]),
-                                                            dimensions={1:self.n_delphes[k]}
-                                        )
+                                    self.WriteToDataBuffer(j, '{}.Pmu_cyl'.format(delphes_type),
+                                                        np.column_stack([delphes_pt,delphes_eta,delphes_phi,delphes_m]),
+                                                        dimensions={1:self.n_delphes[k]}
+                                    )
 
                                 if('d0' in var_map[delphes_type].keys()):
-                                    with profile_block('Processor.Process: {} [d0]'.format(delphes_type)):
+                                    delphes_d0  = delphes_arr[var_map[delphes_type]['d0']][start_idxs[i]+j].to_numpy()
+                                    delphes_z0  = delphes_arr[var_map[delphes_type]['z0']][start_idxs[i]+j].to_numpy()
+                                    delphes_d0e  = delphes_arr[var_map[delphes_type]['errord0']][start_idxs[i]+j].to_numpy()
+                                    delphes_z0e  = delphes_arr[var_map[delphes_type]['errorz0']][start_idxs[i]+j].to_numpy()
 
-
-                                        delphes_d0  = delphes_arr[var_map[delphes_type]['d0']][start_idxs[i]+j].to_numpy()
-                                        delphes_z0  = delphes_arr[var_map[delphes_type]['z0']][start_idxs[i]+j].to_numpy()
-                                        delphes_d0e  = delphes_arr[var_map[delphes_type]['errord0']][start_idxs[i]+j].to_numpy()
-                                        delphes_z0e  = delphes_arr[var_map[delphes_type]['errorz0']][start_idxs[i]+j].to_numpy()
-
-                                        self.WriteToDataBuffer(j, '{}.D0'.format(delphes_type), delphes_d0, dimensions={1:self.n_delphes[k]})
-                                        self.WriteToDataBuffer(j, '{}.D0.Error'.format(delphes_type), delphes_d0e, dimensions={1:self.n_delphes[k]})
-                                        self.WriteToDataBuffer(j, '{}.Z0'.format(delphes_type), delphes_z0, dimensions={1:self.n_delphes[k]})
-                                        self.WriteToDataBuffer(j, '{}.Z0.Error'.format(delphes_type), delphes_z0e, dimensions={1:self.n_delphes[k]})
+                                    self.WriteToDataBuffer(j, '{}.D0'.format(delphes_type), delphes_d0, dimensions={1:self.n_delphes[k]})
+                                    self.WriteToDataBuffer(j, '{}.D0.Error'.format(delphes_type), delphes_d0e, dimensions={1:self.n_delphes[k]})
+                                    self.WriteToDataBuffer(j, '{}.Z0'.format(delphes_type), delphes_z0, dimensions={1:self.n_delphes[k]})
+                                    self.WriteToDataBuffer(j, '{}.Z0.Error'.format(delphes_type), delphes_z0e, dimensions={1:self.n_delphes[k]})
 
                                 if('xd' in var_map[delphes_type].keys()):
-                                    with profile_block('Processor.Process: {} [xd]'.format(delphes_type)):
+                                    delphes_xd  = delphes_arr[var_map[delphes_type]['xd']][start_idxs[i]+j].to_numpy()
+                                    delphes_yd  = delphes_arr[var_map[delphes_type]['yd']][start_idxs[i]+j].to_numpy()
+                                    delphes_zd  = delphes_arr[var_map[delphes_type]['zd']][start_idxs[i]+j].to_numpy()
 
-                                        delphes_xd  = delphes_arr[var_map[delphes_type]['xd']][start_idxs[i]+j].to_numpy()
-                                        delphes_yd  = delphes_arr[var_map[delphes_type]['yd']][start_idxs[i]+j].to_numpy()
-                                        delphes_zd  = delphes_arr[var_map[delphes_type]['zd']][start_idxs[i]+j].to_numpy()
-
-                                        # store 3-position of closest approach as a vector (Xd, Yd, Zd). Unfortunately Delphes' ParticlePropagator computes Td but doesn't save it...?!
-                                        #  NOTE: Could consider adding in Td on my own branch of Delphes -- already use this for some other things.
-                                        self.WriteToDataBuffer(j, '{}.Xdi'.format(delphes_type), np.vstack([
-                                            delphes_xd, delphes_yd, delphes_zd
-                                        ]).T,
-                                                            dimensions={1:self.n_delphes[k]}
-                                        )
-                                        is_track = True # only tracks have this component
+                                    # store 3-position of closest approach as a vector (Xd, Yd, Zd). Unfortunately Delphes' ParticlePropagator computes Td but doesn't save it...?!
+                                    #  NOTE: Could consider adding in Td on my own branch of Delphes -- already use this for some other things.
+                                    self.WriteToDataBuffer(j, '{}.Xdi'.format(delphes_type), np.vstack([
+                                        delphes_xd, delphes_yd, delphes_zd
+                                    ]).T,
+                                                        dimensions={1:self.n_delphes[k]}
+                                    )
+                                    is_track = True # only tracks have this component
 
                                 # In principle, d0, dz and phi give a different way to get Xdi.
                                 # TODO: Double-check this!
                                 elif('d0' in var_map[delphes_type].keys() and 'z0' in var_map[delphes_type].keys() and 'phi' in var_map[delphes_type].keys()):
-                                    with profile_block('Processor.Process: {} [xd2]'.format(delphes_type)):
-
-                                        # d0, z0 and phi already extracted above
-                                        delphes_xd = delphes_d0 * np.cos(delphes_phi)
-                                        delphes_yd = delphes_d0 * np.sin(delphes_phi)
-                                        delphes_zd = delphes_z0
-                                        self.WriteToDataBuffer(j, '{}.Xdi'.format(delphes_type), np.vstack([
-                                            delphes_xd, delphes_yd, delphes_zd
-                                        ]).T,
-                                                            dimensions={1:self.n_delphes[k]}
-                                        )
+                                    # d0, z0 and phi already extracted above
+                                    delphes_xd = delphes_d0 * np.cos(delphes_phi)
+                                    delphes_yd = delphes_d0 * np.sin(delphes_phi)
+                                    delphes_zd = delphes_z0
+                                    self.WriteToDataBuffer(j, '{}.Xdi'.format(delphes_type), np.vstack([
+                                        delphes_xd, delphes_yd, delphes_zd
+                                    ]).T,
+                                                        dimensions={1:self.n_delphes[k]}
+                                    )
 
                                 if('charge' in var_map[delphes_type].keys()):
                                     delphes_charge = delphes_arr[var_map[delphes_type]['charge']][start_idxs[i]+j].to_numpy()
@@ -358,27 +351,25 @@ class Processor:
 
                                 # Calorimeter towers indicate their edges in (eta,phi).
                                 if('edges' in var_map[delphes_type].keys()):
-                                    with profile_block('Processor.Process: {} [edges]'.format(delphes_type)):
-                                        delphes_edges  = delphes_arr[var_map[delphes_type]['edges']][start_idxs[i]+j].to_numpy()
-                                        # separate eta and phi edges -- I think this is clearer for later reference
-                                        self.WriteToDataBuffer(j, '{}.Edges.Eta'.format(delphes_type), delphes_edges[:,:2], dimensions={1:self.n_delphes[k]})
-                                        self.WriteToDataBuffer(j, '{}.Edges.Phi'.format(delphes_type), delphes_edges[:,2:4], dimensions={1:self.n_delphes[k]})
+                                    delphes_edges  = delphes_arr[var_map[delphes_type]['edges']][start_idxs[i]+j].to_numpy()
+                                    # separate eta and phi edges -- I think this is clearer for later reference
+                                    self.WriteToDataBuffer(j, '{}.Edges.Eta'.format(delphes_type), delphes_edges[:,:2], dimensions={1:self.n_delphes[k]})
+                                    self.WriteToDataBuffer(j, '{}.Edges.Phi'.format(delphes_type), delphes_edges[:,2:4], dimensions={1:self.n_delphes[k]})
 
                                 # Certain objects record their position in (t,x,y,z). Note that tracks *do not* do this (those are all zero for them).
                                 if('x' in var_map[delphes_type].keys() and not is_track):
-                                    with profile_block('Processor.Process: {} [x]'.format(delphes_type)):
-                                        delphes_t  = delphes_arr[var_map[delphes_type]['t' ]][start_idxs[i]+j].to_numpy()
-                                        delphes_x  = delphes_arr[var_map[delphes_type]['x' ]][start_idxs[i]+j].to_numpy()
-                                        delphes_y  = delphes_arr[var_map[delphes_type]['y' ]][start_idxs[i]+j].to_numpy()
-                                        delphes_z  = delphes_arr[var_map[delphes_type]['z' ]][start_idxs[i]+j].to_numpy()
+                                    delphes_t  = delphes_arr[var_map[delphes_type]['t' ]][start_idxs[i]+j].to_numpy()
+                                    delphes_x  = delphes_arr[var_map[delphes_type]['x' ]][start_idxs[i]+j].to_numpy()
+                                    delphes_y  = delphes_arr[var_map[delphes_type]['y' ]][start_idxs[i]+j].to_numpy()
+                                    delphes_z  = delphes_arr[var_map[delphes_type]['z' ]][start_idxs[i]+j].to_numpy()
 
-                                        self.WriteToDataBuffer(j, '{}.Xmu'.format(delphes_type),
-                                                            np.column_stack([delphes_t,delphes_x,delphes_y,delphes_z]),
-                                                            dimensions={1:self.n_delphes[k]}
-                                        )
+                                    self.WriteToDataBuffer(j, '{}.Xmu'.format(delphes_type),
+                                                        np.column_stack([delphes_t,delphes_x,delphes_y,delphes_z]),
+                                                        dimensions={1:self.n_delphes[k]}
+                                    )
 
-                                        # another opportunity to add multiplicity, if we haven't already
-                                        self.WriteToDataBuffer(j,'{}.N'.format(delphes_type),len(delphes_t))
+                                    # another opportunity to add multiplicity, if we haven't already
+                                    self.WriteToDataBuffer(j,'{}.N'.format(delphes_type),len(delphes_t))
 
             # We have now filled a chunk, time to write it.
             # If this is the first instance of the loop, we will initialize the HDF5 file.
@@ -506,7 +497,7 @@ class Processor:
         delphes_tree = 'Delphes'
         delphes_files = ['{}/{}'.format(self.outdir, x) for x in self.delphes_files]
 
-        delphes_arr = IndexableLazyLoader(delphes_files, delphes_tree, delphes_keys)
+        delphes_arr = UprootBatchLoader(delphes_files, delphes_tree, delphes_keys)
         delphes_keys = delphes_arr.fields
 
         # Create var_map as before
