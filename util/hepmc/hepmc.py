@@ -8,7 +8,6 @@
 # in particular in case these are useful elsewhere.
 
 import numpy as np
-import ROOT as rt
 import subprocess as sub
 import pathlib
 from typing import Union, Optional, List, TYPE_CHECKING
@@ -244,11 +243,11 @@ def ExtractHepMCParticles(events: List['hm.GenEvent'], nparticles_max: Optional[
         for ev in events:
             ev_particles = ev.particles()
             indices = selection(ev)
-            
+
             # Truncate indices first - avoid accessing unnecessary particles
             if nparticles_max is not None and len(indices) > nparticles_max:
                 indices = indices[:nparticles_max]
-            
+
             selected = [ev_particles[i] for i in indices]
             particles.append(selected)
     else:
@@ -258,17 +257,13 @@ def ExtractHepMCParticles(events: List['hm.GenEvent'], nparticles_max: Optional[
         ]
     return particles
 
-def ParticleToProductionVertex(particle:'hm.GenParticle'):
-    prod_vertex_position = particle.production_vertex().position()
-    return rt.Math.XYZTVector(prod_vertex_position.x(), prod_vertex_position.y(), prod_vertex_position.z(), prod_vertex_position.t())
-
 def ParticleToEndVertex(particle:'hm.GenParticle'):
     """
-    A little more complex than production vertices -- particles may not have end vertices, if they are stable!
+    A little more complex than handling production vertices -- particles may not have end vertices, if they are stable!
     """
     end_vertex = particle.end_vertex()
     if(end_vertex is None):
-        return rt.Math.XYZTVector(np.nan, np.nan, np.nan, np.nan)
+        return np.full(4,np.nan)
 
     end_vertex_position = end_vertex.position()
-    return rt.Math.XYZTVector(end_vertex_position.x(), end_vertex_position.y(), end_vertex_position.z(), end_vertex_position.t())
+    return np.array([end_vertex_position.t(), end_vertex_position.x(), end_vertex_position.y(), end_vertex_position.z()])

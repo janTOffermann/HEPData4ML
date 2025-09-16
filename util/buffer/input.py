@@ -148,64 +148,35 @@ class BufferedHDF5Reader:
             for key, array in arrays_needing_reload:
                 array._load_buffer(event_idx)
 
-
-
 ########################################################
 # Uproot/dask-related stuff, for use with Delphes reading.
 ########################################################
 
-class IndexableLazyLoader:
+class UprootBatchLoader:
     def __init__(self, files, tree_path, expressions):
         self.files = files
         self.tree_path = tree_path
-        self.expressions = expressions
-        self._cached_branches = {}
-        self._total_entries = None
 
         # Get field info by checking what actually exists
+        self.fields = None
         with ur.open(files[0]) as f:
-            available_expressions = [expr for expr in expressions if expr in f[tree_path]]
-        self.fields = available_expressions
+            self.fields = [expr for expr in expressions if expr in f[tree_path]]
+
+        # Load all branches at once
+        self._data = ur.concatenate(
+            files,
+            expressions=self.fields,
+            tree_path=tree_path,
+            library="ak"
+        )
 
     def __getitem__(self, branch_name):
-        """Return a branch that can be sliced"""
-        if branch_name not in self._cached_branches:
-            self._cached_branches[branch_name] = LazyBranch(self.files, self.tree_path, branch_name)
-        return self._cached_branches[branch_name]
+        return self._data[branch_name]
 
     def __len__(self):
-        """Return total number of entries across all files"""
-        if self._total_entries is None:
-            total = 0
-            for file_path in self.files:
-                with ur.open(file_path) as f:
-                    total += f[self.tree_path].num_entries
-            self._total_entries = total
-        return self._total_entries
-
-class LazyBranch:
-    def __init__(self, files, tree_path, branch_name):
-        self.files = files
-        self.tree_path = tree_path
-        self.branch_name = branch_name
-        self._cached_data = None
-
-    def __getitem__(self, slice_obj):
-        """Handle slicing like delphes_arr[branch][start:stop]"""
-        if self._cached_data is None:
-            # Load the entire branch when first accessed
-            self._cached_data = ur.concatenate(self.files,
-                                             expressions=[self.branch_name],
-                                             tree_path=self.tree_path,
-                                             library="ak")[self.branch_name]
-        return self._cached_data[slice_obj]
-
-    def __len__(self):
-        """Return length of this branch (same as total entries)"""
-        if self._cached_data is not None:
-            return len(self._cached_data)
+        if self._data is not None:
+            return len(self._data)
         else:
-            # Calculate without loading the data
             total = 0
             for file_path in self.files:
                 with ur.open(file_path) as f:
