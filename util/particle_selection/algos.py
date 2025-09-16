@@ -33,26 +33,18 @@ if TYPE_CHECKING: # Only imported during type checking -- avoids risk of circula
 #==========================================
 
 def GetDaughtersSingle(hepev: 'hm.GenEvent', idx: int) -> List[int]:
-    """Keep original function but with type hints"""
     return [x.id() - 1 for x in hepev.particles()[idx].children()]
 
 def IsStable(hepev: 'hm.GenEvent', idx: int) -> bool:
-    """Keep original function"""
     return hepev.particles()[idx].status() == 1
 
 def IsQuark(hepev: 'hm.GenEvent', idx: int) -> bool:
-    """Keep original function"""
     pid = abs(hepev.particles()[idx].pid())
     return 0 < pid < 7
 
 class GatherStableDaughters:
-    """
-    Minimal optimization: Use iterative approach instead of recursion,
-    but keep the same basic algorithm structure
-    """
-    
     def __call__(self, hepev: 'hm.GenEvent', idx: int) -> np.ndarray:
-        """Use iterative BFS instead of recursion to avoid function call overhead"""
+        # switched from recursion to iterative BFS
         stable_daughters = []
         to_visit = deque([idx])
         visited = set([idx])  # Don't include the starting particle
@@ -60,7 +52,6 @@ class GatherStableDaughters:
         while to_visit:
             current_idx = to_visit.popleft()
             
-            # Get daughters using the original method (it might be optimized in HepMC)
             daughters = GetDaughtersSingle(hepev, current_idx)
             
             for daughter_idx in daughters:
@@ -75,9 +66,7 @@ class GatherStableDaughters:
         
         return np.unique(np.array(stable_daughters, dtype=np.int32))
 
-class GatherQuarks:
-    """Keep closer to original structure but use iterative approach"""
-    
+class GatherQuarks:    
     def __call__(self, hepev: 'hm.GenEvent', idx: int) -> np.ndarray:
         quark_daughters = []
         to_visit = deque([idx])
@@ -101,7 +90,6 @@ class GatherQuarks:
         return np.array(quark_daughters, dtype=np.int32)
 
 class GatherDaughters:
-    """Keep original approach but cleaner"""
     def __init__(self, recursive=False):
         self.recursive = recursive
 

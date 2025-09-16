@@ -25,7 +25,6 @@ if TYPE_CHECKING: # Only imported during type checking -- avoids risk of circula
 # ==============================
 
 class BaseSelector:
-    """Base selector class - unchanged"""
     def __init__(self):
         self.selection_status = True
         self.fixed_length = True
@@ -44,7 +43,6 @@ class BaseSelector:
         return self.fixed_length
 
 class FirstSelector(BaseSelector):
-    """Minimal optimization: use numpy for array operations"""
     def __init__(self, status: int, pdgid: int, hadronization: bool = True):
         super().__init__()
         self.status = status
@@ -66,10 +64,8 @@ class FirstSelector(BaseSelector):
 
     @profile_method('FirstSelector.__call__')
     def __call__(self, hepev: 'hm.GenEvent') -> Optional[int]:
-        """Minimal optimization: vectorize the search but keep simple approach"""
         particles = hepev.particles()
         
-        # Pre-compute arrays once (this should be faster than repeated attribute access)
         pdgid_array = np.array([p.pid() for p in particles], dtype=np.int32)
         status_array = np.array([p.status() for p in particles], dtype=np.int32)
         
@@ -92,10 +88,10 @@ class FirstSelector(BaseSelector):
         return int(indices[0])
 
     def Print(self):
-        print(f'FirstSelector: status = {self.status}, pdgid = {self.pdgid}')
+        print('FirstSelector: status = {}, pdgid = {}'.format(self.status, self.pdgid))
+        return
 
 class BasicSelection:
-    """Keep original structure"""
     def __init__(self, selection_list: List[BaseSelector], hadronization=True):
         self.hadronization = hadronization
         self.selection_list = selection_list
@@ -125,7 +121,6 @@ class BasicSelection:
         return np.sort(np.array(particle_list, dtype=np.int32))
 
 class AlgoSelection(BaseSelector):
-    """Keep original structure"""
     def __init__(self, selection_algo, n, fixed_length=False):
         super().__init__()
         self.particle_selection_algo = selection_algo
@@ -143,7 +138,6 @@ class AlgoSelection(BaseSelector):
         return particle_list
 
 class MultiSelection(BaseSelector):
-    """Minimal optimization: cleaner array handling"""
     def __init__(self, particle_selection_list: List[BaseSelector], enforce_unique=False):
         super().__init__()
         self.particle_selection_list = particle_selection_list

@@ -23,12 +23,10 @@ if TYPE_CHECKING: # Only imported during type checking -- avoids risk of circula
 # ============================================
 
 class BaseSelectorAlgorithm:
-    """Keep simple"""
     def __init__(self):
         pass
 
 class SelectFinalState(BaseSelectorAlgorithm):
-    """Minimal optimization: vectorize the status check"""
     def __init__(self):
         pass
 
@@ -40,7 +38,6 @@ class SelectFinalState(BaseSelectorAlgorithm):
         return len(stable_indices) > 0, stable_indices
 
 class SelectDaughters(BaseSelectorAlgorithm):
-    """Keep original structure but use optimized gatherer"""
     def __init__(self, truth_selection):
         self.truth_selection = truth_selection
         self.gatherer = GatherDaughters()
@@ -62,7 +59,6 @@ class SelectDaughters(BaseSelectorAlgorithm):
         return True, np.unique(np.array(all_daughters, dtype=np.int32))
 
 class SelectFinalStateDaughters(BaseSelectorAlgorithm):
-    """Use the optimized gatherer but keep simple interface"""
     def __init__(self, truth_selection):
         self.truth_selection = truth_selection
         self.gatherer = GatherStableDaughters()

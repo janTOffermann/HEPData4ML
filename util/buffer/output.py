@@ -54,13 +54,18 @@ class DummyFlushHandler(BufferFlushHandler):
 class HDF5FlushHandler(BufferFlushHandler):
     """Flushes data to an HDF5 file.."""
 
-    def __init__(self, filename: str):
+    def __init__(self, filename: str, copts=9):
         self.filename = filename
         self.status = 'w'
-        self.copts = 9
+        self.copts = copts
         self.verbose = False
         self.f = None
         self.print_prefix = 'HDF5FlushHandler:'
+
+    def SetCompression(self,val:int):
+        if(val < 0): val = 0
+        elif(val > 9): val = 9
+        self.copts = val
 
     def _set_status(self):
         """
@@ -208,7 +213,7 @@ class OutputBuffer:
     automatically flushes data when the buffer fills up.
     """
 
-    def __init__(self, buffer_size: int = 100, filename:Optional[str]=None, flush_handler: Optional[BufferFlushHandler] = None):
+    def __init__(self, buffer_size: int = 100, filename:Optional[str]=None, flush_handler: Optional[BufferFlushHandler] = None, copts=9):
         """
         Initialize the buffer.
 
@@ -221,13 +226,13 @@ class OutputBuffer:
         self.nevents = -1
         self.flush_handler = flush_handler
         if(self.flush_handler is None):
-            self.flush_handler = HDF5FlushHandler(self.filename)
+            self.flush_handler = HDF5FlushHandler(self.filename,copts)
 
         # Internal storage
         self._buffer_arrays: Dict[str, BufferArray] = {}
         self._array_specs: Dict[str, Tuple] = {}  # Store (shape, dtype) for each array
 
-        # Track buffer state - much simpler approach
+        # Track buffer state
         self._current_size = 0  # Number of events currently in buffer
         self._total_events_processed = 0
         self._buffer_start_event = 0
@@ -254,12 +259,6 @@ class OutputBuffer:
         self._array_specs[key] = (shape, dtype)
         self._written[key] = np.full(self.buffer_size,False)
         self._number_written[key] = 0
-
-        # if(self.nevents > -1):
-        #     self.nevents = shape[0]
-        # else:
-        #     print('self.nevents = {}, shape[0] = {}'.format(self.nevents,shape[0]))
-        #     assert self.nevents == shape[0]
 
     def _check_and_flush_if_needed(self, event_index: int):
         """Check if we need to flush before processing this event."""
