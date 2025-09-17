@@ -7,7 +7,7 @@ from numpy.typing import NDArray
 from util.fastjet.jetfinderbase import JetFinderBase
 from util.qol_utils.progress_bar import printProgressBarColor
 from util.buffer.output import OutputBuffer
-from util.misc.timing import profile_method
+from util.misc.timing import profile_method, profile_block
 
 import util.reconstruction.post_processing.utils.ghost_association as ghost_assoc
 import util.reconstruction.post_processing.utils.softdrop as softdrop
@@ -278,13 +278,13 @@ class JetFinder(JetFinderBase):
                     break
         assert(len(rapidity_keys.keys()) == len(self.input_collection_names))
         rapidity = {}
-        
+
         for key,key2 in rapidity_keys.items():
             if('Pmu_cyl' in key2):
                 rapidity[key] = f['{}.Pmu_cyl'.format(key)][:,...,2]
             else: # TODO: This may need fixing -- as of writing this, I don't think there are any such rapidity branches! -Jan
                 rapidity[key] = f[key2][:]
-        
+
         # Now put everything together
         self.input_collection_arrays_rap_phi = {
             key:np.stack([rapidity[key],phi[key]],axis=-1)
@@ -296,8 +296,8 @@ class JetFinder(JetFinderBase):
         f = h5.File(self.h5_file,'r')
         sizes = {key:f['{}.N'.format(key)][:] for key in self.input_collection_names}
         return np.max(np.sum(np.stack(list(sizes.values())), axis=0))
-        
 
+    @profile_method('JetFinder.Process')
     def Process(self):
         self.Initialize()
 
@@ -312,8 +312,9 @@ class JetFinder(JetFinderBase):
             self.ClearUserInfo()
 
             # Gather the different input collections together, into one array of four-momenta.
-            self.SetInputs(np.vstack([self.input_collection_arrays[key][self._i] for key in self.input_collection_names_Pmu])) # NOTE: Using self.input_collections_array.keys() can be dangerous, due to modifications/additions to keys by things like GhostAssociation(). Those should not touch self.input_collections, for this reason.
-            self.SetRapidityPhi(np.vstack([self.input_collection_arrays_rap_phi[key][self._i] for key in self.input_collection_names])) # NOTE: Using self.input_collections_array.keys() can be dangerous, due to modifications/additions to keys by things like GhostAssociation(). Those should not touch self.input_collections, for this reason.
+            with profile_block('JetFinder.Process - SetInputs'):
+                self.SetInputs(np.vstack([self.input_collection_arrays[key][self._i] for key in self.input_collection_names_Pmu])) # NOTE: Using self.input_collections_array.keys() can be dangerous, due to modifications/additions to keys by things like GhostAssociation(). Those should not touch self.input_collections, for this reason.
+                self.SetRapidityPhi(np.vstack([self.input_collection_arrays_rap_phi[key][self._i] for key in self.input_collection_names])) # NOTE: Using self.input_collections_array.keys() can be dangerous, due to modifications/additions to keys by things like GhostAssociation(). Those should not touch self.input_collections, for this reason.
 
             # Optional modification of inputs. May be harnessed by some special configurations.
             self._modifyInputs()
@@ -327,19 +328,16 @@ class JetFinder(JetFinderBase):
             self._ptSort(truncate=True)
 
             # optionally extract information on jet constituents
-            if(self.constituents_flag):
-                self._fetchJetConstituents() # fills self.constituent_vectors, self.constituent_indices
+            with profile_block('JetFinder.Process - FetchConstituents'):
+                if(self.constituents_flag):
+                    self._fetchJetConstituents() # fills self.constituent_vectors, self.constituent_indices
 
-                # Optional modification of constituents. May be harnessed by some special configurations.
-                self._modifyConstituents()
-
-            # Pt-sort the jets, and truncate to fixed length given by self.n_jets_max
-            self._ptSort(truncate=True)
+                    # Optional modification of constituents. May be harnessed by some special configurations.
+                    self._modifyConstituents()
 
             # now write to buffer
-            # TODO: Will turn the buffer into a more complex object, that outwardly looks like a dictionary
-            #       but takes care of chunking/writing itself.
-            self._writeToBuffer()
+            with profile_block('JetFinder.Process - FetchConstituents'):
+                self._writeToBuffer()
 
             # Optional extension of writing to buffer. May be harnessed by some special configurations.
             self._modifyWrite()
@@ -376,6 +374,7 @@ class JetFinder(JetFinderBase):
             processor.ModifyConstituents(self)
         return
 
+    @profile_method('JetFinder.Flush')
     def Flush(self):
         """
         This function simply finishes the writing of our data buffer
