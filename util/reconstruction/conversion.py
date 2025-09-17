@@ -201,7 +201,8 @@ class Processor:
 
             # 2) Extract the filtered truth record from the events.
             with profile_block('Processor.Process: Truth Selection'):
-
+                if(self.truth_selection is None):
+                    self.truth_selection = {}
                 for key,selection in self.truth_selection.items():
 
                     truth_selected_event_particles = ExtractHepMCParticles(hepmc_events[start_idxs[i]:stop_idxs[i]],self.nparticles_truth_selected,selection)
@@ -457,7 +458,6 @@ class Processor:
                 if(h5_files is not None): h5_file = '{}/{}'.format(self.outdir,h5_files[i])
                 hepmc_file = '{}/{}'.format(self.outdir,hepmc_files[i])
                 post_proc(hepmc_file,h5_file,h5_file)
-
         return
 
     @profile_method('Processor.PrepDelphesArrays')
