@@ -463,7 +463,7 @@ class Processor:
     @profile_method('Processor.PrepDelphesArrays')
     def PrepDelphesArrays(self,):
         types = self.configurator.GetDelphesObjects()
-        components = [
+        delphes_object_components = [
             'PT','Eta','Phi','ET', 'MET', # momentum componenets
             'D0','ErrorD0','DZ','ErrorDZ', # impact parameters and associated uncertainties (for tracks). NOTE: Delphes seems to have misspelt "Z0" -> "DZ"!
             'X', 'Y', 'Z', 'T', # 4-position -- relevant for non-track objects (tracks parameterized differently)
@@ -472,12 +472,12 @@ class Processor:
             'Edges[4]', # edges in eta and phi, for calorimeter towers -- format is (etaMin, etaMax, phiMin, phiMax)
             'Charge', 'PID'
         ]
-        delphes_keys = ['{x}.{y}'.format(x=x,y=y) for x in types for y in components]
+        delphes_keys = ['{x}.{y}'.format(x=x,y=y) for x in types for y in delphes_object_components]
         delphes_tree = 'Delphes'
         delphes_files = ['{}/{}'.format(self.outdir, x) for x in self.delphes_files]
 
         delphes_arr = UprootBatchLoader(delphes_files, delphes_tree, delphes_keys)
-        delphes_keys = delphes_arr.fields
+        delphes_keys = delphes_arr.fields # keeps only the fields that actually exist!
 
         # Create var_map as before
         var_map = {key:{} for key in types}

@@ -40,7 +40,8 @@ class JetFinderBase:
         self.n_constituents_max = None
 
         self.input_vecs = None
-        self.rap_phi = None
+        self.input_vecs_cyl = None
+        self.rapidity = None
         self.configurator = None
 
         self.jet_ordering = None
@@ -91,9 +92,12 @@ class JetFinderBase:
 
     def SetInputs(self,vecs):
         self.input_vecs = vecs
+    
+    def SetInputsCylindrical(self,vecs):
+        self.input_vecs_cyl = vecs
 
-    def SetRapidityPhi(self,val):
-        self.rap_phi = val
+    def SetRapidity(self,val):
+        self.rapidity = val
 
     def _setupFastJet(self):
         verbose = self.configurator.GetPrintFastjet()
@@ -149,15 +153,15 @@ class JetFinderBase:
 
         # Now set the PseudoJet momenta and indices -- the latter for tracing them through jet clustering.
         # vecs has format (E,px,py,pz) -- FastJet uses (px,py,pz,E) so we must rearrange. Faster than np.roll.
-        has_rap_phi = (self.rap_phi is not None)
+        has_rapidity = (self.rapidity is not None)
         for i,x in enumerate(self.input_vecs):
             self.pseudojets[i].reset(x[1],x[2],x[3],x[0]) # NOTE: This should reset indices -- and user info (?).
             self.pseudojets[i].set_user_index(i)
 
             # If we've supplied (rapidity,phi) of inputs to JetFinderBase, we can pass these to FastJet to avoid
             # having it recompute these quantities internally.
-            if(has_rap_phi):
-                self.pseudojets[i].set_cached_rap_phi(*self.rap_phi[i])
+            if(has_rapidity):
+                self.pseudojets[i].set_cached_rap_phi(self.rapidity[i],self.input_vecs_cyl[i,2])
 
 
         # Attach any optional information to the pseudojet objects. This can be leveraged by other classes
@@ -192,22 +196,35 @@ class JetFinderBase:
         This is accomplished by modifying self.jet_ordering.
         """
 
-        if(len(self.jets_dict) < 1): # no jets -> nothing to do
+        if(len(self.jets_dict) < 1): # no jets -> nothing to do (for case of 1 jet, we'll modify some stuff below)
+            return
+        elif(len(self.jets_dict) == 1): # 1 jet -> not much to do, just make sure self.jet_ordering reflects this
+            self.jet_ordering = [self.jet_ordering[0]]
+            return
+        
+        jet_pt = np.array([self.jets_dict[i].pt() for i in self.jet_ordering])
+
+        is_sorted = np.all(jet_pt[:-1] >= jet_pt[1:])
+        needs_truncation = (self.n_jets_max is not None and truncate and len(jet_pt) > self.n_jets_max)
+
+        # Early return if already sorted and no truncation needed
+        if is_sorted and not needs_truncation:
+            # Still need to set pt_sorting if it doesn't exist
+            if(self.pt_sorting is None):
+                self.pt_sorting = np.arange(len(jet_pt))
             return
 
-        jet_pt = np.array([self.jets_dict[i].pt() for i in self.jet_ordering])
         self.pt_sorting = np.argsort(-jet_pt)
-
-        if(self.n_jets_max is not None):
-            if((len(self.pt_sorting) > self.n_jets_max) and truncate):
-                self.pt_sorting = self.pt_sorting[:self.n_jets_max]
+        if(needs_truncation):
+            self.pt_sorting = self.pt_sorting[:self.n_jets_max]
 
         if(len(self.pt_sorting) == 1):
             self.jet_ordering = [self.jet_ordering[self.pt_sorting[0]]]
         else:
             self.jet_ordering = list(operator.itemgetter(*self.pt_sorting)(self.jet_ordering))
 
-        if(len(self.jet_ordering) != len(self.jets_dict)):
+        # If we've truncated, we'll need to update some dictionaries under-the-hood to reflect this.
+        if(needs_truncation):
             # remove entries from jets_dict, that correspond with entries in jet_ordering that have been dropped
             self._updateJetDictionary()
 
@@ -216,10 +233,12 @@ class JetFinderBase:
             # the jet ordering has simply changed.
             self._jetsToVectors()
 
-            # Also refresh constituents.
+            # Also refresh constituents. Again, this only needs to be called if jets were dropped,
+            # since its a dictionary so a simple reordering of the jets in self.jet_ordering does
+            # not necessitate any change.
             self._fetchJetConstituents()
+        return
 
-        self._fetchJetConstituents()
 
     def _updateJetDictionary(self):
         """
@@ -230,14 +249,19 @@ class JetFinderBase:
                 del self.jets_dict[key]
         return
 
+    @profile_method('JetFinderBase._fetchJetConstituents')
     def _fetchJetConstituents(self):
-        results = {i:self._fetchJetConstituentsSingle(jet, self.n_constituents_max) for i,jet in self.jets_dict.items()}
-        self.constituent_vectors = {i:x[0] for i,x in results.items()}
-        self.constituent_vectors_cyl = {i:x[1] for i,x in results.items()}
-        self.constituent_indices = {i:x[2] for i,x in results.items()}
+        results = {i:self._fetchJetConstituentsSingle(i, jet, self.n_constituents_max) for i,jet in self.jets_dict.items()}
+        self.constituent_vectors = {i:self.input_vecs[x] for i,x in results.items()}
+        self.constituent_vectors_cyl = {i:self.input_vecs[x] for i,x in results.items()}
+        self.constituent_indices = {i:x for i,x in results.items()}
 
-    def _fetchJetConstituentsSingle(self, jet, n_constituents=-1):
-
+    def _fetchJetConstituentsSingle(self, key, jet, n_constituents=-1):
+        """
+        Returns indices of the jet constituents, w.r.t. the
+        self.input_vecs list. The indices have been pt-sorted
+        and truncated if requested.
+        """
         if not jet.has_constituents():
             return np.empty((0, 4)), np.empty((0, 4)), np.empty((0, 4))
 
@@ -249,32 +273,29 @@ class JetFinderBase:
         else:
             max_constituents = n
 
-        # Pre-allocate arrays.
-        kinematics = np.empty((n, 8), dtype=np.float64)
-        indices = np.empty(n, dtype=np.int32)
+        # Get the user indices of the constituents.
+        # The input 4-vectors were indexed sequentially, so we can 
+        # use this to look them up in our original inputs, thus avoiding
+        # calls to Fastjet::Pseudojet. Especially useful for the coordinates
+        # that it internally recalculates -- pt, eta, phi and m (in case we've
+        # supplied rap/eta/phi, those might not be recalculated anyway).
+        indices = np.array([constituent.user_index() for constituent in constituents],dtype=int)
 
-        # Extract the data
-        for i, constituent in enumerate(constituents):
-            kinematics[i, 0] = constituent.pt()
-            kinematics[i, 1] = constituent.eta()
-            kinematics[i, 2] = constituent.phi()
-            kinematics[i, 3] = constituent.m()
-            kinematics[i, 4] = constituent.e()
-            kinematics[i, 5] = constituent.px()
-            kinematics[i, 6] = constituent.py()
-            kinematics[i, 7] = constituent.pz()
-            indices[i] = constituent.user_index()
+        # Sort on pt, truncate if necessary.
+        pt = self.input_vecs_cyl[indices,0]
 
-        # Sort by decreasing pT
-        sorted_indices = np.argsort(-kinematics[:, 0])[:max_constituents]
-        sorted_kinematics = kinematics[sorted_indices]
+        # For the indices, we can directly return the sorted indices
+        # since, by construction, the "indices" are just a 0-indexed range.
+        result = np.argsort(-pt)[:max_constituents]
 
-        # Split into four-vectors and cylindrical coordinates
-        vecs = sorted_kinematics[:, 4:8]  # [e, px, py, pz]
-        vecs_cyl = sorted_kinematics[:, 0:4]  # [pt, eta, phi, m]
-        sorted_user_indices = indices[sorted_indices]
+        # print('######')
+        # print('# {}'.format(key))
+        # print('Constituent indices: ', result)
+        # print('pt: ',pt[result])
+        # print('######')
+        # print()
 
-        return vecs, vecs_cyl, sorted_user_indices
+        return result
 
     def _print(self,val:Any):
         print('{}: {}'.format(self.print_prefix,val))
