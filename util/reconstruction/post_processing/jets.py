@@ -47,7 +47,8 @@ class JetFinder(JetFinderBase):
         self.buffer = OutputBuffer(100) # TODO: Make buffer size configurable
 
         self.input_collection_arrays = None
-        self.input_collection_arrays_rap_phi = None
+        self.input_collection_arrays_cyl = None
+        self.input_collection_arrays_rapidity = None
         self.constituent_indices_dict = None
 
         self.SetVerbosity(verbose)
@@ -102,10 +103,12 @@ class JetFinder(JetFinderBase):
         """
         if(type(collections) != list):
             collections = [collections]
-        pmu_collections = ['{}.Pmu'.format(collection) for collection in collections]
+        collections_pmu = ['{}.Pmu'.format(collection) for collection in collections]
+        collections_pmu_cyl = ['{}.Pmu_cyl'.format(collection) for collection in collections]
 
         self.input_collection_names = collections
-        self.input_collection_names_Pmu = pmu_collections
+        self.input_collection_names_Pmu = collections_pmu
+        self.input_collection_names_Pmu_cyl = collections_pmu_cyl
 
     def SetNConstituentsMax(self,n:int):
         self.n_constituents_max = n
@@ -225,13 +228,11 @@ class JetFinder(JetFinderBase):
         #       Should ultimately move towards batching things, which will require
         #       keeping the input file open the whole time.
         f = h5.File(self.h5_file,'r')
-        self.input_collection_arrays = {
-            key:f[key][:] for key in self.input_collection_names_Pmu
-        }
-        self.nevents = f[self.input_collection_names_Pmu[0]].shape[0]
+        
+        self._fetch_inputs(f)
 
         # Also fetch rapidity & phi, for potentially speeding up some FastJet computations.
-        self._fetch_rapidity_phi(f)
+        self._fetch_rapidity(f)
 
         # Get maximum size of jet inputs.
         n_max = self._get_max_input_size()
@@ -249,23 +250,31 @@ class JetFinder(JetFinderBase):
         self.status = True
         f.close()
 
-    def _fetch_rapidity_phi(self,f:h5.File):
+    def _fetch_inputs(self, f:h5.File):
+        self.input_collection_arrays = {
+            key:f[key][:] for key in self.input_collection_names_Pmu
+        }
+
+        self.input_collection_arrays_cyl = {
+            key:f[key][:] for key in self.input_collection_names_Pmu_cyl
+        }
+
+        self.nevents = f[self.input_collection_names_Pmu[0]].shape[0]
+        return
+    
+
+    def _fetch_rapidity(self,f:h5.File):
         """
-        Fetches the rapidity and phi of the jet clustering inputs.
-        These can be explicitly passed on to FastJet, and should speed
+        Fetches the rapidity of the jet clustering inputs.
+        This can be explicitly passed on to FastJet, and should speed
         up the clustering -- which we ought to do if we've already
-        spent time computing these things!
+        spent time computing it.
 
         Note: We use eta instead of rapidity and thus implicitly assume
         the input 4-vecs to be massless (as they often are). However,
         we try to fetch any existing "Rapidity"/"Rap"/"Y" branch first,
         in case it exists.
         """
-
-        # Phi is straightforward -- just query the cylindrical four-momenta.
-        phi = {
-            key:f['{}.Pmu_cyl'.format(key)][:,...,2] for key in self.input_collection_names
-        }
 
         # For rapidity, fetch rapidity or pseudorapidity based on what is available.
         full_keys = list(f.keys())
@@ -277,19 +286,13 @@ class JetFinder(JetFinderBase):
                     rapidity_keys[key] = key2
                     break
         assert(len(rapidity_keys.keys()) == len(self.input_collection_names))
-        rapidity = {}
+        self.input_collection_arrays_rapidity = {}
 
         for key,key2 in rapidity_keys.items():
             if('Pmu_cyl' in key2):
-                rapidity[key] = f['{}.Pmu_cyl'.format(key)][:,...,2]
+                self.input_collection_arrays_rapidity[key] = self.input_collection_arrays_cyl[key2][:,...,1] # TODO: A bit fragile with key handling?
             else: # TODO: This may need fixing -- as of writing this, I don't think there are any such rapidity branches! -Jan
-                rapidity[key] = f[key2][:]
-
-        # Now put everything together
-        self.input_collection_arrays_rap_phi = {
-            key:np.stack([rapidity[key],phi[key]],axis=-1)
-            for key in self.input_collection_names
-        }
+                self.input_collection_arrays_rapidity[key] = f[key2][:]
         return
 
     def _get_max_input_size(self):
@@ -312,9 +315,9 @@ class JetFinder(JetFinderBase):
             self.ClearUserInfo()
 
             # Gather the different input collections together, into one array of four-momenta.
-            with profile_block('JetFinder.Process - SetInputs'):
-                self.SetInputs(np.vstack([self.input_collection_arrays[key][self._i] for key in self.input_collection_names_Pmu])) # NOTE: Using self.input_collections_array.keys() can be dangerous, due to modifications/additions to keys by things like GhostAssociation(). Those should not touch self.input_collections, for this reason.
-                self.SetRapidityPhi(np.vstack([self.input_collection_arrays_rap_phi[key][self._i] for key in self.input_collection_names])) # NOTE: Using self.input_collections_array.keys() can be dangerous, due to modifications/additions to keys by things like GhostAssociation(). Those should not touch self.input_collections, for this reason.
+            self.SetInputs(np.vstack([self.input_collection_arrays[key][self._i] for key in self.input_collection_names_Pmu])) # NOTE: Using self.input_collections_array.keys() can be dangerous, due to modifications/additions to keys by things like GhostAssociation(). Those should not touch self.input_collections, for this reason.
+            self.SetInputsCylindrical(np.vstack([self.input_collection_arrays_cyl[key][self._i] for key in self.input_collection_names_Pmu_cyl]))
+            self.SetRapidity(np.concatenate([self.input_collection_arrays_rapidity[key][self._i] for key in self.input_collection_names],axis=0)) # NOTE: Using self.input_collections_array.keys() can be dangerous, due to modifications/additions to keys by things like GhostAssociation(). Those should not touch self.input_collections, for this reason.
 
             # Optional modification of inputs. May be harnessed by some special configurations.
             self._modifyInputs()
@@ -328,15 +331,14 @@ class JetFinder(JetFinderBase):
             self._ptSort(truncate=True)
 
             # optionally extract information on jet constituents
-            with profile_block('JetFinder.Process - FetchConstituents'):
-                if(self.constituents_flag):
-                    self._fetchJetConstituents() # fills self.constituent_vectors, self.constituent_indices
+            if(self.constituents_flag):
+                self._fetchJetConstituents() # fills self.constituent_vectors, self.constituent_indices
 
-                    # Optional modification of constituents. May be harnessed by some special configurations.
-                    self._modifyConstituents()
+                # Optional modification of constituents. May be harnessed by some special configurations.
+                self._modifyConstituents()
 
             # now write to buffer
-            with profile_block('JetFinder.Process - FetchConstituents'):
+            with profile_block('JetFinder.Process - WriteToBuffer'):
                 self._writeToBuffer()
 
             # Optional extension of writing to buffer. May be harnessed by some special configurations.
@@ -400,7 +402,7 @@ class JetFinder(JetFinderBase):
         key = 'Metadata.JetCollections.InputCollections'
         if(key not in metadata.keys()):
             metadata[key] = {}
-        metadata[key][self.jet_name] = [x.replace('.Pmu','') for x in self.input_collection_names_Pmu]
+        metadata[key][self.jet_name] = [x for x in self.input_collection_names]
 
         # Also add metadata on citations for algorithms. This is stored as a list of strings; it is not separated by jet_name,
         # as that level of granularity is probably not useful.
@@ -450,6 +452,7 @@ class JetFinder(JetFinderBase):
 
         return
 
+    @profile_method('JetFinder._computeConstituentIndices')
     def _computeConstituentIndices(self):
         # Precompute collection boundaries once
         n_per_collection = [len(self.input_collection_arrays[key][self._i]) for key in self.input_collection_names_Pmu]
@@ -469,6 +472,7 @@ class JetFinder(JetFinderBase):
             self.constituent_indices_dict[i] = constituent_indices
         return
 
+    @profile_method('JetFinder._writeToBuffer')
     def _writeToBuffer(self,event_index:Optional[int]=None):
 
         if(event_index is None):
@@ -480,43 +484,45 @@ class JetFinder(JetFinderBase):
         # Fill jet information in the buffer.
         self.buffer.set('{}.N'.format(self.jet_name),event_index,len(self.jet_vectors))
 
-        # TODO: Clean this up a bit? Have to deal with special case of "single_jet = True".
-        if(self.single_jet):
-            idx = self.jet_ordering[0]
-            self.buffer.set('{}.Pmu'.format(self.jet_name),event_index,self.jet_vectors[idx])
-            self.buffer.set('{}.Pmu_cyl'.format(self.jet_name),event_index,self.jet_vectors_cyl[idx])
-
-        else:
-            self.buffer.set('{}.Pmu'.format(self.jet_name),event_index,np.vstack([self.jet_vectors[i] for i in self.jet_ordering]))
-            self.buffer.set('{}.Pmu_cyl'.format(self.jet_name),event_index,np.vstack([self.jet_vectors_cyl[i] for i in self.jet_ordering]))
-
-        # Fill the jet constituent information.
-        if(self.constituents_flag):
+        with profile_block('JetFinder._writeToBuffer - Jets'):
+            # TODO: Maybe later clean this up a bit? Have to deal with special case of "single_jet = True".
             if(self.single_jet):
                 idx = self.jet_ordering[0]
-                self.buffer.set('{}.Constituents.N'.format(self.jet_name),event_index,len(self.constituent_vectors[idx]))
-
-                # Figure out the collections and indices of the constituents
-                self._computeConstituentIndices()
-
-                self.buffer.set('{}.Constituents.Pmu'.format(self.jet_name),event_index,self.constituent_vectors[idx])
-                self.buffer.set('{}.Constituents.Pmu_cyl'.format(self.jet_name),event_index,self.constituent_vectors_cyl[idx])
-                self.buffer.set('{}.Constituents.Collection'.format(self.jet_name),event_index,self.constituent_indices_dict[idx][:,0])
-                self.buffer.set('{}.Constituents.Collection.Index'.format(self.jet_name),event_index,self.constituent_indices_dict[idx][:,1])
+                self.buffer.set('{}.Pmu'.format(self.jet_name),event_index,self.jet_vectors[idx])
+                self.buffer.set('{}.Pmu_cyl'.format(self.jet_name),event_index,self.jet_vectors_cyl[idx])
 
             else:
-                self.buffer.set('{}.Constituents.N'.format(self.jet_name),event_index,[len(self.constituent_vectors[i]) for i in self.jet_ordering])
+                self.buffer.set('{}.Pmu'.format(self.jet_name),event_index,np.vstack([self.jet_vectors[i] for i in self.jet_ordering]))
+                self.buffer.set('{}.Pmu_cyl'.format(self.jet_name),event_index,np.vstack([self.jet_vectors_cyl[i] for i in self.jet_ordering]))
 
-                # Figure out the collections and indices of the constituents
-                self._computeConstituentIndices()
+        with profile_block('JetFinder._writeToBuffer - Constituents'):
+            # Fill the jet constituent information.
+            if(self.constituents_flag):
+                if(self.single_jet):
+                    idx = self.jet_ordering[0]
+                    self.buffer.set('{}.Constituents.N'.format(self.jet_name),event_index,len(self.constituent_vectors[idx]))
 
-                # Now we loop, as we're embedding what is really jagged information.
-                # TODO: Is there another way? I suspect this slows down things a bit.
-                for i,j in enumerate(self.jet_ordering):
-                    self.buffer.set('{}.Constituents.Pmu'.format(self.jet_name),(event_index,i),self.constituent_vectors[j])
-                    self.buffer.set('{}.Constituents.Pmu_cyl'.format(self.jet_name),(event_index,i),self.constituent_vectors_cyl[j])
-                    self.buffer.set('{}.Constituents.Collection'.format(self.jet_name),(event_index,i),self.constituent_indices_dict[j][:,0])
-                    self.buffer.set('{}.Constituents.Collection.Index'.format(self.jet_name),(event_index,i),self.constituent_indices_dict[j][:,1])
+                    # Figure out the collections and indices of the constituents
+                    self._computeConstituentIndices()
+
+                    self.buffer.set('{}.Constituents.Pmu'.format(self.jet_name),event_index,self.constituent_vectors[idx])
+                    self.buffer.set('{}.Constituents.Pmu_cyl'.format(self.jet_name),event_index,self.constituent_vectors_cyl[idx])
+                    self.buffer.set('{}.Constituents.Collection'.format(self.jet_name),event_index,self.constituent_indices_dict[idx][:,0])
+                    self.buffer.set('{}.Constituents.Collection.Index'.format(self.jet_name),event_index,self.constituent_indices_dict[idx][:,1])
+
+                else:
+                    self.buffer.set('{}.Constituents.N'.format(self.jet_name),event_index,[len(self.constituent_vectors[i]) for i in self.jet_ordering])
+
+                    # Figure out the collections and indices of the constituents
+                    self._computeConstituentIndices()
+
+                    # Now we loop, as we're embedding what is really jagged information.
+                    # TODO: Is there another way? I suspect this slows down things a bit.
+                    for i,j in enumerate(self.jet_ordering):
+                        self.buffer.set('{}.Constituents.Pmu'.format(self.jet_name),(event_index,i),self.constituent_vectors[j])
+                        self.buffer.set('{}.Constituents.Pmu_cyl'.format(self.jet_name),(event_index,i),self.constituent_vectors_cyl[j])
+                        self.buffer.set('{}.Constituents.Collection'.format(self.jet_name),(event_index,i),self.constituent_indices_dict[j][:,0])
+                        self.buffer.set('{}.Constituents.Collection.Index'.format(self.jet_name),(event_index,i),self.constituent_indices_dict[j][:,1])
         return
 
     # NOTE: Will define various functions for performing some modifications to clustering or post-processing of results.

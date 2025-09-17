@@ -119,7 +119,7 @@ class FastJetSetup:
                 'cmake',
                 '-DCMAKE_INSTALL_PREFIX={}'.format(self.install_dir),
                 '-DFASTJET_ENABLE_PYTHON:BOOL=ON',
-                '-DFASTJET_ENABLE_PLUGIN_SISCONE:BOOL=OFF', # disable since this is shipped as a git submodule, which we don't pick up in the archive download from GitLab
+                '-DFASTJET_ENABLE_PLUGIN_SISCONE:BOOL=OFF',
                 self.source_dir
             ]
 
