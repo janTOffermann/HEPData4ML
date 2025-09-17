@@ -52,11 +52,11 @@ class JetFinderBase:
     def _initialize_pseudojets(self, size=1000, force=False):
         if(self.pseudojet_init_flag and not force):
             return
-        
+
         self._initialize_fastjet()
         import fastjet as fj
         self.pseudojets = [fj.PseudoJet() for i in range(size)]
-        
+
         self.pseudojet_init_flag = True
         return
 
@@ -146,7 +146,7 @@ class JetFinderBase:
         n_pseudojets = len(self.input_vecs)
         if(n_pseudojets > len(self.pseudojets)):
             self._initialize_pseudojets(n_pseudojets,force=True) # TODO: Consider adding a safety factor?
-        
+
         # Now set the PseudoJet momenta and indices -- the latter for tracing them through jet clustering.
         # vecs has format (E,px,py,pz) -- FastJet uses (px,py,pz,E) so we must rearrange. Faster than np.roll.
         has_rap_phi = (self.rap_phi is not None)
@@ -236,28 +236,45 @@ class JetFinderBase:
         self.constituent_vectors_cyl = {i:x[1] for i,x in results.items()}
         self.constituent_indices = {i:x[2] for i,x in results.items()}
 
-    def _fetchJetConstituentsSingle(self,jet,n_constituents=-1):
+    def _fetchJetConstituentsSingle(self, jet, n_constituents=-1):
 
-        # TODO: Understand if/when this is called on a jet without constituents (i.e. a base PseudoJet).
-        if(not jet.has_constituents()):
-            return np.empty((0, 4)), np.empty((0, 4)), np.empty((0, 4)) # TODO: Is this OK?
+        if not jet.has_constituents():
+            return np.empty((0, 4)), np.empty((0, 4)), np.empty((0, 4))
 
-        pt,eta,phi,m,e,px,py,pz = np.hsplit(np.array([[x.pt(), x.eta(), x.phi(), x.m(), x.e(), x.px(),x.py(),x.pz()] for x in jet.constituents()]),8)
+        constituents = jet.constituents()
+        n = len(constituents)
 
-        # The indices of the jet constituents, corresponding with the order in which they
-        # were passed to jet clustering.
-        indices = np.array([x.user_index() for x in jet.constituents()],dtype=np.dtype('i4')).flatten()
+        if n_constituents is not None and n_constituents > 0:
+            max_constituents = min(n_constituents, n)
+        else:
+            max_constituents = n
 
-        # Sort by decreasing pt, and only keep leading constituents.
-        sorting = np.argsort(-pt.flatten())
-        l = len(pt)
-        if((n_constituents is not None) and n_constituents > 0):
-            l = int(np.minimum(n_constituents,l))
-        vecs = np.vstack([x.flatten() for x in [e,px,py,pz]]).T[sorting][:l]
-        vecs_cyl = np.vstack([x.flatten() for x in [pt,eta,phi,m]]).T[sorting][:l]
-        indices = indices[sorting][:l]
+        # Pre-allocate arrays.
+        kinematics = np.empty((n, 8), dtype=np.float64)
+        indices = np.empty(n, dtype=np.int32)
 
-        return vecs, vecs_cyl, indices
+        # Extract the data
+        for i, constituent in enumerate(constituents):
+            kinematics[i, 0] = constituent.pt()
+            kinematics[i, 1] = constituent.eta()
+            kinematics[i, 2] = constituent.phi()
+            kinematics[i, 3] = constituent.m()
+            kinematics[i, 4] = constituent.e()
+            kinematics[i, 5] = constituent.px()
+            kinematics[i, 6] = constituent.py()
+            kinematics[i, 7] = constituent.pz()
+            indices[i] = constituent.user_index()
+
+        # Sort by decreasing pT
+        sorted_indices = np.argsort(-kinematics[:, 0])[:max_constituents]
+        sorted_kinematics = kinematics[sorted_indices]
+
+        # Split into four-vectors and cylindrical coordinates
+        vecs = sorted_kinematics[:, 4:8]  # [e, px, py, pz]
+        vecs_cyl = sorted_kinematics[:, 0:4]  # [pt, eta, phi, m]
+        sorted_user_indices = indices[sorted_indices]
+
+        return vecs, vecs_cyl, sorted_user_indices
 
     def _print(self,val:Any):
         print('{}: {}'.format(self.print_prefix,val))
