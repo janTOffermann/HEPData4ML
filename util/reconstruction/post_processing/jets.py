@@ -8,6 +8,7 @@ from util.fastjet.jetfinderbase import JetFinderBase
 from util.qol_utils.progress_bar import printProgressBarColor
 from util.buffer.output import OutputBuffer
 from util.misc.timing import profile_method, profile_block
+from util.hdf5.hdf5 import MergeH5 # TODO: Maybe work this into the OutputBuffer's flush handler somehow?
 
 import util.reconstruction.post_processing.utils.ghost_association as ghost_assoc
 import util.reconstruction.post_processing.utils.softdrop as softdrop
@@ -44,7 +45,8 @@ class JetFinder(JetFinderBase):
 
         self.fastjet_dir = fastjet_dir
 
-        self.buffer = OutputBuffer(100) # TODO: Make buffer size configurable
+        self.buffer_size = 500
+        self.buffer = OutputBuffer(500) # TODO: Make buffer size configurable. Larger sizes use more memory, but may be faster since we do fewer flushes and thus less I/O (depends on how good the flushing code is, shouldn't be open/closing files repeatedly!)
 
         self.input_collection_arrays = None
         self.input_collection_arrays_cyl = None
@@ -57,8 +59,6 @@ class JetFinder(JetFinderBase):
         self.progress_bar_length = 50
         self.progress_bar_prefix = '\tRunning JetFinder:'
         self.progress_bar_suffix = 'Complete'
-        # self.setup = None
-        # self.tagger = None
 
         self.error = False
 
@@ -66,6 +66,11 @@ class JetFinder(JetFinderBase):
         self.processors = [] # supposedly this is an example of an "observer pattern"
 
         self.metadata_handler = None
+
+        # Stuff for dealing with I/O
+
+        self.h5_file = None # The input HDF5 file -- also where output will ultimately be copied.
+        self.output_file_tmp = None # The temporary output file -- write to this, then it'll be merged with input file. Allows having input and output files simultaneously read & modified.
 
         # Generate info on citations for algorithms
         self.citations = {}
@@ -86,8 +91,17 @@ class JetFinder(JetFinderBase):
         self.verbose = flag
 
     def SetH5EventFile(self,file:str):
+        """
+        Sets the input HDF5 file.
+        Also creates a name for the 
+        (temporary) output file.
+        """
         self.h5_file = file
-        self.buffer.SetFilename(self.h5_file)
+
+        self.output_file_tmp = self.h5_file
+        extension = self.h5_file.split('.')[-1]
+        self.output_file_tmp = '.'.join(self.h5_file.split('.')[:-1]) + '_postproc_tmp.' + extension
+        self.buffer.SetFilename(self.output_file_tmp)
 
     def SetInputCollections(self,collections:List[str]):
         """
@@ -200,10 +214,15 @@ class JetFinder(JetFinderBase):
                 if(k) not in self.citations.keys():
                     self.citations[k] = v
 
-    def Initialize(self): # TODO: May want to consider chunking things and using a buffer? Memory usage will scale better for larger files.
+    def Initialize(self):
         """
         Reads in the input HDF5 file, and places the required arrays in memory.
         """
+        # TODO: May want to consider chunking things and using a buffer? 
+        # Memory usage will scale better for larger files. 
+        # However, need to be careful if input and output are the same file, 
+        # since writing maybe needs to keep it open in order to avoid lots of
+        # opening/closing that will slow down the program. 
 
         # If already initialized, no need to do it again.
         if(self.status):
@@ -228,7 +247,7 @@ class JetFinder(JetFinderBase):
         #       Should ultimately move towards batching things, which will require
         #       keeping the input file open the whole time.
         f = h5.File(self.h5_file,'r')
-        
+
         self._fetch_inputs(f)
 
         # Also fetch rapidity & phi, for potentially speeding up some FastJet computations.
@@ -261,7 +280,7 @@ class JetFinder(JetFinderBase):
 
         self.nevents = f[self.input_collection_names_Pmu[0]].shape[0]
         return
-    
+
 
     def _fetch_rapidity(self,f:h5.File):
         """
@@ -338,8 +357,7 @@ class JetFinder(JetFinderBase):
                 self._modifyConstituents()
 
             # now write to buffer
-            with profile_block('JetFinder.Process - WriteToBuffer'):
-                self._writeToBuffer()
+            self._writeToBuffer()
 
             # Optional extension of writing to buffer. May be harnessed by some special configurations.
             self._modifyWrite()
@@ -376,14 +394,26 @@ class JetFinder(JetFinderBase):
             processor.ModifyConstituents(self)
         return
 
-    @profile_method('JetFinder.Flush')
-    def Flush(self):
+    def Flush(self, output_file=None):
         """
         This function simply finishes the writing of our data buffer
-        to the output file, by doing a final flush.
-        It also writes some metadata to the output file.
+        to the temporary output file, by doing a final flush.
+        Then, the temporary output file is merged into the final output
+        file (which typically is the input file -- we're just appending to it).
+        It also writes some metadata, which will ultimately propagate
+        to the output file.
         """
+        # Final flush of the buffer
         self.buffer.flush()
+
+        # Now, handle the final output file.
+        if(output_file is None):
+            output_file = self.h5_file
+        self.buffer.close(output_file) # <- merges the buffer's temporary output into ouput_file, deletes tmp output
+
+
+
+
         self._writeMetadata()
         return
 
@@ -418,11 +448,19 @@ class JetFinder(JetFinderBase):
 
         if(verbose is not None): self.SetVerbosity(verbose)
         self.SetH5EventFile(h5_file)
+
         self.Process()
-        self.Flush()
+        self.Flush(output_file)
+
         return self.h5_file
 
     def _initializeBuffer(self):
+
+        # Special case: If buffer size is larger than self.nevents, we must make it equal or smaller,
+        # otherwise the HDF5 chunking will complain.
+        if(self.buffer_size > self.nevents):
+            self.buffer_size = self.nevents
+            self.buffer.SetBufferSize(self.buffer_size)
 
         shape0 = (self.n_jets_max,)
         shape1 = (self.n_jets_max,4)
@@ -475,14 +513,16 @@ class JetFinder(JetFinderBase):
     @profile_method('JetFinder._writeToBuffer')
     def _writeToBuffer(self,event_index:Optional[int]=None):
 
-        if(event_index is None):
-            event_index = self._i
+        with profile_block('JetFinder._writeToBuffer - Prelude'):
+            if(event_index is None):
+                event_index = self._i
 
-        if(len(self.jets_dict) == 0):
-            return #TODO: Check that this is OK?
+            if(len(self.jets_dict) == 0):
+                return #TODO: Check that this is OK?
 
-        # Fill jet information in the buffer.
-        self.buffer.set('{}.N'.format(self.jet_name),event_index,len(self.jet_vectors))
+        with profile_block('JetFinder._writeToBuffer - Njets'):
+            # Fill jet information in the buffer.
+            self.buffer.set('{}.N'.format(self.jet_name),event_index,len(self.jet_vectors))
 
         with profile_block('JetFinder._writeToBuffer - Jets'):
             # TODO: Maybe later clean this up a bit? Have to deal with special case of "single_jet = True".
