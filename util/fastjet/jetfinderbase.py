@@ -92,7 +92,7 @@ class JetFinderBase:
 
     def SetInputs(self,vecs):
         self.input_vecs = vecs
-    
+
     def SetInputsCylindrical(self,vecs):
         self.input_vecs_cyl = vecs
 
@@ -163,7 +163,6 @@ class JetFinderBase:
             if(has_rapidity):
                 self.pseudojets[i].set_cached_rap_phi(self.rapidity[i],self.input_vecs_cyl[i,2])
 
-
         # Attach any optional information to the pseudojet objects. This can be leveraged by other classes
         # or extensions.
         if(self.user_info is not None):
@@ -182,12 +181,10 @@ class JetFinderBase:
         This function fills self.jet_vectors and self.jet_vectors_cyl, to contain the four-momenta
         of whatever jets are currently in self.jets.
         """
-        # self.jet_vectors = np.array([[x.e(), x.px(), x.py(),x.pz()] for x in self.jets])
-        # self.jet_vectors_cyl = np.array([[x.pt(), x.eta(), x.phi(),x.m()] for x in self.jets])
-
         self.jet_vectors = {i:np.array([jet.e(), jet.px(), jet.py(),jet.pz()]) for i,jet in self.jets_dict.items()}
         self.jet_vectors_cyl = {i:np.array([jet.pt(), jet.eta(), jet.phi(),jet.m()]) for i,jet in self.jets_dict.items()}
 
+    @profile_method('JetFinderBase._ptSort')
     def _ptSort(self, truncate=False):
         """
         Sorts jets by decreasing pT, and truncates to
@@ -201,44 +198,48 @@ class JetFinderBase:
         elif(len(self.jets_dict) == 1): # 1 jet -> not much to do, just make sure self.jet_ordering reflects this
             self.jet_ordering = [self.jet_ordering[0]]
             return
-        
-        jet_pt = np.array([self.jets_dict[i].pt() for i in self.jet_ordering])
 
+        # For the jet pt, access self.jet_vectors_cyl instead of calling PseudoJet::pt()
+        # on the contents of jets_dict; this should be faster as we avoid having FastJet
+        # recompute these quantities.
+        jet_pt = np.array([self.jet_vectors_cyl[i][0] for i in self.jet_ordering])
         is_sorted = np.all(jet_pt[:-1] >= jet_pt[1:])
         needs_truncation = (self.n_jets_max is not None and truncate and len(jet_pt) > self.n_jets_max)
 
         # Early return if already sorted and no truncation needed
         if is_sorted and not needs_truncation:
+            # In principle, we could check that self.pt_sorting is not None,
+            # but calling _clusterJets() will ensure this is filled.
             # Still need to set pt_sorting if it doesn't exist
-            if(self.pt_sorting is None):
-                self.pt_sorting = np.arange(len(jet_pt))
             return
 
-        self.pt_sorting = np.argsort(-jet_pt)
-        if(needs_truncation):
-            self.pt_sorting = self.pt_sorting[:self.n_jets_max]
+        with profile_block('JetFinderBase._ptSort - Sort'):
+            if (not is_sorted):
+                self.pt_sorting = np.argsort(-jet_pt)
 
-        if(len(self.pt_sorting) == 1):
-            self.jet_ordering = [self.jet_ordering[self.pt_sorting[0]]]
-        else:
-            self.jet_ordering = list(operator.itemgetter(*self.pt_sorting)(self.jet_ordering))
+            if(needs_truncation):
+                self.pt_sorting = self.pt_sorting[:self.n_jets_max]
 
-        # If we've truncated, we'll need to update some dictionaries under-the-hood to reflect this.
-        if(needs_truncation):
-            # remove entries from jets_dict, that correspond with entries in jet_ordering that have been dropped
-            self._updateJetDictionary()
+            if(len(self.pt_sorting) == 1):
+                self.jet_ordering = [self.jet_ordering[self.pt_sorting[0]]]
+            else:
+                self.jet_ordering = list(operator.itemgetter(*self.pt_sorting)(self.jet_ordering))
 
-            # We will also recompute the jet vectors, to account for any that have been dropped.
-            # Note that due to the dictionary-based approach, we don't have to recompute this if
-            # the jet ordering has simply changed.
-            self._jetsToVectors()
+            # If we've truncated, we'll need to update some dictionaries under-the-hood to reflect this.
+            if(needs_truncation):
+                # remove entries from jets_dict, that correspond with entries in jet_ordering that have been dropped
+                self._updateJetDictionary()
 
-            # Also refresh constituents. Again, this only needs to be called if jets were dropped,
-            # since its a dictionary so a simple reordering of the jets in self.jet_ordering does
-            # not necessitate any change.
-            self._fetchJetConstituents()
-        return
+                # We will also recompute the jet vectors, to account for any that have been dropped.
+                # Note that due to the dictionary-based approach, we don't have to recompute this if
+                # the jet ordering has simply changed.
+                self._jetsToVectors()
 
+                # Also refresh constituents. Again, this only needs to be called if jets were dropped,
+                # since its a dictionary so a simple reordering of the jets in self.jet_ordering does
+                # not necessitate any change.
+                self._fetchJetConstituents()
+            return
 
     def _updateJetDictionary(self):
         """
@@ -274,7 +275,7 @@ class JetFinderBase:
             max_constituents = n
 
         # Get the user indices of the constituents.
-        # The input 4-vectors were indexed sequentially, so we can 
+        # The input 4-vectors were indexed sequentially, so we can
         # use this to look them up in our original inputs, thus avoiding
         # calls to Fastjet::Pseudojet. Especially useful for the coordinates
         # that it internally recalculates -- pt, eta, phi and m (in case we've
