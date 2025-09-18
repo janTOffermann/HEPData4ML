@@ -5,7 +5,7 @@ import ROOT as rt
 from util.math.embedding import embed_array
 from util.buffer.input import UprootBatchLoader
 from util.qol_utils.progress_bar import printProgressBarColor
-from util.hepmc.hepmc import ExtractHepMCEvents, ExtractHepMCParticles, ParticleToEndVertex
+from util.hepmc.hepmc import ExtractHepMCEvents, ExtractHepMCParticles, ParticleToProductionVertex, ParticleToEndVertex, ParticleToMomenta
 from typing import Union, Optional, List, TYPE_CHECKING
 from util.misc.timing import profile_method, profile_block
 
@@ -166,9 +166,10 @@ class Processor:
                     stable_particles = list(itertools.compress(event_particles, status == 1))
 
                     # Explicitly fetch/compute 4-momentum components.
-                    stable_particle_momenta = np.array([[particle.momentum().e(), particle.momentum().px(), particle.momentum().py(), particle.momentum().pz()] for particle in stable_particles])
-                    stable_particle_momenta_cyl = np.array([[particle.momentum().pt(), particle.momentum().eta(), particle.momentum().phi(), particle.momentum().m()] for particle in stable_particles])
-
+                    momenta = np.array([ParticleToMomenta(particle) for particle in stable_particles])
+                    stable_particle_momenta = momenta[:,0,:]
+                    stable_particle_momenta_cyl = momenta[:,1,:]
+                    
                     self.WriteToDataBuffer(j,'{}.N'.format(self.stable_truth_particle_name),len(stable_particles))
 
                     self.WriteToDataBuffer(j, '{}.Pmu'.format(self.stable_truth_particle_name),
@@ -189,10 +190,12 @@ class Processor:
                                         dimensions={1:self.nparticles_stable}, dtype=np.dtype('i4')
                     )
 
-                    prod_vertices = np.array([
-                        [x.production_vertex().position().t(),x.production_vertex().position().x(),x.production_vertex().position().y(),x.production_vertex().position().z()]
-                        for x in stable_particles]
-                    )
+                    prod_vertices = np.array([ParticleToProductionVertex(x) for x in stable_particles])
+
+                    # prod_vertices = np.array([
+                    #     [x.production_vertex().position().t(),x.production_vertex().position().x(),x.production_vertex().position().y(),x.production_vertex().position().z()]
+                    #     for x in stable_particles]
+                    # )
 
                     self.WriteToDataBuffer(j, '{}.Production.Xmu'.format(self.stable_truth_particle_name),
                                         prod_vertices,
@@ -208,9 +211,10 @@ class Processor:
                     truth_selected_event_particles = ExtractHepMCParticles(hepmc_events[start_idxs[i]:stop_idxs[i]],self.nparticles_truth_selected,selection)
                     for j,truth_selected_particles in enumerate(truth_selected_event_particles): # Loop over events in this chunk
 
-                        truth_particle_momenta = np.array([[particle.momentum().e(), particle.momentum().px(), particle.momentum().py(), particle.momentum().pz()] for particle in truth_selected_particles])
-                        truth_particle_momenta_cyl = np.array([[particle.momentum().pt(), particle.momentum().eta(), particle.momentum().phi(), particle.momentum().m()] for particle in truth_selected_particles])
-
+                        momenta = np.array([ParticleToMomenta(particle) for particle in truth_selected_particles])
+                        truth_particle_momenta = momenta[:,0,:]
+                        truth_particle_momenta_cyl = momenta[:,1,:]
+                    
                         self.WriteToDataBuffer(j,'{}.N'.format(key),len(truth_selected_particles))
 
                         self.WriteToDataBuffer(j, '{}.Pmu'.format(key),
@@ -231,10 +235,7 @@ class Processor:
                                                 dimensions={1:self.nparticles_truth_selected}, dtype=np.dtype('i4')
                         )
 
-                        prod_vertices = np.array([
-                                    [x.production_vertex().position().t(),x.production_vertex().position().x(),x.production_vertex().position().y(),x.production_vertex().position().z()]
-                                    for x in truth_selected_particles]
-                                )
+                        prod_vertices = np.array([ParticleToProductionVertex(x) for x in truth_selected_particles])
 
                         self.WriteToDataBuffer(j, '{}.Production.Xmu'.format(key),
                                             prod_vertices,
@@ -244,7 +245,6 @@ class Processor:
                         self.WriteToDataBuffer(j,'{}.Stable'.format(key),[x.status()==1 for x in truth_selected_particles],
                                                 dimensions={1:self.nparticles_truth_selected}, dtype=np.dtype('bool')
                         )
-
 
                         end_vertices = np.array([ParticleToEndVertex(x) for x in truth_selected_particles])
 

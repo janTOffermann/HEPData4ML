@@ -102,7 +102,7 @@ def ConcatenateH5(input_file_patterns,output_file,cwd=None,delete_inputs=False,c
 
     return
 
-def MergeH5(target_file, input_file, cwd=None, delete_stats_file=False, compression='gzip',copts=9):
+def MergeH5(target_file, input_file, cwd=None, delete_input=False, compression='gzip',copts=9):
     if(cwd is not None):
         target_file = '{}/{}'.format(cwd,target_file)
         input_file = '{}/{}'.format(cwd,input_file)
@@ -120,8 +120,11 @@ def MergeH5(target_file, input_file, cwd=None, delete_stats_file=False, compress
 
     f.close()
     g.close()
-    if(delete_stats_file):
-        sub.check_call(['rm',input_file])
+
+    if(delete_input):
+        command = ['rm',input_file]
+        sub.check_call(command)
+
     return
 
 def RemoveFailedFromHDF5(h5_file, cwd=None, copts=9):

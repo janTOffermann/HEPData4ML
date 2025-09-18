@@ -1,10 +1,11 @@
 import pathlib
 import numpy as np
 import h5py as h5
-import uproot as ur
-from typing import Dict, Any, Tuple, Optional
+from typing import Dict, Any, Tuple, Optional, Union
 from abc import ABC, abstractmethod
 from util.math.embedding import embed_array
+from util.hdf5.hdf5 import MergeH5
+from util.misc.timing import profile_method, profile_block
 
 # Classes for output data buffers, to be used by the post-processors (such as JetFinder).
 # NOTE: Our HepMC -> HDF5 conversion in conversion.py also uses some buffering logic,
@@ -54,18 +55,26 @@ class DummyFlushHandler(BufferFlushHandler):
 class HDF5FlushHandler(BufferFlushHandler):
     """Flushes data to an HDF5 file.."""
 
-    def __init__(self, filename: str, copts=9):
+    def __init__(self, filename: str, copts=0):
         self.filename = filename
         self.status = 'w'
         self.copts = copts
         self.verbose = False
         self.f = None
+        self.buffer_size = None # for chunking storage
         self.print_prefix = 'HDF5FlushHandler:'
+
+    def _init_file(self): # Note: Keeping the file open was an attempt to speed things up, not clear that it makes a difference. - Jan
+        self._set_status()
+        self.f = h5.File(self.filename,self.status)
 
     def SetCompression(self,val:int):
         if(val < 0): val = 0
         elif(val > 9): val = 9
         self.copts = val
+
+    def SetBufferSize(self,val:int):
+        self.buffer_size = val
 
     def _set_status(self):
         """
@@ -76,12 +85,15 @@ class HDF5FlushHandler(BufferFlushHandler):
             self.status = 'a'
 
     def flush(self, data: Dict[str, np.ndarray], start_event: int, end_event: int, nevents: int):
-        self._set_status()
+        
+        if(self.f is None):
+            self._init_file()
+        
         if(self.verbose): self._print("\tFlushing events {}-{} to {}".format(start_event,end_event-1,self.filename))
-        self.f = h5.File(self.filename,self.status)
+        # self.f = h5.File(self.filename,self.status)
         for key, array in data.items():
 
-            if((self.status == 'w') or (key not in self.f.keys())):
+            if(key not in self.f.keys()):
                 if(self.verbose): self._print('\tCreating dset {}'.format(key))
                 dset = self._create_dataset(key,array,nevents)
             else:
@@ -89,15 +101,40 @@ class HDF5FlushHandler(BufferFlushHandler):
                 dset = self.f[key]
 
             dset[start_event:end_event] = array
-        self.f.close()
-        self.f = None
+        # self.f.close()
+        # self.f = None
 
     def _create_dataset(self,key,array,nevents):
         # Need to initialize the dataset in the HDF5 file, which requires
         # getting the right shape (namely the 1st dimension!).
         dset_shape = tuple((nevents,) + array.shape[1:])
-        dset = self.f.create_dataset(key, data=np.zeros(dset_shape,dtype=array.dtype),compression='gzip',compression_opts=self.copts)
+        if(self.buffer_size is not None):
+            chunks = tuple((self.buffer_size,) + array.shape[1:])
+        else:
+            chunks = True # or set to False?
+        dset = self.f.create_dataset(
+            key, 
+            data=np.zeros(dset_shape,dtype=array.dtype),
+            compression='gzip',
+            compression_opts=self.copts,
+            chunks=chunks
+        )
         return dset
+    
+    def close(self,output_file:Optional[str]=None, copts=0):
+
+        # First, close the buffer output.
+        self.f.close()
+
+        # Now, we optionally merge the buffer output 
+        # into the  provided output_file.
+        if(output_file is not None):
+            MergeH5(output_file,
+                    self.filename,
+                    copts=copts,
+                    delete_input=True
+            )
+        return
 
 class BufferArray:
     """
@@ -141,18 +178,12 @@ class BufferArray:
 
             # TODO: This code needs some cleaning up; it has been modified a couple times, and
             #       is probably unnecessarily convoluted.
-            # NOTE: If the buffer is full, we must flush it *before* writing to self._array, otherwise
-            #       we're already starting to mix in the new batch with the old one we're about to flush.
-
-
-            # Single event index - handle circular buffer logic
             buffer_position = key % self._buffer.buffer_size
             self._buffer._written[self._buffer._key][buffer_position] = True
             self._buffer._number_written[self._buffer._key] = np.sum(self._buffer._written[self._buffer._key])
             self._buffer._total_events_processed = max(self._buffer._total_events_processed, key + 1)
 
             # Track that this event position has been written to
-            # NOTE: This buffer code is currently too contrived
             self._buffer._current_event_positions.add(buffer_position)
             self._buffer._current_size = len(self._buffer._current_event_positions)
             self._buffer._check_and_flush_if_needed(key)
@@ -166,14 +197,12 @@ class BufferArray:
 
             if isinstance(first_idx, int):
 
-                # First dimension is an event index - apply circular buffer logic
                 buffer_position = first_idx % self._buffer.buffer_size
                 self._buffer._written[self._buffer._key][buffer_position] = True
                 self._buffer._number_written[self._buffer._key] = np.sum(self._buffer._written[self._buffer._key])
                 self._buffer._total_events_processed = max(self._buffer._total_events_processed, first_idx + 1)
 
                 # Track that this event position has been written to
-                # NOTE: This buffer code is currently too contrived
                 self._buffer._current_event_positions.add(buffer_position)
                 self._buffer._current_size = len(self._buffer._current_event_positions)
                 self._buffer._check_and_flush_if_needed(first_idx)
@@ -182,14 +211,14 @@ class BufferArray:
             else:
                 raise ValueError("Slicing not understood or implemented in this way.")
                 # First dimension is a slice/fancy index - pass through directly
-                self._array[key] = value
-                self._buffer._number_written[self._buffer._key] += len(key[0]) # no idea if this works -- will probably never call it
+                # self._array[key] = value
+                # self._buffer._number_written[self._buffer._key] += len(key[0]) # no idea if this works -- will probably never call it
 
         else:
             raise ValueError("Slicing not understood or implemented in this way.")
             # Single slice or other indexing on first dimension - pass through directly
-            self._array[key] = value
-            self._buffer._number_written[self._buffer._key] += len(key[0]) # no idea if this works -- will probably never call it
+            # self._array[key] = value
+            # self._buffer._number_written[self._buffer._key] += len(key[0]) # no idea if this works -- will probably never call it
 
     @property
     def shape(self):
@@ -222,7 +251,6 @@ class OutputBuffer:
             flush_handler: Handler for flush operations (optional)
         """
         self.filename = filename
-        self.buffer_size = buffer_size
         self.nevents = -1
         self.flush_handler = flush_handler
         if(self.flush_handler is None):
@@ -242,7 +270,15 @@ class OutputBuffer:
         self._number_written: Dict[str, int] = {}
         self._key = None
 
+        self.SetBufferSize(buffer_size)
+
         self.print_prefix = 'Buffer:'
+
+    def SetBufferSize(self,buffer_size:int):
+        self.buffer_size = buffer_size
+        if(self.flush_handler is not None):
+            self.flush_handler.SetBufferSize(self.buffer_size)
+        return
 
     def SetFilename(self, filename: str):
         self.filename = filename
@@ -260,23 +296,20 @@ class OutputBuffer:
         self._written[key] = np.full(self.buffer_size,False)
         self._number_written[key] = 0
 
+    @profile_method('OutputBuffer._check_and_flush_if_needed')
     def _check_and_flush_if_needed(self, event_index: int):
         """Check if we need to flush before processing this event."""
         buffer_position = event_index % self.buffer_size
-        do_flush = (buffer_position == 0) and (event_index != 0)
+        if(not ((buffer_position == 0) and (event_index != 0))):
+            return
 
-        # do_flush = True
-        # # print('Check flush')
         for key,val in self._number_written.items():
-            # print('\t-> {}, {}'.format(key,val))
             if(val != self.buffer_size):
-                do_flush = False
-                # print('\t\t->False')
-                break
+                return
 
-        if(do_flush):
-            self._flush_buffer()
+        self._flush_buffer()
 
+    @profile_method('OutputBuffer._flush_buffer')
     def _flush_buffer(self):
         """Flush the current buffer contents."""
         if self.flush_handler and len(self._current_event_positions) > 0:
@@ -284,7 +317,8 @@ class OutputBuffer:
             # Create a view of only the filled portion of each array
             flush_data = {}
             for key, buffer_array in self._buffer_arrays.items():
-                flush_data[key] = buffer_array._array[:current_size].copy()
+
+                flush_data[key] = buffer_array._array[:current_size].copy() # removed the ndarray.copy() function
 
             self.flush_handler.flush(
                 flush_data,
@@ -314,10 +348,9 @@ class OutputBuffer:
         return self._buffer_arrays[key]
 
     def __setitem__(self, key: str, value: np.ndarray):
-        """Set an entire array in the buffer (not typically used for event-by-event)."""
+        """Set an entire array in the buffer (not used for event loop approach)."""
         if not isinstance(value, np.ndarray):
             value = np.array(value)
-
         self._key = key
 
         if key not in self._buffer_arrays:
@@ -331,6 +364,7 @@ class OutputBuffer:
             self._written[key][i] = True
         self._number_written[key] = np.sum(self._written[key])
 
+    @profile_method('OutputBuffer.set')
     def set(self,key: str, index: int, value: Any):
         """
         For setting values of entries in the Buffer. (i.e. particular BufferArrays).
@@ -340,7 +374,7 @@ class OutputBuffer:
         if(isinstance(value,int) or isinstance(value,float)):
             self[key][index] = value
         else:
-            if(not isinstance(value,np.ndarray)):
+            if(isinstance(value,list)):
                 value = np.array(value)
             self[key][index] = embed_array(value,self[key][index].shape)
         return
@@ -384,5 +418,8 @@ class OutputBuffer:
             self._initialize_array(key, arr_shape, dtype)
         return self._buffer_arrays[key]
 
+    def close(self,output_file:str):
+        self.flush_handler.close(output_file)
+        
     def _print(self,val:str):
         print('{} {}'.format(self.print_prefix,val))

@@ -257,6 +257,30 @@ def ExtractHepMCParticles(events: List['hm.GenEvent'], nparticles_max: Optional[
         ]
     return particles
 
+def ParticleToMomenta(particle:'hm.GenParticle',):
+    """
+    Produce 4-momenta in both Cartesian and cylindrical (pt,eta,phi,m) bases,
+    stacked as one array.
+    """
+    momentum = particle.momentum()
+    vectors = np.array(
+        [
+            [momentum.e(), momentum.px(), momentum.py(), momentum.pz()],
+            [momentum.pt(), momentum.eta(), momentum.phi(), momentum.m()]
+        ]
+    )
+    return vectors
+
+
+
+
+def ParticleToProductionVertex(particle:'hm.GenParticle'):
+    """
+    A little more complex than handling production vertices -- particles may not have end vertices, if they are stable!
+    """
+    prod_vertex_position = particle.production_vertex().position()
+    return np.array([prod_vertex_position.t(), prod_vertex_position.x(), prod_vertex_position.y(), prod_vertex_position.z()])
+
 def ParticleToEndVertex(particle:'hm.GenParticle'):
     """
     A little more complex than handling production vertices -- particles may not have end vertices, if they are stable!
