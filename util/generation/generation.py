@@ -3,10 +3,10 @@ import numpy as np
 import subprocess as sub
 from util.pythia.utils import PythiaWrapper
 from util.hepmc.hepmc import Pythia8HepMC3Writer
-from util.hepmc.Pythia8ToHepMC3 import Pythia8ToHepMC3
+from util.hepmc.Pythia8ToHepMC3 import PythiaToHepMC, PythiaToHepMCBatchV1, PythiaToHepMCBatchV2, PythiaToHepMCBatchV3
 from util.hepmc.setup import HepMCSetup, prepend_to_pythonpath
-
 from util.qol_utils.progress_bar import printProgressBarColor
+from util.misc.timing import profile_method, profile_block
 from typing import Optional,TYPE_CHECKING
 
 if TYPE_CHECKING: # Only imported during type checking -- avoids risk of circular imports, limits unnecessary imports
@@ -42,7 +42,9 @@ class PythiaGenerator:
         # downloading HepMC3 multiple times.
         self.configurator.SetHepMC3Directory(self.hepmc_setup.GetDirectory())
 
-        self.hepmc_converter = Pythia8ToHepMC3(self.configurator.GetHepMC3Directory())
+        self.hepmc_converter = PythiaToHepMC(self.configurator.GetHepMC3Directory())
+        self.hepmc_converter_batch = PythiaToHepMCBatchV2(self.configurator.GetHepMC3Directory())
+
 
         # Event filters. # TODO: May remove
         self.event_filter = None
@@ -201,8 +203,14 @@ class PythiaGenerator:
     def ClearEventBuffer(self):
         self.hepev_buffer.clear()
 
-    def FillEventBuffer(self,hepev_full):
-        self.hepev_buffer.append(hepev_full)
+    def AddToEventBuffer(self,hepev):
+        if(isinstance(hepev,list)):
+            self.hepev_buffer += hepev
+            return
+        self.hepev_buffer.append(hepev)
+
+    def SetEventBuffer(self,list):
+        self.hepev_buffer = list
 
     def WriteEventBufferToFile(self,header:bool=False,footer:bool=False):
         if(header): self.header_status = True
@@ -215,22 +223,71 @@ class PythiaGenerator:
 
         self.ClearEventBuffer()
 
+    def GenerateBatch(self, nevents, i_real:int=1, nevents_disp:Optional[int]=None):
+
+        if(nevents_disp is None): nevents_disp = nevents # number of events to display in progress bar
+
+        # The way that HepMC3's ASCII writing works, writing an event will overwrite the whole file.
+        # Thus for the time being, we will circumvent this limitation by making a buffer file where each event
+        # is written, and then copied to the "main" file before the next event is generated. This I/O might slow
+        # down things, so we ultimately want to find some way to do a write with "append" functionality, which
+        # we can do with HepMC3's ROOT TTree format.
+        self.filename_fullpath = '{}/{}'.format(self.outdir,self.filename)
+
+        # For ASCII mode, create buffer file.
+        if(self.writer.GetMode().lower() == 'ascii'):
+            self.buffername = self.filename_fullpath.replace('.hepmc','_buffer.hepmc')
+
+        # Determine how many events to actually generate on this call.
+        # We base this on what was requested, but also on the current
+        # buffer size.
+        nevents_real = np.minimum(nevents,self.buffer_size - self.GetCurrentBufferSize())
+
+        # Generate the events -- does the whole batch all at once!
+        self.pythia.GenerateBatch(nevents_real) # fills self.pythia.events
+
+        # TODO: (Re)implement event filter logic.
+
+        # Convert the Pythia8 events into HepMC3 events.
+        hepmc_events = self.hepmc_converter_batch._fill_batch_events_no_info(self.pythia.events,i_real)
+        
+        # Fill the memory buffer with the event list.
+        self.AddToEventBuffer(hepmc_events)
+
+        # Write to the buffer, then flush it. Note that this is different than in GenerationLoop.
+        self.WriteEventBufferToFile(header=True,footer=True)
+
+        i_real += nevents_real # counter for number of successful events
+
+        if(self.progress_bar): printProgressBarColor(i_real-1,nevents_disp, prefix=self.prefix, suffix=self.suffix, length=self.bl)
+
+        # Delete the buffer files, if relevant.
+        if(self.buffername is not None):
+            comm = ['rm', self.buffername]
+            try: sub.check_call(comm,stderr=sub.DEVNULL)
+            except: pass
+
+        return i_real-1, 0 # note that i_real is using 1-indexing, which is what HepMC events use
+
+
     def GenerationLoop(self, nevents,i_real:int = 1, nevents_disp:Optional[int]=None):
         """
-        This is the function where Pythia8 matrix element generation + showering/hadronization happens.
-        The results are filtered for the selected "truth" and "final state" particles, which are placed
-        into HepMC3 events. These events are periodically written to a buffer file (which is then merged
-        into the "master" HepMC3 file).
+        This is the function where Pythia8 event generation happens, producing events.
+        These are optionally filtered -- required to pass some condition(s) -- and then
+        written to a HepMC3 file (either ASCII or ROOT format).
+        
+        This function operates as a Python loop. There is a batched version that uses
+        Pythia8's batch generation and awkward arrays, which should be faster.
         """
         from pyHepMC3 import HepMC3 as hm # the HepMCSetup will have taken care of this -- so the package will be already cached
         n_fail = 0
         if(nevents_disp is None): nevents_disp = nevents # number of events to display in progress bar
 
-        # The way that pyhepmc's WriterAscii works, writing an event will overwrite the whole file.
+        # The way that HepMC3's ASCII writing works, writing an event will overwrite the whole file.
         # Thus for the time being, we will circumvent this limitation by making a buffer file where each event
         # is written, and then copied to the "main" file before the next event is generated. This I/O might slow
-        # down things, so we ultimately want to find some way to do a write with "append" functionality.
-
+        # down things, so we ultimately want to find some way to do a write with "append" functionality, which
+        # we can do with HepMC3's ROOT TTree format.
         self.filename_fullpath = '{}/{}'.format(self.outdir,self.filename)
 
         # For ASCII mode, create buffer file.
@@ -260,7 +317,7 @@ class PythiaGenerator:
                 self.hepmc_converter.fill_next_event1(self.pythia.GetPythia(),hepmc_event,i_real)
 
             # Fill the memory buffer with this event.
-            self.FillEventBuffer(hepmc_event)
+            self.AddToEventBuffer(hepmc_event)
 
             # If buffer is full (i.e. has reached max size), write it to file & flush.
             if(self.GetCurrentBufferSize() == self.buffer_size):
@@ -298,6 +355,7 @@ class PythiaGenerator:
     # Generate a bunch of events in the given pT range,
     # and save them to a HepMC file.
     # We do perform event selection: Only certain particles are saved to the file to begin with.
+    @profile_method('PythiaGenerator.Generate')
     def Generate(self,nevents:int):
         self.nevents = nevents # total number of events we request
 
@@ -305,21 +363,34 @@ class PythiaGenerator:
 
         if(self.progress_bar): printProgressBarColor(0,nevents, prefix=self.prefix, suffix=self.suffix, length=self.bl)
 
-        # Loop in such a way as to guarantee that we get as many events as requested.
-        # This logic is required as events could technically fail selections, e.g. not have the
-        # requested truth particles (depends on requested truth particles & processes).
-        self.nevents_success = 0
-        n_fail = nevents
-        self.loop_number = 0
-        self.weights       = np.zeros(nevents)
-        self.process_codes = np.zeros(nevents, dtype=int)
-        while(n_fail > 0):
-            self.nevents_success, n_fail = self.GenerationLoop(
-                nevents-self.nevents_success,
-                i_real=self.nevents_success+1,
-                nevents_disp = nevents
-            )
-            self.loop_number += 1
+        use_batch = True
+
+
+        if(not use_batch):
+            # Loop in such a way as to guarantee that we get as many events as requested.
+            # This logic is required as events could technically fail selections, e.g. not have the
+            # requested truth particles (depends on requested truth particles & processes).
+            self.nevents_success = 0
+            n_fail = nevents
+            self.loop_number = 0
+            while(n_fail > 0):
+                self.nevents_success, n_fail = self.GenerationLoop(
+                    nevents-self.nevents_success,
+                    i_real=self.nevents_success+1,
+                    nevents_disp = nevents
+                )
+                self.loop_number += 1
+
+        else:
+            self.nevents_success = 0
+            batch_size = 100 # TODO: Make configurable/dynamic?
+            self.loop_number = 0
+            while(self.nevents_success < nevents):
+                batch_size = np.minimum(100, nevents - self.nevents_success)
+                self.nevents_success, n_fail = self.GenerateBatch(batch_size,i_real = self.nevents_success+1,nevents_disp=nevents)
+                self.loop_number += 1
+
+                if(self.loop_number > 8): break
 
         self.writer.Close()
 
