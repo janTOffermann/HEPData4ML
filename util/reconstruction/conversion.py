@@ -162,8 +162,10 @@ class Processor:
 
                 for j,event_particles in enumerate(particles): # Loop over events in this chunk
 
-                    status = np.array([x.status() for x in event_particles])
-                    stable_particles = list(itertools.compress(event_particles, status == 1))
+                    with profile_block('Processor.Process: Truth Stable - 1'):
+                        status = np.array([x.status() for x in event_particles])
+                    with profile_block('Processor.Process: Truth Stable - 2'):
+                        stable_particles = list(itertools.compress(event_particles, status == 1))
 
                     # Explicitly fetch/compute 4-momentum components.
                     momenta = np.array([ParticleToMomenta(particle) for particle in stable_particles])
