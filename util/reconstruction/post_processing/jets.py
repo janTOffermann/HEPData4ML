@@ -513,56 +513,51 @@ class JetFinder(JetFinderBase):
     @profile_method('JetFinder._writeToBuffer')
     def _writeToBuffer(self,event_index:Optional[int]=None):
 
-        with profile_block('JetFinder._writeToBuffer - Prelude'):
-            if(event_index is None):
-                event_index = self._i
+        if(event_index is None):
+            event_index = self._i
 
-            if(len(self.jets_dict) == 0):
-                return #TODO: Check that this is OK?
+        if(len(self.jets_dict) == 0):
+            return #TODO: Check that this is OK?
 
-        with profile_block('JetFinder._writeToBuffer - Njets'):
-            # Fill jet information in the buffer.
-            self.buffer.set('{}.N'.format(self.jet_name),event_index,len(self.jet_vectors))
+        # Fill jet information in the buffer.
+        self.buffer.set('{}.N'.format(self.jet_name),event_index,len(self.jet_vectors))
 
-        with profile_block('JetFinder._writeToBuffer - Jets'):
-            # TODO: Maybe later clean this up a bit? Have to deal with special case of "single_jet = True".
+        # TODO: Maybe later clean this up a bit? Have to deal with special case of "single_jet = True".
+        if(self.single_jet):
+            idx = self.jet_ordering[0]
+            self.buffer.set('{}.Pmu'.format(self.jet_name),event_index,self.jet_vectors[idx])
+            self.buffer.set('{}.Pmu_cyl'.format(self.jet_name),event_index,self.jet_vectors_cyl[idx])
+
+        else:
+            self.buffer.set('{}.Pmu'.format(self.jet_name),event_index,np.vstack([self.jet_vectors[i] for i in self.jet_ordering]))
+            self.buffer.set('{}.Pmu_cyl'.format(self.jet_name),event_index,np.vstack([self.jet_vectors_cyl[i] for i in self.jet_ordering]))
+
+        # Fill the jet constituent information.
+        if(self.constituents_flag):
             if(self.single_jet):
                 idx = self.jet_ordering[0]
-                self.buffer.set('{}.Pmu'.format(self.jet_name),event_index,self.jet_vectors[idx])
-                self.buffer.set('{}.Pmu_cyl'.format(self.jet_name),event_index,self.jet_vectors_cyl[idx])
+                self.buffer.set('{}.Constituents.N'.format(self.jet_name),event_index,len(self.constituent_vectors[idx]))
+
+                # Figure out the collections and indices of the constituents
+                self._computeConstituentIndices()
+
+                self.buffer.set('{}.Constituents.Pmu'.format(self.jet_name),event_index,self.constituent_vectors[idx])
+                self.buffer.set('{}.Constituents.Pmu_cyl'.format(self.jet_name),event_index,self.constituent_vectors_cyl[idx])
+                self.buffer.set('{}.Constituents.Collection'.format(self.jet_name),event_index,self.constituent_indices_dict[idx][:,0])
+                self.buffer.set('{}.Constituents.Collection.Index'.format(self.jet_name),event_index,self.constituent_indices_dict[idx][:,1])
 
             else:
-                self.buffer.set('{}.Pmu'.format(self.jet_name),event_index,np.vstack([self.jet_vectors[i] for i in self.jet_ordering]))
-                self.buffer.set('{}.Pmu_cyl'.format(self.jet_name),event_index,np.vstack([self.jet_vectors_cyl[i] for i in self.jet_ordering]))
+                self.buffer.set('{}.Constituents.N'.format(self.jet_name),event_index,[len(self.constituent_vectors[i]) for i in self.jet_ordering])
 
-        with profile_block('JetFinder._writeToBuffer - Constituents'):
-            # Fill the jet constituent information.
-            if(self.constituents_flag):
-                if(self.single_jet):
-                    idx = self.jet_ordering[0]
-                    self.buffer.set('{}.Constituents.N'.format(self.jet_name),event_index,len(self.constituent_vectors[idx]))
+                # Figure out the collections and indices of the constituents
+                self._computeConstituentIndices()
 
-                    # Figure out the collections and indices of the constituents
-                    self._computeConstituentIndices()
-
-                    self.buffer.set('{}.Constituents.Pmu'.format(self.jet_name),event_index,self.constituent_vectors[idx])
-                    self.buffer.set('{}.Constituents.Pmu_cyl'.format(self.jet_name),event_index,self.constituent_vectors_cyl[idx])
-                    self.buffer.set('{}.Constituents.Collection'.format(self.jet_name),event_index,self.constituent_indices_dict[idx][:,0])
-                    self.buffer.set('{}.Constituents.Collection.Index'.format(self.jet_name),event_index,self.constituent_indices_dict[idx][:,1])
-
-                else:
-                    self.buffer.set('{}.Constituents.N'.format(self.jet_name),event_index,[len(self.constituent_vectors[i]) for i in self.jet_ordering])
-
-                    # Figure out the collections and indices of the constituents
-                    self._computeConstituentIndices()
-
-                    # Now we loop, as we're embedding what is really jagged information.
-                    # TODO: Is there another way? I suspect this slows down things a bit.
-                    for i,j in enumerate(self.jet_ordering):
-                        self.buffer.set('{}.Constituents.Pmu'.format(self.jet_name),(event_index,i),self.constituent_vectors[j])
-                        self.buffer.set('{}.Constituents.Pmu_cyl'.format(self.jet_name),(event_index,i),self.constituent_vectors_cyl[j])
-                        self.buffer.set('{}.Constituents.Collection'.format(self.jet_name),(event_index,i),self.constituent_indices_dict[j][:,0])
-                        self.buffer.set('{}.Constituents.Collection.Index'.format(self.jet_name),(event_index,i),self.constituent_indices_dict[j][:,1])
+                # Now we loop, as we're embedding what is really jagged information.
+                for i,j in enumerate(self.jet_ordering):
+                    self.buffer.set('{}.Constituents.Pmu'.format(self.jet_name),(event_index,i),self.constituent_vectors[j])
+                    self.buffer.set('{}.Constituents.Pmu_cyl'.format(self.jet_name),(event_index,i),self.constituent_vectors_cyl[j])
+                    self.buffer.set('{}.Constituents.Collection'.format(self.jet_name),(event_index,i),self.constituent_indices_dict[j][:,0])
+                    self.buffer.set('{}.Constituents.Collection.Index'.format(self.jet_name),(event_index,i),self.constituent_indices_dict[j][:,1])
         return
 
     # NOTE: Will define various functions for performing some modifications to clustering or post-processing of results.

@@ -69,8 +69,6 @@ class PythiaGenerator:
         # self.InitializeHistograms()
 
         # Containers for event-level information.
-        self.weights = None
-        self.process_codes = None
         self.xsecs = None
 
         self.progress_bar = True
@@ -271,16 +269,6 @@ class PythiaGenerator:
 
             if(self.progress_bar): printProgressBarColor(i_real,nevents_disp, prefix=self.prefix, suffix=self.suffix, length=self.bl)
 
-            # Record this event's weight and process code from Pythia.
-            #TODO: Consider removing this, or adjusting how it is handled -- if the user provides
-            #      externally-produced HepMC files, they won't have these things.
-            if(self.pythia.IsInitialized()):
-                self.weights[i_real-1] = self.pythia.GetEventWeight() # convert from 1-indexing to 0-indxing
-                self.process_codes[i_real-1] = self.pythia.GetProcessCode() # convert from 1-indexing to 0-indxing
-            else:
-                self.weights[i_real-1] = 1.
-                self.process_codes[i_real-1] = 0
-
             i_real += 1 # If success, increase i_real -- this is a counter for the number of successful events
 
         # Buffer gets written to the file in the loop above whenever it's full, but after exiting the loop
@@ -337,17 +325,6 @@ class PythiaGenerator:
 
         self.metadata_handler.AddCitations(self.GetCitations())
         return
-
-    # Get the MC event weights (will typically just be 1 for each event).
-    # This reads from a file, which is only written to when an event is written to disk.
-    # Thus these weights will line up with the events we've saved, i.e. we don't have to worry
-    # about events that Pythia8 successfully generated but which we threw out because they failed
-    # one of our selectors.
-    def GetEventWeights(self):
-        return self.weights
-
-    def GetProcessCodes(self):
-        return self.process_codes
 
     # This returns a list of all unique process codes encountered,
     # not a list of per-event process codes.
