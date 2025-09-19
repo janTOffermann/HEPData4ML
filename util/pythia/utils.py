@@ -14,6 +14,7 @@ class PythiaWrapper:
         self.config_dict = {}
 
         self.event = None
+        self.events = None # for holding batches of events, as awkward arrays
         self.SetVerbose(verbose)
         self.initialized = False
 
@@ -98,6 +99,14 @@ class PythiaWrapper:
         if(not self.initialized): self.InitializePythia()
         self.pythia.next()
         self.event = self.pythia.event
+
+    # Generates batches of events -- much faster than doing one by one!
+    # Leverages awkward arrays.
+    # Places results in self.event
+    def GenerateBatch(self,batch_size):
+        if(not self.initialized): self.InitializePythia()
+        self.events = self.pythia.nextBatch(batch_size, errorMode='skip')
+        return
 
     # =============== Getters =============== #
 
@@ -368,3 +377,6 @@ class PythiaWrapper:
     def _bool2string(self,flag):
         if(flag): return 'on'
         return 'off'
+
+
+# TODO: Make wrapper classes for batches of awkward arrays, so they can be treated like lists of pyth8.Event
