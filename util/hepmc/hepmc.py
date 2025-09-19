@@ -13,7 +13,7 @@ import pathlib
 from typing import Union, Optional, List, TYPE_CHECKING
 from util.hepmc.setup import HepMCSetup, uncache_hepmc3, prepend_to_pythonpath
 from util.hepmc.readers import ReaderAscii, ReaderRootTree
-from util.hepmc.Pythia8ToHepMC3 import Pythia8ToHepMC3
+from util.hepmc.Pythia8ToHepMC3 import PythiaToHepMC
 from util.misc.timing import profile_method, profile_block
 
 if TYPE_CHECKING: # Only imported during type checking -- avoids risk of circular imports
@@ -162,7 +162,7 @@ def PythiaWrapperToHepMC(pythia_wrapper:'PythiaWrapper', event_number:int) -> 'h
     """
     from pyHepMC3 import HepMC3 as hm
     hepev = hm.GenEvent()
-    converter = Pythia8ToHepMC3()
+    converter = PythiaToHepMC()
     converter.fill_next_event1(pythia_wrapper.GetPythia(),hepev,event_number)
     return hepev
 
