@@ -3,7 +3,7 @@ import numpy as np
 import subprocess as sub
 from util.pythia.utils import PythiaWrapper
 from util.hepmc.hepmc import Pythia8HepMC3Writer
-from util.hepmc.Pythia8ToHepMC3 import PythiaToHepMC, PythiaToHepMCBatchV1, PythiaToHepMCBatchV2, PythiaToHepMCBatchV3
+from util.hepmc.Pythia8ToHepMC3 import PythiaToHepMC, PythiaToHepMCBatch
 from util.hepmc.setup import HepMCSetup, prepend_to_pythonpath
 from util.qol_utils.progress_bar import printProgressBarColor
 from util.misc.timing import profile_method, profile_block
@@ -43,7 +43,7 @@ class PythiaGenerator:
         self.configurator.SetHepMC3Directory(self.hepmc_setup.GetDirectory())
 
         self.hepmc_converter = PythiaToHepMC(self.configurator.GetHepMC3Directory())
-        self.hepmc_converter_batch = PythiaToHepMCBatchV2(self.configurator.GetHepMC3Directory())
+        self.hepmc_converter_batch = PythiaToHepMCBatch(self.configurator.GetHepMC3Directory())
 
 
         # Event filters. # TODO: May remove
@@ -244,13 +244,14 @@ class PythiaGenerator:
         nevents_real = np.minimum(nevents,self.buffer_size - self.GetCurrentBufferSize())
 
         # Generate the events -- does the whole batch all at once!
-        self.pythia.GenerateBatch(nevents_real) # fills self.pythia.events
+        with profile_block('Generator.GenerateBatch - pythia'):
+            self.pythia.GenerateBatch(nevents_real) # fills self.pythia.events
 
         # TODO: (Re)implement event filter logic.
 
         # Convert the Pythia8 events into HepMC3 events.
-        hepmc_events = self.hepmc_converter_batch._fill_batch_events_no_info(self.pythia.events,i_real)
-        
+        hepmc_events = self.hepmc_converter_batch.fill_batch_events(self.pythia.events,self.pythia.GetPythia().infoPython(), i_real)
+
         # Fill the memory buffer with the event list.
         self.AddToEventBuffer(hepmc_events)
 
@@ -275,7 +276,7 @@ class PythiaGenerator:
         This is the function where Pythia8 event generation happens, producing events.
         These are optionally filtered -- required to pass some condition(s) -- and then
         written to a HepMC3 file (either ASCII or ROOT format).
-        
+
         This function operates as a Python loop. There is a batched version that uses
         Pythia8's batch generation and awkward arrays, which should be faster.
         """
@@ -297,7 +298,9 @@ class PythiaGenerator:
         for i in range(nevents):
 
             if(self.pythia.IsInitialized()): # if false, pythia generator is not initialized -> will produce an empty HepMC event
-                self.pythia.Generate() # generate an event!
+
+                with profile_block('Generator.GenerationLoop - pythia'):
+                    self.pythia.Generate() # generate an event!
 
                 # ==========================================
                 # Now we apply an (optional) "event filter", requiring that our event passes it.
@@ -363,8 +366,11 @@ class PythiaGenerator:
 
         if(self.progress_bar): printProgressBarColor(0,nevents, prefix=self.prefix, suffix=self.suffix, length=self.bl)
 
+        # TODO: Eventually make this toggleable, or pick whichever method performs better.
+        #       Right now, batch is only ~10% faster due to the HepMC3 conversion, but
+        #       pythia.nextBatch() output has some issues with production vertices.
+        #       See: https://gitlab.com/Pythia8/releases/-/issues/634
         use_batch = True
-
 
         if(not use_batch):
             # Loop in such a way as to guarantee that we get as many events as requested.
@@ -383,14 +389,13 @@ class PythiaGenerator:
 
         else:
             self.nevents_success = 0
-            batch_size = 100 # TODO: Make configurable/dynamic?
+            batch_size_default = self.buffer_size
+            batch_size = batch_size_default
             self.loop_number = 0
             while(self.nevents_success < nevents):
-                batch_size = np.minimum(100, nevents - self.nevents_success)
+                batch_size = np.minimum(batch_size_default, nevents - self.nevents_success)
                 self.nevents_success, n_fail = self.GenerateBatch(batch_size,i_real = self.nevents_success+1,nevents_disp=nevents)
                 self.loop_number += 1
-
-                if(self.loop_number > 8): break
 
         self.writer.Close()
 
