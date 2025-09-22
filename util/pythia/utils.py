@@ -100,7 +100,7 @@ class PythiaWrapper:
         self.pythia.next()
         self.event = self.pythia.event
 
-    # Generates batches of events -- much faster than doing one by one!
+    # Generates batches of events -- faster than doing one by one!
     # Leverages awkward arrays.
     # Places results in self.event
     def GenerateBatch(self,batch_size):
