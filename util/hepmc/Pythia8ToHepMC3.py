@@ -614,6 +614,7 @@ class StatusCodeConverter:
         n_particles = len(status_array)
         hepmc_status = np.zeros(n_particles, dtype=int)
 
+
         # Build daughter lists from mother information
         daughters = [[] for _ in range(n_particles)]
 
@@ -655,38 +656,10 @@ class StatusCodeConverter:
             # Other acceptable negative codes as their positive counterpart
             if -200 <= status <= -11:
                 hepmc_status[i] = -status
-
-                # if self.debug:
-                #     print(f"Particle {i}: status={status}, pid={particle_id}")
-                #     print(f"  Is hadron/muon/tau: {self.is_hadron(particle_id) or abs(particle_id) == 13 or abs(particle_id) == 15}")
-                #     print(f"  Number of daughters: {len(daughters[i])}")
-                #     if len(daughters[i]) > 0:
-                #         first_daughter_idx = daughters[i][0]
-                #         print(f"  First daughter: idx={first_daughter_idx}, pid={pid_array[first_daughter_idx]}")
-                #         print(f"  Same particle ID: {pid_array[first_daughter_idx] == particle_id}")
-                #         daughter_status = abs(status_array[first_daughter_idx])
-                #         print(f"  Daughter status: {daughter_status}, in range 90-95: {90 < daughter_status < 95}")
-                #     print(f"  Final HepMC status: {hepmc_status[i]}")
-                #     print()
                 continue
 
             # Unacceptable codes as 0 (though this might cause issues)
             hepmc_status[i] = 0
-
-        # # For debugging purposes, fill a dictionary to keep track of the status->hepmc_status mapping.
-        # if(self.debug):
-        #     for i,entry in enumerate(status_array):
-        #         if(entry not in self.status_lookup.keys()):
-        #             self.status_lookup[entry] = []
-        #         self.status_lookup[entry].append(int(hepmc_status[i]))
-        #     for key in self.status_lookup.keys():
-        #         self.status_lookup[key] = list(set(self.status_lookup[key]))
-
-        # if(self.debug):
-        #     for i in range(n_particles):
-        #         print('[{}]'.format(i),status_array[i],pid_array[i],mother_lists[i],' -> {}'.format(hepmc_status[i]))
-        #     print()
-
         return hepmc_status
 
     def is_hadron(self,pid):

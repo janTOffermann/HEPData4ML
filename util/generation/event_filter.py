@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 if(TYPE_CHECKING):
     from util.config.config import Configurator
-    from util.pythia.utils import PythiaWrapper
+    from util.pythia.pythia import PythiaPythonWrapper
 
 class DefaultFilter:
     """
@@ -17,7 +17,7 @@ class DefaultFilter:
     def __init__(self,value=True):
         self.value = value
 
-    def __call__(self,pythia_wrapper:'PythiaWrapper'):
+    def __call__(self,pythia_wrapper:'PythiaPythonWrapper'):
         return self.value
 
     def Initialize(self,configurator):
@@ -30,7 +30,7 @@ class NotFilter:
     def __init__(self,filter):
         self.filter = filter
 
-    def __call__(self,pythia_wrapper:'PythiaWrapper'):
+    def __call__(self,pythia_wrapper:'PythiaPythonWrapper'):
         return (not filter(pythia_wrapper))
 
     def Initialize(self,configurator):
@@ -47,7 +47,7 @@ class MultiFilter:
     def __init__(self,filters=[]):
         self.filters = filters
 
-    def __call__(self,pythia_wrapper:'PythiaWrapper'):
+    def __call__(self,pythia_wrapper:'PythiaPythonWrapper'):
         for filter in self.filters:
             individual_status = filter(pythia_wrapper)
             if(not individual_status): return False
@@ -83,7 +83,7 @@ class PtJetFilter:
             self.radius = radius
             self.jet_finder.SetRadius(self.radius)
 
-    def __call__(self,pythia_wrapper:'PythiaWrapper'):
+    def __call__(self,pythia_wrapper:'PythiaPythonWrapper'):
 
         # Get the four-vectors of the visible final-state particles.
         # Using the signature (E, px, py, pz).

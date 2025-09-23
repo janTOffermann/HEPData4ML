@@ -1,18 +1,16 @@
 import numpy as np
 
 from typing import Optional ,List, TYPE_CHECKING
-from util.misc.timing import profile_method, profile_block
+from util.misc.timing import profile_method
 
 
 if TYPE_CHECKING: # Only imported during type checking -- avoids risk of circular imports
-    from util.hepmc.setup import HepMCSetup, uncache_hepmc3, prepend_to_pythonpath
+    from util.hepmc.setup import HepMCSetup, prepend_to_pythonpath
 
     # make sure Python HepMC3 bindings are setup
     setup = HepMCSetup(verbose=False)
-    # setup.PrepHepMC() # will download/install if necessary
     python_dir = setup.GetPythonDirectory()
 
-    # uncache_hepmc3()
     prepend_to_pythonpath(python_dir)
 
     from pyHepMC3 import HepMC3 as hm
@@ -65,25 +63,25 @@ class FirstSelector(BaseSelector):
     @profile_method('FirstSelector.__call__')
     def __call__(self, hepev: 'hm.GenEvent') -> Optional[int]:
         particles = hepev.particles()
-        
+
         pdgid_array = np.array([p.pid() for p in particles], dtype=np.int32)
         status_array = np.array([p.status() for p in particles], dtype=np.int32)
-        
+
         # Use boolean indexing
         pdgid_mask = pdgid_array == self.pdgid
-        
+
         if self.status is not None:
             status_mask = status_array == self.status
             combined_mask = pdgid_mask & status_mask
         else:
             combined_mask = pdgid_mask
-        
+
         indices = np.where(combined_mask)[0]
-        
+
         if len(indices) == 0:
             self.selection_status = False
             return None
-        
+
         self.selection_status = True
         return int(indices[0])
 
@@ -106,7 +104,7 @@ class BasicSelection:
     def __call__(self, hepev: 'hm.GenEvent') -> Optional[np.ndarray]:
         self.selection_status = True
         particle_list = []
-        
+
         for selector in self.selection_list:
             selector.SetHadronization(self.hadronization)
             particle = selector(hepev)
@@ -114,10 +112,10 @@ class BasicSelection:
                 particle_list.append(particle)
             else:
                 self.selection_status = False
-        
+
         if not particle_list:
             return None
-            
+
         return np.sort(np.array(particle_list, dtype=np.int32))
 
 class AlgoSelection(BaseSelector):
@@ -131,10 +129,10 @@ class AlgoSelection(BaseSelector):
     @profile_method('AlgoSelection.__call__')
     def __call__(self, hepev: 'hm.GenEvent') -> np.ndarray:
         self.selection_status, particle_list = self.particle_selection_algo(hepev)
-        
+
         if self.n > 0 and len(particle_list) > self.n:
             particle_list = particle_list[:self.n]
-            
+
         return particle_list
 
 class MultiSelection(BaseSelector):
@@ -142,7 +140,7 @@ class MultiSelection(BaseSelector):
         super().__init__()
         self.particle_selection_list = particle_selection_list
         self.n = sum(x.GetN() for x in particle_selection_list)
-        
+
         self.fixed_length = all(x.IsFixedLength() for x in particle_selection_list)
         self.enforce_unique = enforce_unique
         self.selection_status = True
@@ -151,30 +149,30 @@ class MultiSelection(BaseSelector):
     def __call__(self, hepev: 'hm.GenEvent') -> Optional[np.ndarray]:
         self.selection_status = True
         particle_lists = []
-        
+
         for selector in self.particle_selection_list:
             particle_list = selector(hepev)
-            
+
             if particle_list is None or not selector.GetSelectionStatus():
                 self.selection_status = False
                 break
-                
+
             # Ensure it's a numpy array
             if not isinstance(particle_list, np.ndarray):
                 if np.isscalar(particle_list):
                     particle_list = np.array([particle_list], dtype=np.int32)
                 else:
                     particle_list = np.array(particle_list, dtype=np.int32)
-            
+
             particle_lists.append(particle_list)
-        
+
         if not self.selection_status or not particle_lists:
             return None
-            
+
         # Concatenate all particle lists
         result = np.concatenate(particle_lists)
-        
+
         if self.enforce_unique:
             result = np.unique(result)
-            
+
         return result
