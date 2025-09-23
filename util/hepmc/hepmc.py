@@ -1,7 +1,7 @@
 #
 # This file contains various functions for handling HepMC objects,
 # as well as converting Pythia8 event listings -- as accessed by our
-# custom `PythiaWrapper` class -- into HepMC events.
+# custom `PythiaPythonWrapper` class -- into HepMC events.
 # There is currently some redundancy, as we historically used the pyhepmc
 # library, whereas we are now leveraging the official HepMC3 python bindings.
 # For the time being, functions supporting the use of either package are available,
@@ -11,21 +11,19 @@ import numpy as np
 import subprocess as sub
 import pathlib
 from typing import Union, Optional, List, TYPE_CHECKING
-from util.hepmc.setup import HepMCSetup, uncache_hepmc3, prepend_to_pythonpath
+from util.hepmc.setup import HepMCSetup, prepend_to_pythonpath
 from util.hepmc.readers import ReaderAscii, ReaderRootTree
 from util.hepmc.Pythia8ToHepMC3 import PythiaToHepMC
-from util.misc.timing import profile_method, profile_block
+from util.misc.timing import profile_method
 
 if TYPE_CHECKING: # Only imported during type checking -- avoids risk of circular imports
-    from util.pythia.utils import PythiaWrapper
+    from util.pythia.pythia import PythiaPythonWrapper
     from util.particle_selection.particle_selection import BaseSelector
 
     # make sure Python HepMC3 bindings are setup
     setup = HepMCSetup(verbose=False)
-    # setup.PrepHepMC() # will download/install if necessary
     python_dir = setup.GetPythonDirectory()
 
-    # uncache_hepmc3()
     prepend_to_pythonpath(python_dir)
 
     from pyHepMC3 import HepMC3 as hm
@@ -92,7 +90,7 @@ class Pythia8HepMC3Writer:
 
 # Some utility functions -- partly for interfacing with our Pythia8 wrapper.
 
-def _extract_particle_momenta(pythia_wrapper:'PythiaWrapper', particle_indices:Optional[np.ndarray]=None):
+def _extract_particle_momenta(pythia_wrapper:'PythiaPythonWrapper', particle_indices:Optional[np.ndarray]=None):
     momentum = pythia_wrapper.GetPxPyPzE(particle_indices)
     pdgid = pythia_wrapper.GetPdgId(particle_indices)
     status = pythia_wrapper.GetStatus(particle_indices, hepmc=True)
@@ -124,10 +122,10 @@ def CopyHepMCBufferToFile(buffername:str,filename:str,header:bool=False,footer:b
 
 def CompressHepMC(files:list, delete:bool=True, cwd:Optional[str]=None):
     for file in files:
-        compress_file = file.replace('.hepmc','.tar.bz2')
+        compress_file = file.replace('.hepmc','.tar.gz')
         if(cwd is not None): compress_file = '{}/{}'.format(cwd,compress_file)
         cwd = '/'.join(compress_file.split('/')[:-1])
-        comm = ['tar','-cjf',compress_file.split('/')[-1],file.split('/')[-1]]
+        comm = ['tar','-czf',compress_file.split('/')[-1],file.split('/')[-1]]
         # if(delete_hepmc): comm.append('--remove-files')
         sub.check_call(comm,shell=False,cwd=cwd)
         if(delete):
@@ -154,10 +152,10 @@ def HepMCOutputAscii(hepev_list:Union[list,'hm.GenEvent'],buffername:str,filenam
     CopyHepMCBufferToFile(buffername,filename,header,footer) # copy buffer file into the full file
     return
 
-def PythiaWrapperToHepMC(pythia_wrapper:'PythiaWrapper', event_number:int) -> 'hm.GenEvent':
+def PythiaPythonWrapperToHepMC(pythia_wrapper:'PythiaPythonWrapper', event_number:int) -> 'hm.GenEvent':
     """
     Convert a Pythia8 event index to a HepMC3 event, using the official HepMC3
-    Python bindings. This takes our custom "PythiaWrapper" object as an argument,
+    Python bindings. This takes our custom "PythiaPythonWrapper" object as an argument,
     though it really just interfaces with the underlying Pythia8 generator object.
     """
     from pyHepMC3 import HepMC3 as hm

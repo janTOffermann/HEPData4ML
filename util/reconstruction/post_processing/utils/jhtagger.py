@@ -35,14 +35,14 @@ class JHTaggerSetup:
 
     def FullPreparation(self):
         self.status = False
-        try: self.LoadJHTagger(quiet=True)
+        try: self.Load(quiet=True)
         except:
-            self.BuildJHTagger()
-            self.LoadJHTagger()
+            self.Build()
+            self.Load()
         self.status = True
         return
 
-    def BuildJHTagger(self):
+    def Build(self):
         """
         Builds the JHTagger C++/ROOT library.
         This runs a shell script, where certain
@@ -51,25 +51,11 @@ class JHTaggerSetup:
         which tells us where Fastjet is installed).
         """
         self.build_script = 'build.sh'
-        fastjet_dir = self.configurator.GetFastjetDirectory()
-
-        # TODO: Clean this up. Somehow put information from fastjet setup back into configurator?
-        if(fastjet_dir is None):
-            fastjet_dir = os.path.dirname(os.path.abspath(__file__)) + '/../../../../external/fastjet'
-
-        # TODO: This might crash if fastjet is not built yet? Could be an issue for a first run, need to test!
-        fastjet_lib = glob.glob('{}/**/lib'.format(fastjet_dir),recursive=True)[0]
-        fastjet_inc = glob.glob('{}/**/include'.format(fastjet_dir),recursive=True)[0]
-        env = os.environ.copy()
-        env['CMAKE_PREFIX_PATH'] += ':{}'.format(fastjet_lib)
-        env['FASTJET_INCLUDE_DIR'] = fastjet_inc
-
         command = ['./{}'.format(self.build_script)]
         self.run_command_with_progress(command,cwd=self.dir,prefix='Building JHTagger:',output_width=80)
-        # sub.check_call(command,cwd=self.dir,env=env,executable=self.executable,stderr=sub.DEVNULL,stdout=sub.DEVNULL)
         return
 
-    def LoadJHTagger(self,quiet=False):
+    def Load(self,quiet=False):
         # Load our custom ROOT library.
         try:
             a = rt.JHTagger

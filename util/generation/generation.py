@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import subprocess as sub
-from util.pythia.utils import PythiaWrapper
+from util.pythia.pythia import PythiaPythonWrapper
 from util.hepmc.hepmc import Pythia8HepMC3Writer
 from util.hepmc.Pythia8ToHepMC3 import PythiaToHepMC, PythiaToHepMCBatch
 from util.hepmc.setup import HepMCSetup, prepend_to_pythonpath
@@ -28,7 +28,7 @@ class PythiaGenerator:
         # Create our Pythia wrapper.
         self.pythia_rng = pythia_rng
         self.verbose = self.configurator.GetPythiaVerbosity()
-        self.pythia = PythiaWrapper(verbose=self.verbose)
+        self.pythia = PythiaPythonWrapper(verbose=self.verbose)
         self.ConfigPythia(config_file=pythia_config_file,verbose=self.verbose)
 
         # Set up HepMC, and create our HepMC converter
