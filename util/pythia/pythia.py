@@ -1,6 +1,7 @@
 import numpy as np
 import pythia8 as pyth8
 import ROOT as rt
+import awkward as ak
 from util.pythia.setup import PythiaWrapperSetup
 
 class BasicWrapper:
@@ -82,6 +83,11 @@ class BasicWrapper:
         self.ReadConfigDict()
         self.pythia.init()
         self.initialized = True
+
+    def _bool2string(self,flag):
+        if(flag): return 'on'
+        return 'off'
+
 
 class PythiaPythonWrapper(BasicWrapper):
 
@@ -380,12 +386,8 @@ class PythiaPythonWrapper(BasicWrapper):
             sigma_dict[code] = (self.GetSigmaGen(code),self.GetSigmaErr(code))
         return sigma_dict
 
-    def _bool2string(self,flag):
-        if(flag): return 'on'
-        return 'off'
 
-
-class PythiaWrapper:
+class PythiaWrapper(BasicWrapper):
     """
     An alternative wrapper for Pythia8, that utilizes
     a custom C++/ROOT library.
@@ -395,6 +397,8 @@ class PythiaWrapper:
     """
 
     def __init__(self,verbose=False):
+        super().__init__()
+
         self.setup = PythiaWrapperSetup()
 
         # Make sure that the underlying C++/ROOT library is built and loaded,
@@ -416,9 +420,152 @@ class PythiaWrapper:
         self.pythia.Generate(n,True)
         self.n_events = n
 
-    def GetPdgId(self, indices=None):
-        if(self.event is None): return None
+    def GetData(self,status_hepmc=True):
+        """
+        Provides output in awkward array format,
+        similar to Pythia8's "nextBatch()" function.
+        """
+        prt = ak.Array(
+            {
+                'id':self.GetPdgId(),
+                'status':self._getStatus(status_hepmc),
+                'm':self.GetMass(),
+                'p':self.GetMomentum(),
+                'vProd':self.GetProdVertex(),
+                'vProdStatus':self.GetProdVertexStatus(),
+                # 'mother1':self.GetMother1(), # NOTE: motherList is much more useful
+                # 'mother2':self.GetMother2(),
+                'motherList':self.GetMotherList(),
+                # 'daughter1':self.GetDaughter1(), # NOTE: daughterList is much more useful
+                # 'daughter2':self.GetDaughter2(),
+                'daughterList':self.GetDaughterList(),
+                'col':self.GetColor(),
+                'acol':self.GetAntiColor()
+            }
+        )
 
-        pids = self.pythia.getParticleIDArray()
-        print(pids)
-        return
+        event_info = ak.Array(
+            {
+                'id1':self.GetId1Pdf(),
+                'id2':self.GetId2Pdf(),
+                'x1':self.GetX1Pdf(),
+                'x2':self.GetX2Pdf(),
+                'QFac':self.GetQFac(),
+                'QRen':self.GetQRen(),
+                'nMPI':self.GetNumMPI(),
+                'code':self.GetCode(),
+                'alphaS':self.GetAlphaS(),
+                'alphaEM':self.GetAlphaEM(),
+                'sigmaGen':self.GetSigmaGen(),
+                'sigmaErr':self.GetSigmaErr(),
+                'weights':self.GetWeights()
+            }
+        )
+
+        return ak.Array({'prt':prt,'info':event_info})
+
+    def _getStatus(self,status_hepmc):
+        if(status_hepmc):
+            return self.GetStatusHepMC()
+        return self.GetStatus()
+
+    def GetPdgId(self):
+        return ak.Array([x for x in self.pythia.getParticleIDArray()])
+
+    def GetStatus(self):
+        return ak.Array([x for x in self.pythia.getStatusArray()])
+
+    def GetStatusHepMC(self):
+        return ak.Array([x for x in self.pythia.getStatusHepMCArray()])
+
+    def GetMass(self):
+        return ak.Array([x for x in self.pythia.getMassArray()])
+
+    def GetMomentum(self):
+        return ak.Array(
+            {
+                'e':[x for x in self.pythia.getEnergyArray()],
+                'px':[x for x in self.pythia.getPxArray()],
+                'py':[x for x in self.pythia.getPyArray()],
+                'pz':[x for x in self.pythia.getPzArray()]
+            }
+        )
+
+    def GetProdVertex(self):
+        return ak.Array(
+            {
+                't':[x for x in self.pythia.getProdTArray()],
+                'x':[x for x in self.pythia.getProdXArray()],
+                'y':[x for x in self.pythia.getProdYArray()],
+                'z':[x for x in self.pythia.getProdZArray()]
+            }
+        )
+    def GetProdVertexStatus(self):
+        return ak.Array([x for x in self.pythia.getHasProdVertexArray()])
+
+    def GetMother1(self):
+        return ak.Array([x for x in self.pythia.getMother1Array()])
+
+    def GetMother2(self):
+        return ak.Array([x for x in self.pythia.getMother2Array()])
+
+    def GetMotherList(self):
+        return ak.Array([x for x in self.pythia.getMotherArray()])
+
+    def GetDaughter1(self):
+        return ak.Array([x for x in self.pythia.getDaughter1Array()])
+
+    def GetDaughter2(self):
+        return ak.Array([x for x in self.pythia.getDaughter2Array()])
+
+    def GetDaughterList(self):
+        return ak.Array([x for x in self.pythia.getDaughterArray()])
+
+    def GetColor(self):
+        return ak.Array([x for x in self.pythia.getColorArray()])
+
+    def GetAntiColor(self):
+        return ak.Array([x for x in self.pythia.getAntiColorArray()])
+
+    # Event-level variable access
+    def GetId1Pdf(self):
+        return ak.Array([x for x in self.pythia.getId1PdfArray()])
+
+    def GetId2Pdf(self):
+        return ak.Array([x for x in self.pythia.getId2PdfArray()])
+
+    def GetX1Pdf(self):
+        return ak.Array([x for x in self.pythia.getX1PdfArray()])
+
+    def GetX2Pdf(self):
+        return ak.Array([x for x in self.pythia.getX2PdfArray()])
+
+    def GetQFac(self):
+        return ak.Array([x for x in self.pythia.getQFacArray()])
+
+    def GetQRen(self):
+        return ak.Array([x for x in self.pythia.getQRenArray()])
+
+    def GetNumMPI(self):
+        return ak.Array([x for x in self.pythia.getNMPIArray()])
+
+    def GetCode(self):
+        return ak.Array([x for x in self.pythia.getCodeArray()])
+
+    def GetAlphaS(self):
+        return ak.Array([x for x in self.pythia.getAlphaSArray()])
+
+    def GetAlphaEM(self):
+        return ak.Array([x for x in self.pythia.getAlphaEMArray()])
+
+    def GetSigmaGen(self):
+        return ak.Array([x for x in self.pythia.getSigmaGenArray()])
+
+    def GetSigmaErr(self):
+        return ak.Array([x for x in self.pythia.getSigmaErrArray()])
+
+    def GetNWeights(self):
+        return ak.Array([x for x in self.pythia.getNWeightsArray()])
+
+    def GetWeights(self):
+        return ak.Array([x for x in self.pythia.getWeightsArray()])
