@@ -37,9 +37,20 @@ namespace PythiaGenerator{
       vector<vector<Int_t>> getParticleIDArray(){return _pid;};
       vector<vector<Int_t>> getStatusArray(){return _status;};
       vector<vector<Int_t>> getStatusHepMCArray(){return _statusHepMC;};
+
       vector<vector<vector<Double_t>>> getMomentumArray(){return _p;};
-      vector<vector<vector<Double_t>>> getVertexArray(){return _vProd;};
-      vector<vector<Bool_t>> getHasVertexArray(){return _hasVertex;};
+      vector<vector<Double_t>> getEnergyArray(){return getComponentArray(_p, 0);};
+      vector<vector<Double_t>> getPxArray(){return getComponentArray(_p, 1);};
+      vector<vector<Double_t>> getPyArray(){return getComponentArray(_p, 2);};
+      vector<vector<Double_t>> getPzArray(){return getComponentArray(_p, 3);};
+
+      vector<vector<vector<Double_t>>> getProdVertexArray(){return _vProd;};
+      vector<vector<Double_t>> getProdTArray(){return getComponentArray(_vProd, 0);};
+      vector<vector<Double_t>> getProdXArray(){return getComponentArray(_vProd, 1);};
+      vector<vector<Double_t>> getProdYArray(){return getComponentArray(_vProd, 2);};
+      vector<vector<Double_t>> getProdZArray(){return getComponentArray(_vProd, 3);};
+
+      vector<vector<Bool_t>> getHasProdVertexArray(){return _hasVertex;};
       vector<vector<Double_t>> getMassArray(){return _mass;};
       vector<vector<Int_t>> getMother1Array(){return _mother1;};
       vector<vector<Int_t>> getMother2Array(){return _mother2;};
@@ -47,7 +58,7 @@ namespace PythiaGenerator{
 
       vector<vector<Int_t>> getDaughter1Array(){return _daughter1;};
       vector<vector<Int_t>> getDaughter2Array(){return _daughter2;};
-      vector<vector<vector<Int_t>>> getDaughterarray(){return _daughters;};
+      vector<vector<vector<Int_t>>> getDaughterArray(){return _daughters;};
 
       vector<vector<Int_t>> getColorArray(){return _col;};
       vector<vector<Int_t>> getAntiColorArray(){return _acol;};
@@ -155,6 +166,9 @@ namespace PythiaGenerator{
       vector<Double_t> _sigmaErr = {};
       vector<Int_t> _nWeights = {};
       vector<vector<Double_t>> _weights = {};
+
+    // Methods
+    vector<vector<Double_t>> getComponentArray(vector<vector<vector<Double_t>>> inputArray, Int_t index);
   };
 }
 
