@@ -74,7 +74,7 @@ namespace PythiaGenerator{
 
   void Generator::Generate(Int_t nevents, Bool_t refresh){
     if(!_initialized){
-      cout << "Error: PythiaGenerator::Generator is not yet initialized."
+      cout << "Error: PythiaGenerator::Generator is not yet initialized." << endl;
       return;
     }
 
@@ -141,6 +141,7 @@ namespace PythiaGenerator{
       _statusHepMC.push_back(statusHepMC);
       _p.push_back(p);
       _vProd.push_back(vProd);
+      _hasVertex.push_back(hasVertex);
       _mass.push_back(mass);
 
       _mother1.push_back(mother1);
@@ -183,6 +184,21 @@ namespace PythiaGenerator{
       _weights.push_back(weights);
     }
     return;
+  }
+
+  vector<vector<Double_t>> Generator::getComponentArray(vector<vector<vector<Double_t>>> inputArray, Int_t index){
+      vector<vector<Double_t>> outputArray;
+      outputArray.reserve(inputArray.size());
+
+      std::transform(inputArray.begin(), inputArray.end(), std::back_inserter(outputArray),
+        [index](const auto& event) {  // Capture index in outer lambda
+          vector<Double_t> components;
+          components.reserve(event.size());
+          std::transform(event.begin(), event.end(), std::back_inserter(components),
+            [index](const auto& p) { return p.empty() ? 0.0 : p[index]; });  // Capture index in inner lambda
+          return components;
+        });
+      return outputArray;
   }
 
 
