@@ -17,7 +17,6 @@ project(
 #       Maybe have external installations modify CMAKE_PREFIX_PATH?
 set(REPO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
 
-
 # Fetch ROOT! As of ~6.20, this also sets up our ROOT CMake macros.
 find_package(ROOT CONFIG REQUIRED)
 
@@ -88,10 +87,56 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 set(HEADER_OUTPUT_PATH ${CMAKE_BINARY_DIR}/include)
 
-# include_directories(${ROOT_INCLUDE_DIRS})
+#########
+# HEPMC3
+#########
+
+# Find HepMC3 -- required for the HepMC3/ROOT format handling.
+# Will first search CMAKE_PREFIX_PATH, plus the HEPMC3_EXT_DIR
+# that we define here (to pick up a possible local installation).
+# Note that we're also searching for the HepMC3/ROOT interface.
+set(HEPMC3_EXT_DIR "${REPO_DIR}/external/hepmc/hepmc3-install")
+
+message(STATUS "Set HEPMC3_EXT_DIR = ${HEPMC3_EXT_DIR}")
+
+find_path(HEPMC3_INCLUDE_DIR
+    NAMES HepMC3
+    PATHS
+        ${HEPMC3_EXT_DIR} # fallback
+        ${HEPMC3_EXT_DIR}/include # fallback
+
+)
+
+find_library(HEPMC3_LIBRARIES
+    NAMES HepMC3 libHepMC3
+    PATHS
+        ${HEPMC3_EXT_DIR}/lib64
+        ${HEPMC3_EXT_DIR}/lib
+        ${HEPMC3_EXT_DIR}
+        ${CMAKE_PREFIX_PATH}
+        ${CMAKE_PREFIX_PATH}/lib
+        ${CMAKE_PREFIX_PATH}/lib64
+)
+
+find_library(HEPMC3_ROOT_LIBRARIES
+    NAMES HepMC3rootIO libHepMC3rootIO
+    PATHS
+        ${HEPMC3_EXT_DIR}/lib64
+        ${HEPMC3_EXT_DIR}/lib
+        ${HEPMC3_EXT_DIR}
+        ${CMAKE_PREFIX_PATH}
+        ${CMAKE_PREFIX_PATH}/lib
+        ${CMAKE_PREFIX_PATH}/lib64
+)
+
+message(STATUS "Found HepMC3 headers: ${HEPMC3_INCLUDE_DIR}")
+message(STATUS "Found HepMC3 library: ${HEPMC3_LIBRARIES}")
+message(STATUS "Found HepMC3/ROOT library: ${HEPMC3_ROOT_LIBRARIES}")
+
 include_directories(
   "${CMAKE_SOURCE_DIR}/pythia_generator/inc"
   ${PYTHIA8_INCLUDE_DIR}
+  ${HEPMC3_INCLUDE_DIR}
 )
 
 add_subdirectory(pythia_generator)
