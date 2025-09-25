@@ -1,9 +1,9 @@
 import os
 import numpy as np
 import subprocess as sub
-from util.pythia.pythia import PythiaPythonWrapper
+from util.pythia.pythia import PythiaPythonWrapper, PythiaWrapper, PythiaWrapperV2
 from util.hepmc.hepmc import Pythia8HepMC3Writer
-from util.hepmc.Pythia8ToHepMC3 import PythiaToHepMC, PythiaToHepMCBatch
+from util.hepmc.Pythia8ToHepMC3 import PythiaToHepMC, PythiaToHepMCBatch, PythiaWrapperToHepMCBatch
 from util.hepmc.setup import HepMCSetup, prepend_to_pythonpath
 from util.qol_utils.progress_bar import printProgressBarColor
 from util.misc.timing import profile_method, profile_block
@@ -20,7 +20,7 @@ class PythiaGenerator:
 
     # TODO: Make a more general parent class, and use inheritance?
 
-    def __init__(self, pt_min:float, pt_max:float, configurator:'Configurator', pythia_rng:Optional[int]=None, pythia_config_file:Optional[str]=None):
+    def __init__(self, pt_min:float, pt_max:float, configurator:'Configurator', pythia_rng:Optional[int]=None, pythia_config_file:Optional[str]=None, use_custom_pythia_interface=True):
         self.configurator = configurator
         self.pt_min = pt_min
         self.pt_max = pt_max
@@ -28,7 +28,14 @@ class PythiaGenerator:
         # Create our Pythia wrapper.
         self.pythia_rng = pythia_rng
         self.verbose = self.configurator.GetPythiaVerbosity()
-        self.pythia = PythiaPythonWrapper(verbose=self.verbose)
+
+        if(use_custom_pythia_interface):
+            self.pythia = PythiaWrapper(verbose=self.verbose)
+            self.hepmc_converter_batch = PythiaWrapperToHepMCBatch(self.configurator.GetHepMC3Directory())
+        else:
+            self.pythia = PythiaPythonWrapper(verbose=self.verbose)
+            self.hepmc_converter_batch = PythiaToHepMCBatch(self.configurator.GetHepMC3Directory())
+
         self.ConfigPythia(config_file=pythia_config_file,verbose=self.verbose)
 
         # Set up HepMC, and create our HepMC converter
@@ -43,8 +50,6 @@ class PythiaGenerator:
         self.configurator.SetHepMC3Directory(self.hepmc_setup.GetDirectory())
 
         self.hepmc_converter = PythiaToHepMC(self.configurator.GetHepMC3Directory())
-        self.hepmc_converter_batch = PythiaToHepMCBatch(self.configurator.GetHepMC3Directory())
-
 
         # Event filters. # TODO: May remove
         self.event_filter = None
@@ -223,7 +228,62 @@ class PythiaGenerator:
 
         self.ClearEventBuffer()
 
+
     def GenerateBatch(self, nevents, i_real:int=1, nevents_disp:Optional[int]=None):
+        if(isinstance(self.pythia,PythiaPythonWrapper)):
+            return self._generateBatchPythiaPythonWrapper(nevents, i_real, nevents_disp)
+        return self._generateBatchPythiaWrapper(nevents, i_real, nevents_disp)
+
+    def _generateBatchPythiaWrapper(self, nevents, i_real:int=1, nevents_disp:Optional[int]=None):
+        if(nevents_disp is None): nevents_disp = nevents # number of events to display in progress bar
+
+        # The way that HepMC3's ASCII writing works, writing an event will overwrite the whole file.
+        # Thus for the time being, we will circumvent this limitation by making a buffer file where each event
+        # is written, and then copied to the "main" file before the next event is generated. This I/O might slow
+        # down things, so we ultimately want to find some way to do a write with "append" functionality, which
+        # we can do with HepMC3's ROOT TTree format.
+        self.filename_fullpath = '{}/{}'.format(self.outdir,self.filename)
+
+        # For ASCII mode, create buffer file.
+        if(self.writer.GetMode().lower() == 'ascii'):
+            self.buffername = self.filename_fullpath.replace('.hepmc','_buffer.hepmc')
+
+        # Determine how many events to actually generate on this call.
+        # We base this on what was requested, but also on the current
+        # buffer size.
+        nevents_real = np.minimum(nevents,self.buffer_size - self.GetCurrentBufferSize())
+
+        # Generate the events -- does the whole batch all at once!
+        with profile_block('Generator.GenerateBatch - pythia'):
+            self.pythia.Generate(nevents_real)
+
+        # TODO: (Re)implement event filter logic.
+
+        # Convert the Pythia8 events into HepMC3 events.
+        hepmc_events = self.hepmc_converter_batch.fill_batch_events(self.pythia.GetData(), i_real)
+
+        # Fill the memory buffer with the event list.
+        self.AddToEventBuffer(hepmc_events)
+
+        # Write to the buffer, then flush it. Note that this is different than in GenerationLoop.
+        self.WriteEventBufferToFile(header=True,footer=True)
+
+        i_real += nevents_real # counter for number of successful events
+
+        if(self.progress_bar): printProgressBarColor(i_real-1,nevents_disp, prefix=self.prefix, suffix=self.suffix, length=self.bl)
+
+        # Delete the buffer files, if relevant.
+        if(self.buffername is not None):
+            comm = ['rm', self.buffername]
+            try: sub.check_call(comm,stderr=sub.DEVNULL)
+            except: pass
+
+        return i_real-1, 0 # note that i_real is using 1-indexing, which is what HepMC events use
+
+
+
+    def _generateBatchPythiaPythonWrapper(self, nevents, i_real:int=1, nevents_disp:Optional[int]=None):
+
 
         if(nevents_disp is None): nevents_disp = nevents # number of events to display in progress bar
 

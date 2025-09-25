@@ -10,7 +10,7 @@ import numpy as np
 import awkward as ak
 import pythia8 as pyth
 from util.hepmc.setup import HepMCSetup, prepend_to_pythonpath
-from util.misc.timing import profile_method
+from util.misc.timing import profile_method, profile_block
 
 class PythiaToHepMC:
     def __init__(self, hepmc_dir=None):
@@ -428,21 +428,26 @@ class PythiaToHepMCBatch:
         for i in range(n_particles):
             # Reconstruct mother list from mother1/mother2 (adjust for global indexing)
             mothers_list = mother_lists[i]
+            # print(i, 'mothers_list = ',mothers_list)
+
             if len(mothers_list) > 0:
                 # Find or create production vertex
                 prod_vtx = None
 
-                for mother_idx in mothers_list:
-                    if event_particles[mother_idx].end_vertex():
-                        prod_vtx = event_particles[mother_idx].end_vertex()
-                        break
+                with profile_block('PythiaToHepMCBatch._build_event_vertices - ML1'):
+                    for mother_idx in mothers_list:
+                        if event_particles[mother_idx].end_vertex():
+                            prod_vtx = event_particles[mother_idx].end_vertex()
+                            break
 
                 if prod_vtx is None:
                     prod_vtx = hm.GenVertex()
 
                     vertex_cache.append(prod_vtx)
-                    for mother_idx in mothers_list:
-                        prod_vtx.add_particle_in(event_particles[mother_idx])
+
+                    with profile_block('PythiaToHepMCBatch._build_event_vertices - ML2'):
+                        for mother_idx in mothers_list:
+                            prod_vtx.add_particle_in(event_particles[mother_idx])
 
                 # Set vertex position if available
                 if prod_vtx.position().is_zero():
@@ -586,7 +591,6 @@ class PythiaToHepMCBatch:
                     mother_lists[i] = np.array([mom2, mom1])
         return mother_lists
 
-
 class StatusCodeConverter:
     """
     Converts Pythia8 status codes to HepMC3 ones.
@@ -677,3 +681,308 @@ class StatusCodeConverter:
     def Print(self):
         for key,val in self.status_lookup.items():
             print('[{}] -> {}'.format(key,val))
+
+class PythiaWrapperToHepMCBatch:
+    """
+    Similar to PythiaToHepMCBatch, but this class
+    interfaces with our custom Pythia8 interface.
+    This also provides batches of events as awkward arrays,
+    but they have things like particles' motherList and
+    daughterList pre-computed, which makes the conversion
+    here simpler.
+
+    NOTE: This is currently far slower than using nextBatch()
+          plus the PythiaToHepMCBatch converter, but maybe it
+          offers a possibility for a speedup if restructured?
+          It has the potential advantage of not needing to
+          compute motherList/daughterList on the Python side,
+          the latter being necessary for correctly deducing
+          the statusHepMC for the particles.
+    """
+    def __init__(self, hepmc_dir=None):
+        self.m_internal_event_number = 0
+        self.m_free_parton_warnings = False
+        self.m_crash_on_problem = False
+        self.m_convert_gluon_to_0 = False
+        self.m_store_pdf = True
+        self.m_store_proc = True
+        self.m_store_xsec = True
+        self.m_store_weights = True
+
+        self.setup = HepMCSetup(hepmc_dir, verbose=False)
+        python_dir = self.setup.GetPythonDirectory()
+        prepend_to_pythonpath(python_dir)
+
+        self.code_converter = StatusCodeConverter()
+
+    @profile_method('fill_batch_events_no_info')
+    def fill_batch_events_no_info(self, awkward_batch, start_event_num=None):
+        """
+        Vectorized Pythia8->HepMC3 - process all events simultaneously.
+
+        Args:
+            awkward_batch: Awkward array containing batch of Pythia8 events
+            start_event_num: Starting event number (optional)
+
+        Returns:
+            List of HepMC3 GenEvent objects
+        """
+        from pyHepMC3 import HepMC3 as hm
+
+        # NOTE: need to trim off the first "particle" from each event, this is actually a
+        # pseudo-particle with status=11, which represents "the event as a whole"
+
+        # TODO: Code functions, but not quite as expected: batch_size = 1 always.
+        batch_size = len(awkward_batch)
+
+        # Set up event numbering
+        if start_event_num is not None:
+            event_numbers = list(range(start_event_num, start_event_num + batch_size))
+        else:
+            event_numbers = list(range(self.m_internal_event_number,
+                                     self.m_internal_event_number + batch_size))
+            self.m_internal_event_number += batch_size
+
+        # Extract data for all events
+        all_prt_data = awkward_batch['prt']
+
+        with profile_block('fill_batch_events_no_info: A'):
+            # Get flattened particle data across all events
+            # all_p = ak.flatten(all_prt_data['p'])
+            all_px = np.asarray(ak.flatten(all_prt_data['p']['px']))
+            all_py = np.asarray(ak.flatten(all_prt_data['p']['py']))
+            all_pz = np.asarray(ak.flatten(all_prt_data['p']['pz']))
+            all_e = np.asarray(ak.flatten(all_prt_data['p']['e']))
+
+        with profile_block('fill_batch_events_no_info: B'):
+        # Flatten other particle properties
+            all_mass = np.asarray(ak.flatten(all_prt_data['m']))
+            all_pid = np.asarray(ak.flatten(all_prt_data['id']))
+            all_hepmc_status = np.asarray(ak.flatten(all_prt_data['status'])) # HepMC status by default
+            # all_mother1 = np.asarray(ak.flatten(all_prt_data['mother1']))
+            # all_mother2 = np.asarray(ak.flatten(all_prt_data['mother2']))
+            all_col = np.asarray(ak.flatten(all_prt_data['col']))
+            all_acol = np.asarray(ak.flatten(all_prt_data['acol']))
+
+        with profile_block('fill_batch_events_no_info: C'):
+        # all_vProd_flat = ak.flatten(all_prt_data['vProd'])
+            all_x_prod = ak.to_numpy(ak.flatten(all_prt_data['vProd']['x']))
+            all_y_prod = ak.to_numpy(ak.flatten(all_prt_data['vProd']['y']))
+            all_z_prod = ak.to_numpy(ak.flatten(all_prt_data['vProd']['z']))
+            all_t_prod = ak.to_numpy(ak.flatten(all_prt_data['vProd']['t']))
+            all_vProd_is_none = ak.flatten(all_prt_data['vProdStatus'])
+
+        with profile_block('fill_batch_events_no_info: D'):
+            all_mother_lists = all_prt_data['motherList'] # keeping as awkward array since its jagged
+
+        with profile_block('fill_batch_events_no_info: E'):
+            # Get event boundaries (number of particles per event)
+            particles_per_event = [len(x['id']) for x in all_prt_data]
+            # particles_per_event = ak.num(all_prt_data)
+            event_starts = np.concatenate([[0], np.cumsum(particles_per_event)[:-1]])
+            event_ends = np.cumsum(particles_per_event)
+
+        with profile_block('fill_batch_events_no_info: F'):
+            # Create hepmc3 particles
+            total_particles = len(all_px)
+            all_particles = []
+
+            for i in range(total_particles):
+                particle = hm.GenParticle(
+                    hm.FourVector(all_px[i], all_py[i], all_pz[i], all_e[i]),
+                    int(all_pid[i]),
+                    int(all_hepmc_status[i])
+                )
+                particle.set_generated_mass(all_mass[i])
+                all_particles.append(particle)
+
+        with profile_block('fill_batch_events_no_info: G'):
+            # Split particles back into individual events and build event structures
+            hepmc_events = [hm.GenEvent() for i in range(batch_size)] # pre-allocate event list; might speed things up slightly
+            for i in range(batch_size):
+
+                with profile_block('fill_batch_events_no_info: G1'):
+
+
+                    event = hepmc_events[i]
+                    event.set_event_number(event_numbers[i])
+                    event.set_units(hm.Units.GEV, hm.Units.MM)
+
+                    # Get particles for this event
+                    start_idx = event_starts[i]
+                    end_idx = event_ends[i]
+                    event_particles = all_particles[start_idx:end_idx]
+
+                    mother_lists = all_mother_lists[i]
+                    # mother_lists = self._build_mother_lists(
+                    #     all_pid[start_idx:end_idx],
+                    #     all_status[start_idx:end_idx],
+                    #     all_mother1[start_idx:end_idx],
+                    #     all_mother2[start_idx:end_idx],
+                    #     zero_index=True
+                    # )
+                with profile_block('fill_batch_events_no_info: G2'):
+
+                    # Build vertices for this event
+                    self._build_event_vertices(
+                        event, event_particles,
+                        mother_lists,
+                        all_x_prod[start_idx:end_idx], all_y_prod[start_idx:end_idx],
+                        all_z_prod[start_idx:end_idx], all_t_prod[start_idx:end_idx],
+                        all_vProd_is_none[start_idx:end_idx]
+                    )
+                with profile_block('fill_batch_events_no_info: G3'):
+
+                    # Set color attributes for this event
+                    self._set_color_attributes(
+                        event_particles,
+                        all_col[start_idx:end_idx], all_acol[start_idx:end_idx]
+                    )
+
+        return hepmc_events
+
+    @profile_method('fill_batch_events')
+    def fill_batch_events(self, awkward_batch, start_event_num=None):
+        """
+        Enhanced version that also handles PDF info, cross-sections, etc.
+        from the awkward batch structure.
+
+        Args:
+            awkward_batch: Batch of events with 'prt' and 'info' fields
+            start_event_num: Starting event number (optional)
+        """
+        from pyHepMC3 import HepMC3 as hm
+
+        hepmc_events = self.fill_batch_events_no_info(awkward_batch, start_event_num)
+
+        # Add event info from the 'info' field
+        for i, evt in enumerate(hepmc_events):
+            info_data = awkward_batch[i]['info']
+            self._add_event_info(evt, info_data)
+
+        return hepmc_events
+
+    def _build_event_vertices(self, event, event_particles, mother_lists,
+                                       x_prod, y_prod, z_prod, t_prod, vProd_is_none):
+        """
+        Build vertices for a single event using vectorized data.
+        """
+        from pyHepMC3 import HepMC3 as hm
+
+        n_particles = len(event_particles)
+        vertex_cache = hm.GenEvent().vertices()
+        beam_particles = hm.GenEvent().particles()
+
+        for i in range(n_particles):
+            # Reconstruct mother list from mother1/mother2 (adjust for global indexing)
+            with profile_block('PythiaWrapperToHepMCBatch._build_event_vertices - Block1'):
+                mothers_list = mother_lists[i]
+            # print(i, 'mothers_list = ',mothers_list)
+            if len(mothers_list) > 0:
+                with profile_block('PythiaWrapperToHepMCBatch._build_event_vertices - Block2'):
+
+                    # Find or create production vertex
+                    prod_vtx = None
+
+                    for mother_idx in mothers_list:
+                        if event_particles[mother_idx].end_vertex():
+                            prod_vtx = event_particles[mother_idx].end_vertex()
+                            break
+
+                with profile_block('PythiaWrapperToHepMCBatch._build_event_vertices - Block3'):
+
+                    if prod_vtx is None:
+                        prod_vtx = hm.GenVertex()
+
+                        vertex_cache.append(prod_vtx)
+                        with profile_block('PythiaWrapperToHepMCBatch._build_event_vertices - ML2'):
+                            for mother_idx in mothers_list:
+                                prod_vtx.add_particle_in(event_particles[mother_idx])
+
+                with profile_block('PythiaWrapperToHepMCBatch._build_event_vertices - Block4'):
+
+                    # Set vertex position if available
+                    if prod_vtx.position().is_zero():
+                        if not vProd_is_none[i]:
+                            prod_pos = hm.FourVector(x_prod[i], y_prod[i], z_prod[i], t_prod[i])
+                            prod_vtx.set_position(prod_pos)
+
+                    prod_vtx.add_particle_out(event_particles[i])
+            else:
+                beam_particles.append(event_particles[i])
+
+        # Add particles to event
+        if len(beam_particles) < 2:
+            print(f"Warning: {len(beam_particles)} != 2 beam particles")
+            if self.m_crash_on_problem:
+                return False
+
+        event.add_tree(beam_particles)
+        return True
+
+    def _set_color_attributes(self, event_particles, col, acol):
+        """
+        Set color flow attributes for all particles in an event.
+        """
+        from pyHepMC3 import HepMC3 as hm
+
+        for i, particle in enumerate(event_particles):
+            # Determine color type from col/acol values
+            if col[i] == 0 and acol[i] > 0:
+                # Anti-triplet
+                particle.add_attribute("flow1", hm.IntAttribute(0))
+                particle.add_attribute("flow2", hm.IntAttribute(int(acol[i])))
+            elif col[i] > 0 and acol[i] == 0:
+                # Triplet
+                particle.add_attribute("flow1", hm.IntAttribute(int(col[i])))
+                particle.add_attribute("flow2", hm.IntAttribute(0))
+            elif col[i] > 0 and acol[i] > 0:
+                # Octet (gluon)
+                particle.add_attribute("flow1", hm.IntAttribute(int(col[i])))
+                particle.add_attribute("flow2", hm.IntAttribute(int(acol[i])))
+
+    def _add_event_info(self, evt, info_data):
+        """Add PDF, cross-section, and other event information from awkward array."""
+        from pyHepMC3 import HepMC3 as hm
+
+        # PDF information
+        if self.m_store_pdf:
+
+            id1pdf = int(info_data['id1'])
+            id2pdf = int(info_data['id2'])
+
+            if self.m_convert_gluon_to_0:
+                if id1pdf == 21:
+                    id1pdf = 0
+                if id2pdf == 21:
+                    id2pdf = 0
+
+            pdfinfo = hm.GenPdfInfo()
+            pdfinfo.set(id1pdf, id2pdf,
+                        float(info_data['x1']), float(info_data['x2']),
+                        float(info_data['QFac']),
+                        float(info_data['pdf1']), float(info_data['pdf2']))
+            evt.set_pdf_info(pdfinfo)
+
+        if(self.m_store_proc):
+            evt.add_attribute("mpi", hm.IntAttribute(info_data['nMPI'])) # <- I think this is constant across events
+            evt.add_attribute("signal_process_id", hm.IntAttribute(info_data['code'])) # <- I think this is constant across events
+            evt.add_attribute("event_scale", hm.DoubleAttribute(float(info_data['QRen']))) # NOTE: QRen -> Q2Ren
+            evt.add_attribute("alphaQCD", hm.DoubleAttribute(float(info_data['alphaS'])))
+            evt.add_attribute("alphaQED", hm.DoubleAttribute(float(info_data['alphaEM'])))
+
+        # Cross-section
+        if self.m_store_xsec:
+            xsec = hm.GenCrossSection()
+            xsec.set_cross_section(info_data['sigmaGen'] * 1e9, info_data['sigmaErr'] * 1e9)
+            evt.set_cross_section(xsec)
+
+        # Weights - this might need adjustment
+        if self.m_store_weights and 'weights' in info_data.fields:
+            evt.weights().clear()
+            weights = info_data['weights']
+            if hasattr(weights, '__iter__'):
+                for weight in weights:
+                    evt.weights().append(float(weight))
+            else:
+                evt.weights().append(float(weights))
