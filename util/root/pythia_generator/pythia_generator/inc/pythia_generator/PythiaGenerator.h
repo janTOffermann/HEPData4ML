@@ -1,5 +1,5 @@
-#ifndef ROOT_FJUTILS
-#define ROOT_FJUTILS
+#ifndef PYTHIA_GENERATOR
+#define PYTHIA_GENERATOR
 
 // ROOT includes
 #if !defined(__CINT__) || defined(__MAKECINT__)
@@ -11,12 +11,19 @@
 
 // standard lib includes
 #include <vector>
+#include <utility> // std::pair
+#include <tuple> // std::tuple
 
 // // forward declarations for Pythia8
 namespace Pythia8{
   class Pythia;
   class Event;
   class Particle;
+}
+
+namespace HepMC3{
+  class Pythia8ToHepMC3; // NOTE: This comes from Pythia8 plugins!
+  class GenEvent;
 }
 
 using namespace std;
@@ -30,8 +37,21 @@ namespace PythiaGenerator{
       void readString(TString string); // access to Pythia8's readString functionality
       void setQuiet();
       void init(); // access to Pythia8's initialization
+      void setArrayMode(Bool_t value=kTRUE){_arrayMode=value;};
+      void setHepMC3Mode(Bool_t value=kTRUE){_hepmcMode=value;};
 
-      void Generate(Int_t nEvents = 1, Bool_t refresh=kTRUE); // generate events
+      void generate(Int_t nEvents = 1, Bool_t refresh=kTRUE); // generate events
+
+      void writeHepMC3File(TString filename);
+
+      /*
+       * Below are a ton of getters for fetching particle/event data
+       * as arrays; this gives one way of interfacing with the generator,
+       * albeit it may not be quickest (e.g. if you're fetching all this
+       * info just to externally build HepMC3 events).
+       * The setArrayMode() function determines whether or not the underlying
+       * arrays actually get filled.
+       */
 
       // Getters for entire particle property arrays, across events
       vector<vector<Int_t>> getParticleIDArray(){return _pid;};
@@ -82,9 +102,60 @@ namespace PythiaGenerator{
       vector<Int_t> getColor(Int_t i){return _col.at(i);};
       vector<Int_t> getAntiColor(Int_t i){return _acol.at(i);};
 
+      // Getters for flattened particle-level information and counts.
+      // First, the template methods we'll invoke
+      vector<Int_t> getParticlesPerEvent(){return _nParticlesPerEvent;};
+
+      template<typename T>
+      vector<T> get2VectorFlat(const vector<vector<T>>& nested_data);
+
+      template<typename T>
+      vector<Int_t> get2VectorCounts(const vector<vector<T>>& nested_data);
+
+      template<typename T>
+      vector<T> get3VectorFlat(const vector<vector<vector<T>>>& nested_data);
+
+      template<typename T>
+      vector<Int_t> get3VectorCounts(const vector<vector<vector<T>>>& nested_data);
+
+      // Now the various getters. They return the flattened data and the counts,
+      // which can be used with Python's awkward array package to reconstruct things.
+      // (depending on dimensionality, this is a pair or a tuple)
+      pair<vector<Int_t>,vector<Int_t>> getParticleIDFlat(){return make_pair(get2VectorFlat(_pid),getParticlesPerEvent());};
+      pair<vector<Int_t>,vector<Int_t>> getStatusFlat(){return make_pair(get2VectorFlat(_status),getParticlesPerEvent());};
+      pair<vector<Int_t>,vector<Int_t>> getStatusHepMCFlat(){return make_pair(get2VectorFlat(_statusHepMC),getParticlesPerEvent());};
+
+      tuple<vector<Double_t>,vector<Int_t>, vector<Int_t>> getMomentumFlat(){return make_tuple(get3VectorFlat(_p),get3VectorCounts(_p),getParticlesPerEvent());};
+      pair<vector<Double_t>,vector<Int_t>> getEnergyFlat(){return make_pair(get2VectorFlat(getEnergyArray()),getParticlesPerEvent());};
+      pair<vector<Double_t>,vector<Int_t>> getPxFlat(){return make_pair(get2VectorFlat(getPxArray()),getParticlesPerEvent());};
+      pair<vector<Double_t>,vector<Int_t>> getPyFlat(){return make_pair(get2VectorFlat(getPyArray()),getParticlesPerEvent());};
+      pair<vector<Double_t>,vector<Int_t>> getPzFlat(){return make_pair(get2VectorFlat(getPzArray()),getParticlesPerEvent());};
+
+      tuple<vector<Double_t>,vector<Int_t>, vector<Int_t>> getProdVertexFlat(){return make_tuple(get3VectorFlat(_vProd),get3VectorCounts(_vProd),getParticlesPerEvent());};
+      pair<vector<Double_t>,vector<Int_t>> getProdTFlat(){return make_pair(get2VectorFlat(getProdTArray()),getParticlesPerEvent());};
+      pair<vector<Double_t>,vector<Int_t>> getProdXFlat(){return make_pair(get2VectorFlat(getProdXArray()),getParticlesPerEvent());};
+      pair<vector<Double_t>,vector<Int_t>> getProdYFlat(){return make_pair(get2VectorFlat(getProdYArray()),getParticlesPerEvent());};
+      pair<vector<Double_t>,vector<Int_t>> getProdZFlat(){return make_pair(get2VectorFlat(getProdZArray()),getParticlesPerEvent());};
+
+      pair<vector<Bool_t>,vector<Int_t>> getHasProdVertexFlat(){return make_pair(get2VectorFlat(_hasVertex),getParticlesPerEvent());};
+      pair<vector<Double_t>,vector<Int_t>> getMassFlat(){return make_pair(get2VectorFlat(_mass),getParticlesPerEvent());};
+
+      pair<vector<Int_t>,vector<Int_t>> getMother1Flat(){return make_pair(get2VectorFlat(_mother1),getParticlesPerEvent());};
+      pair<vector<Int_t>,vector<Int_t>> getMother2Flat(){return make_pair(get2VectorFlat(_mother2),getParticlesPerEvent());};
+      tuple<vector<Int_t>,vector<Int_t>, vector<Int_t>> getMothersFlat(){return make_tuple(get3VectorFlat(_mothers),get3VectorCounts(_mothers),getParticlesPerEvent());};
+
+      pair<vector<Int_t>,vector<Int_t>> getDaughter1Flat(){return make_pair(get2VectorFlat(_daughter1),getParticlesPerEvent());};
+      pair<vector<Int_t>,vector<Int_t>> getDaughter2Flat(){return make_pair(get2VectorFlat(_daughter2),getParticlesPerEvent());};
+      tuple<vector<Int_t>,vector<Int_t>, vector<Int_t>> getDaughtersFlat(){return make_tuple(get3VectorFlat(_daughters),get3VectorCounts(_daughters),getParticlesPerEvent());};
+
+      pair<vector<Int_t>,vector<Int_t>> getColorFlat(){return make_pair(get2VectorFlat(_col),getParticlesPerEvent());};
+      pair<vector<Int_t>,vector<Int_t>> getAntiColorFlat(){return make_pair(get2VectorFlat(_acol),getParticlesPerEvent());};
+
       // Getters for event-level information, for whole arrays across events
       vector<Int_t> getId1PdfArray(){return _id1Pdf;};
       vector<Int_t> getId2PdfArray(){return _id2Pdf;};
+      vector<Double_t> getPdf1Array(){return _pdf1;};
+      vector<Double_t> getPdf2Array(){return _pdf2;};
       vector<Double_t> getX1PdfArray(){return _x1Pdf;};
       vector<Double_t> getX2PdfArray(){return _x2Pdf;};
       vector<Double_t> getQFacArray(){return _QFac;};
@@ -101,6 +172,8 @@ namespace PythiaGenerator{
       // Getters for event-level information, from a specific event.
       Int_t getId1Pdf(Int_t i){return _id1Pdf.at(i);};
       Int_t getId2Pdf(Int_t i){return _id2Pdf.at(i);};
+      Double_t getPdf1(Int_t i){return _pdf1.at(i);};
+      Double_t getPdf2(Int_t i){return _pdf2.at(i);};
       Double_t getXd1Pdf(Int_t i){return _x1Pdf.at(i);};
       Double_t getX2Pdf(Int_t i){return _x2Pdf.at(i);};
       Double_t getQFac(Int_t i){return _QFac.at(i);};
@@ -114,7 +187,6 @@ namespace PythiaGenerator{
       Int_t getNWeights(Int_t i){return _nWeights.at(i);};
       vector<Double_t> getWeights(Int_t i){return _weights.at(i);};
 
-
       ClassDef(Generator, 1);
 
     private:
@@ -122,10 +194,18 @@ namespace PythiaGenerator{
       Bool_t _initialized = kFALSE;
       void _ClearParticleContainers();
       void _ClearContainers();
+      void _FillArrays();
+      void _FillHepMC3Events();
+      void _ClearHepMC3Events();
 
       // Underlying instance of Pythia8 generator
       Pythia8::Pythia* _pythia = 0;
 
+      // Pythia8 -> HepMC3 converter class, from PythiaPlugins
+      HepMC3::Pythia8ToHepMC3* _converter = 0;
+
+      Bool_t _arrayMode = kFALSE;
+      Bool_t _hepmcMode = kFALSE;
       /*
        * Containers for storing particle-level information.
        * We use vectors of vectors, to represent jagged 2D arrays.
@@ -153,6 +233,8 @@ namespace PythiaGenerator{
       // Containers for storing event-level information.
       vector<Int_t> _id1Pdf = {};
       vector<Int_t> _id2Pdf = {};
+      vector<Double_t> _pdf1 = {};
+      vector<Double_t> _pdf2 = {};
       vector<Double_t> _x1Pdf = {};
       vector<Double_t> _x2Pdf = {};
       vector<Double_t> _QFac = {};
@@ -166,6 +248,15 @@ namespace PythiaGenerator{
       vector<Double_t> _sigmaErr = {};
       vector<Int_t> _nWeights = {};
       vector<vector<Double_t>> _weights = {};
+
+      // number of particles per event
+      vector<Int_t> _nParticlesPerEvent = {};
+
+      // Container for HepMC3 events.
+      // Note that it is a vector of *pointers*,
+      // because of how we have to forward-declare
+      // non-ROOT classes for this ROOT library.
+      vector<HepMC3::GenEvent*> _events = {};
 
     // Methods
     vector<vector<Double_t>> getComponentArray(vector<vector<vector<Double_t>>> inputArray, Int_t index);

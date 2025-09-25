@@ -16,11 +16,14 @@ ROOT_STANDARD_LIBRARY_PACKAGE(PythiaGenerator
 
 target_include_directories(PythiaGenerator PRIVATE
   "${PYTHIA8_INCLUDE_DIR}"
+  "${HEPMC3_INCLUDE_DIR}"
     "${CMAKE_SOURCE_DIR}/pythia_generator/inc"
 
 )
 target_link_libraries(PythiaGenerator PRIVATE
   "${PYTHIA8_LIB}"
+  "${HEPMC3_LIBRARIES}"
+  "${HEPMC3_ROOT_LIBRARIES}"
   ROOT::Core
   ROOT::RIO
   ROOT::MathCore

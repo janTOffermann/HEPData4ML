@@ -3,6 +3,7 @@ import pythia8 as pyth8
 import ROOT as rt
 import awkward as ak
 from util.pythia.setup import PythiaWrapperSetup
+from util.misc.timing import profile_method, profile_block
 
 class BasicWrapper:
     """
@@ -411,20 +412,27 @@ class PythiaWrapper(BasicWrapper):
         self.SetVerbose(verbose)
         self.initialized = False
         self.n_events = None
+        self.particles_per_event = None
 
     def Generate(self, n):
         """
         Generate events.
         """
         if(not self.initialized): self.InitializePythia()
-        self.pythia.Generate(n,True)
+        self.pythia.generate(int(n),True)
         self.n_events = n
 
+    @profile_method('PythiaWrapper.GetData')
     def GetData(self,status_hepmc=True):
         """
         Provides output in awkward array format,
         similar to Pythia8's "nextBatch()" function.
         """
+
+        # First, fetch the number of particles per event.
+        # This will be used multiple times, so it is best
+        # to cache it like this.
+
         prt = ak.Array(
             {
                 'id':self.GetPdgId(),
@@ -448,6 +456,8 @@ class PythiaWrapper(BasicWrapper):
             {
                 'id1':self.GetId1Pdf(),
                 'id2':self.GetId2Pdf(),
+                'pdf1':self.GetPdf1(),
+                'pdf2':self.GetPdf2(),
                 'x1':self.GetX1Pdf(),
                 'x2':self.GetX2Pdf(),
                 'QFac':self.GetQFac(),
@@ -540,6 +550,12 @@ class PythiaWrapper(BasicWrapper):
     def GetX2Pdf(self):
         return ak.Array([x for x in self.pythia.getX2PdfArray()])
 
+    def GetPdf1(self):
+        return ak.Array([x for x in self.pythia.getPdf1Array()])
+
+    def GetPdf2(self):
+        return ak.Array([x for x in self.pythia.getPdf2Array()])
+
     def GetQFac(self):
         return ak.Array([x for x in self.pythia.getQFacArray()])
 
@@ -569,3 +585,306 @@ class PythiaWrapper(BasicWrapper):
 
     def GetWeights(self):
         return ak.Array([x for x in self.pythia.getWeightsArray()])
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+class PythiaWrapperV2(BasicWrapper):
+    """
+    An alternative wrapper for Pythia8, that utilizes
+    a custom C++/ROOT library.
+    The interface is relatively rudimentary, mostly
+    just functions needed for converting the Pythia8
+    event record to HepMC3 format.
+    """
+
+    def __init__(self,verbose=False):
+        super().__init__()
+
+        self.setup = PythiaWrapperSetup()
+
+        # Make sure that the underlying C++/ROOT library is built and loaded,
+        # if not it will build here.
+        self.setup.FullPreparation()
+        self.pythia = rt.PythiaGenerator.Generator()
+
+        self.config_dict = {}
+
+        self.use_hepmc_status = True
+
+        self.SetVerbose(verbose)
+        self.initialized = False
+        self.n_events = None
+        self.particles_per_event = None
+
+        # By default, turn on HepMC3 mode;
+        # This writes 
+        self.array_mode = False
+        self.hepmc_mode = True
+        self.hepmc_filename = 'output.hepmc.root'
+
+
+    def UseHepMCStatus(self,val:bool):
+        self.use_hepmc_status = val
+
+    def Generate(self, n):
+        """
+        Generate events.
+        """
+        if(not self.initialized): self.InitializePythia()
+        self.pythia.generate(int(n),True)
+        self.n_events = n
+
+    def SetArrayMode(self,val:bool):
+        self.array_mode = val
+
+    def SetHepMC3Mode(self,val:bool):
+        self.hepmc_mode = val
+
+    def SetOutputFilename(self,val:str):
+        self.hepmc_filename = val
+
+    # First, we have a ton of methods for accessing the data
+    # produced in "array" mode, whereby the wrapper will fill
+    # awkward arrays with information from the Pythia8 event record.
+    # This is similar to the Pythia Python interface's "nextBatch()"
+    # functionality, albeit not quite as fast.
+
+    @profile_method('PythiaWrapper.GetData')
+    def GetData(self,status_hepmc=None):
+        """
+        Provides output in awkward array format,
+        similar to Pythia8's "nextBatch()" function.
+        """
+
+        # Our methods for fetching flat arrays will give pairs/tuples,
+        # the last entry will be the number of particles per event.
+        # But we don't want to keep converting this to a list, so we'll
+        # actually cache it when we fetch particle ID.
+        pid = self.GetPdgId()
+
+        prt = ak.Array(
+            {
+                'id':pid,
+                'status':self._getStatus(status_hepmc),
+                'm':self.GetMass(),
+                'p':self.GetMomentum(),
+                'vProd':self.GetProdVertex(),
+                'vProdStatus':self.GetProdVertexStatus(),
+                # 'mother1':self.GetMother1(), # NOTE: motherList is much more useful
+                # 'mother2':self.GetMother2(),
+                'motherList':self.GetMotherList(),
+                # 'daughter1':self.GetDaughter1(), # NOTE: daughterList is much more useful
+                # 'daughter2':self.GetDaughter2(),
+                'daughterList':self.GetDaughterList(),
+                'col':self.GetColor(),
+                'acol':self.GetAntiColor()
+            }
+        )
+
+        event_info = ak.Array(
+            {
+                'id1':self.GetId1Pdf(),
+                'id2':self.GetId2Pdf(),
+                'pdf1':self.GetPdf1(),
+                'pdf2':self.GetPdf2(),
+                'x1':self.GetX1Pdf(),
+                'x2':self.GetX2Pdf(),
+                'QFac':self.GetQFac(),
+                'QRen':self.GetQRen(),
+                'nMPI':self.GetNumMPI(),
+                'code':self.GetCode(),
+                'alphaS':self.GetAlphaS(),
+                'alphaEM':self.GetAlphaEM(),
+                'sigmaGen':self.GetSigmaGen(),
+                'sigmaErr':self.GetSigmaErr(),
+                'weights':self.GetWeights()
+            }
+        )
+
+        return ak.Array({'prt':prt,'info':event_info})
+
+    def _getStatus(self,status_hepmc):
+        if(status_hepmc is None):
+            status_hepmc = self.use_hepmc_status
+        if(status_hepmc):
+            return self.GetStatusHepMC()
+        return self.GetStatus()
+
+    def _getNumParticlesPerEvent(self):
+        if(self.particles_per_event is None):
+            # still need to cache this
+            _ = self.GetPdgId()
+        return self.particles_per_event
+
+    def GetPdgId(self):
+        """
+        Fetches particle ID.
+        Also performs the special function of caching
+        the number of particles per event.
+        """
+        
+        pair = self.pythia.getParticleIDFlat()
+        self.particles_per_event = list(pair[1])
+        return ak.unflatten(list(pair[0]), self._getNumParticlesPerEvent())
+
+    def GetStatus(self):
+        pair = self.pythia.getStatusFlat()
+        return ak.unflatten(list(pair[0]), self._getNumParticlesPerEvent())
+
+    def GetStatusHepMC(self):
+        pair = self.pythia.getStatusHepMCFlat()
+        return ak.unflatten(list(pair[0]), self._getNumParticlesPerEvent())
+
+    def GetMass(self):
+        pair = self.pythia.getMassFlat()
+        return ak.unflatten(list(pair[0]), self._getNumParticlesPerEvent())
+
+    def GetMomentum(self):
+        # TODO: Is it better to structure this differently?
+        #       nextBatch() gives a jagged array of "records", each
+        #       represents one momentum vector (its fields are of length 1).
+        pair_e = self.pythia.getEnergyFlat()
+        pair_px = self.pythia.getPxFlat()
+        pair_py = self.pythia.getPyFlat()
+        pair_pz = self.pythia.getPzFlat()
+
+        energy = ak.unflatten(list(pair_e[0]),self._getNumParticlesPerEvent())
+        px = ak.unflatten(list(pair_px[0]),self._getNumParticlesPerEvent())
+        py = ak.unflatten(list(pair_py[0]),self._getNumParticlesPerEvent())
+        pz = ak.unflatten(list(pair_pz[0]),self._getNumParticlesPerEvent())
+
+        return ak.Array(
+            {
+                'e':energy,
+                'px':px,
+                'py':py,
+                'pz':pz
+            }
+        )
+
+    def GetProdVertex(self):
+        pair_t = self.pythia.getProdTFlat()
+        pair_x = self.pythia.getProdXFlat()
+        pair_y = self.pythia.getProdYFlat()
+        pair_z = self.pythia.getProdZFlat()
+
+        t = ak.unflatten(list(pair_t[0]),self._getNumParticlesPerEvent())
+        x = ak.unflatten(list(pair_x[0]),self._getNumParticlesPerEvent())
+        y = ak.unflatten(list(pair_y[0]),self._getNumParticlesPerEvent())
+        z = ak.unflatten(list(pair_z[0]),self._getNumParticlesPerEvent())
+
+        return ak.Array(
+            {
+                't':t,
+                'x':x,
+                'y':y,
+                'z':z
+            }
+        )
+    def GetProdVertexStatus(self):
+        pair = self.pythia.getHasProdVertexFlat()
+        return ak.unflatten(list(pair[0]), self._getNumParticlesPerEvent())
+
+    def GetMother1(self):
+        pair = self.pythia.getMother1Flat()
+        return ak.unflatten(list(pair[0]), self._getNumParticlesPerEvent())
+
+    def GetMother2(self):
+        pair = self.pythia.getMother2Flat()
+        return ak.unflatten(list(pair[0]), self._getNumParticlesPerEvent())
+
+    def GetMotherList(self):
+        triple = self.pythia.getMothersFlat()
+        tmp = ak.unflatten(list(triple._0),list(triple._1))
+        return ak.unflatten(tmp,self._getNumParticlesPerEvent())
+
+    def GetDaughter1(self):
+        pair = self.pythia.getDaughter1Flat()
+        return ak.unflatten(list(pair[0]), self._getNumParticlesPerEvent())
+
+    def GetDaughter2(self):
+        pair = self.pythia.getDaughter1Flat()
+        return ak.unflatten(list(pair[0]), self._getNumParticlesPerEvent())
+
+    def GetDaughterList(self):
+        triple = self.pythia.getDaughtersFlat()
+        tmp = ak.unflatten(list(triple._0),list(triple._1))
+        return ak.unflatten(tmp,self._getNumParticlesPerEvent())
+
+    def GetColor(self):
+        pair = self.pythia.getColorFlat()
+        return ak.unflatten(list(pair[0]), self._getNumParticlesPerEvent())
+
+    def GetAntiColor(self):
+        pair = self.pythia.getAntiColorFlat()
+        return ak.unflatten(list(pair[0]), self._getNumParticlesPerEvent())
+
+    # Event-level variable access
+    def GetId1Pdf(self):
+        return ak.Array(list(self.pythia.getId1PdfArray()))
+
+    def GetId2Pdf(self):
+        return ak.Array(list(self.pythia.getId2PdfArray()))
+
+    def GetX1Pdf(self):
+        return ak.Array(list(self.pythia.getX1PdfArray()))
+
+    def GetX2Pdf(self):
+        return ak.Array(list(self.pythia.getX2PdfArray()))
+
+    def GetPdf1(self):
+        return ak.Array(list(self.pythia.getPdf1Array()))
+
+    def GetPdf2(self):
+        return ak.Array(list(self.pythia.getPdf2Array()))
+
+    def GetQFac(self):
+        return ak.Array(list(self.pythia.getQFacArray()))
+
+    def GetQRen(self):
+        return ak.Array(list(self.pythia.getQRenArray()))
+
+    def GetNumMPI(self):
+        return ak.Array(list(self.pythia.getNMPIArray()))
+
+    def GetCode(self):
+        return ak.Array(list(self.pythia.getCodeArray()))
+
+    def GetAlphaS(self):
+        return ak.Array(list(self.pythia.getAlphaSArray()))
+
+    def GetAlphaEM(self):
+        return ak.Array(list(self.pythia.getAlphaEMArray()))
+
+    def GetSigmaGen(self):
+        return ak.Array(list(self.pythia.getSigmaGenArray()))
+
+    def GetSigmaErr(self):
+        return ak.Array(list(self.pythia.getSigmaErrArray()))
+
+    def GetNWeights(self):
+        return ak.Array(list(self.pythia.getNWeightsArray()))
+
+    def GetWeights(self):
+        return ak.Array(list(self.pythia.getWeightsArray()))
+    
+    # Now, methods for handling the HepMC3 mode.
+    def WriteHepMC3File(self,filename:str=None):
+        if(filename is None):
+            filename = self.hepmc_filename
+        
+        self.pythia.writeHepMC3File(filename)
