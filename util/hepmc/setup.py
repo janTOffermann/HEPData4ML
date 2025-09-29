@@ -178,7 +178,7 @@ class _HepMCSetupInternal:
                   require_read_with_index=True, force=False):
         """
         Checks if pyHepMC3 is available (and has the necessary features),
-        and downloads and builds it if not.
+        and builds it if not.
         """
         status = True
 
@@ -490,6 +490,10 @@ class _HepMCSetupInternal:
                 self._vprint("  rootIO directory does NOT exist ✗")
                 return False
 
+        # TODO: After some churn in the code, I'm finding this check fails on every reload,
+        #       which is causing the program to rebuild HepMC3 each time we run.
+        #       Should really try to figure this out. - Jan
+
         # step-by-step imports -- implicitly doing a _basic_check() again...
         try:
             self._vprint("\nDIAGNOSTIC: Step-by-step import...")
@@ -770,7 +774,7 @@ class HepMCSetup:
                  require_root: bool = True, require_append: bool = True,
                  require_read_with_index: bool = True, force: bool = False):
         """
-        Initialize HepMCSetup. The actual setup will only run once regardless
+        Initialize HepMCSetup. The actual setup should only run once regardless
         of how many instances are created.
 
         Args:

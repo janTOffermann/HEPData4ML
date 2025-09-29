@@ -17,30 +17,37 @@
 // // forward declarations for Pythia8
 namespace Pythia8{
   class Pythia;
+  class PythiaParallel;
   class Event;
   class Particle;
 }
 
 namespace HepMC3{
-  class Pythia8ToHepMC3; // NOTE: This comes from Pythia8 plugins!
   class GenEvent;
 }
 
 using namespace std;
 namespace PythiaGenerator{
 
+  class Pythia8ToHepMC3;
+
   class Generator{
     public:
-      Generator();
+      Generator(Bool_t parallel=kFALSE);
       virtual ~Generator();
 
+      void createGenerator(Bool_t parallel=kFALSE);
       void readString(TString string); // access to Pythia8's readString functionality
       void setQuiet();
-      void init(); // access to Pythia8's initialization
+      void init(); // access to Pythia8's initialization function
       void setArrayMode(Bool_t value=kTRUE){_arrayMode=value;};
       void setHepMC3Mode(Bool_t value=kTRUE){_hepmcMode=value;};
 
+      void setHepMC3RootWriter(Bool_t value=kTRUE){_hepmcRootMode = value;};
+      void setHepMC3AsciiWriter(Bool_t value=kTRUE){_hepmcAsciiMode = value;};
+
       void generate(Int_t nEvents = 1, Bool_t refresh=kTRUE); // generate events
+      void generateParallel(Int_t nEvents = 1, Bool_t refresh=kTRUE);
 
       void writeHepMC3File(TString filename);
 
@@ -191,21 +198,27 @@ namespace PythiaGenerator{
 
     private:
 
+      Bool_t _parallel = kFALSE;
       Bool_t _initialized = kFALSE;
       void _ClearParticleContainers();
       void _ClearContainers();
-      void _FillArrays();
-      void _FillHepMC3Events();
+      void _FillArrays(Pythia8::Pythia* pythia);
+      void _FillHepMC3Event(Pythia8::Pythia* pythia);
       void _ClearHepMC3Events();
 
       // Underlying instance of Pythia8 generator
       Pythia8::Pythia* _pythia = 0;
+      Pythia8::PythiaParallel* _pythiaParallel = 0;
+      Bool_t _instantiated = kFALSE;
 
       // Pythia8 -> HepMC3 converter class, from PythiaPlugins
-      HepMC3::Pythia8ToHepMC3* _converter = 0;
+      Pythia8ToHepMC3* _converter = 0;
 
       Bool_t _arrayMode = kFALSE;
       Bool_t _hepmcMode = kFALSE;
+      Bool_t _hepmcRootMode = kTRUE;
+      Bool_t _hepmcAsciiMode = kFALSE;
+
       /*
        * Containers for storing particle-level information.
        * We use vectors of vectors, to represent jagged 2D arrays.
