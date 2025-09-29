@@ -181,6 +181,18 @@ class Configurator:
 
     def GetPythiaRNGSeed(self):
         return self.config['generation']['rng']
+    
+    def GetGenerationBufferSize(self):
+        try:
+            return self.config['generation']['buffer_size']
+        except:
+            return 1000
+
+    def GetGenerationMode(self):
+        try:
+            return self.config['generation']['mode']
+        except:
+            return None
 
     def GetPileupHandler(self):
         return self.config['pileup']['handler']

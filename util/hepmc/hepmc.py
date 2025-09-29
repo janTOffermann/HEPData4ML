@@ -72,8 +72,9 @@ class Pythia8HepMC3Writer:
         self.initialized = True
 
     def _init_root(self):
-        from pyHepMC3.rootIO.pyHepMC3rootIO.HepMC3 import WriterRootTree
-        self.output = WriterRootTree(self.filename)
+        import pyHepMC3.rootIO.pyHepMC3rootIO as rio
+        # from pyHepMC3.rootIO.pyHepMC3rootIO.HepMC3 import WriterRootTree # TODO: This broke recently -- why? Something off with pyHepMC dependency handling. -Jan
+        self.output = rio.HepMC3.WriterRootTree(self.filename)
 
     def _init_ascii(self):
         from pyHepMC3 import HepMC3 as hm
@@ -268,8 +269,6 @@ def ParticleToMomenta(particle:'hm.GenParticle',):
         ]
     )
     return vectors
-
-
 
 
 def ParticleToProductionVertex(particle:'hm.GenParticle'):

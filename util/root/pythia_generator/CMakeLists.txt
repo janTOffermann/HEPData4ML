@@ -92,20 +92,28 @@ set(HEADER_OUTPUT_PATH ${CMAKE_BINARY_DIR}/include)
 #########
 
 # Find HepMC3 -- required for the HepMC3/ROOT format handling.
-# Will first search CMAKE_PREFIX_PATH, plus the HEPMC3_EXT_DIR
-# that we define here (to pick up a possible local installation).
+# Will first search HEPMC3_EXT_DIR, plus the CMAKE_PREFIX_PATH.
+# NOTE: It's important that we first search HEPMC3_EXT_DIR, because
+# we'll be loading this package with (Py)ROOT and we might run
+# into issues if its built against a different HepMC3 than the
+# one we're using in Python.
 # Note that we're also searching for the HepMC3/ROOT interface.
 set(HEPMC3_EXT_DIR "${REPO_DIR}/external/hepmc/hepmc3-install")
-
 message(STATUS "Set HEPMC3_EXT_DIR = ${HEPMC3_EXT_DIR}")
 
 find_path(HEPMC3_INCLUDE_DIR
     NAMES HepMC3
     PATHS
-        ${HEPMC3_EXT_DIR} # fallback
-        ${HEPMC3_EXT_DIR}/include # fallback
-
+        ${HEPMC3_EXT_DIR}
+        ${HEPMC3_EXT_DIR}/include
+    NO_DEFAULT_PATH
 )
+if(NOT HEPMC3_INCLUDE_DIR)
+    find_path(HEPMC3_INCLUDE_DIR
+        NAMES HepMC3
+    )
+endif()
+
 
 find_library(HEPMC3_LIBRARIES
     NAMES HepMC3 libHepMC3
@@ -113,10 +121,18 @@ find_library(HEPMC3_LIBRARIES
         ${HEPMC3_EXT_DIR}/lib64
         ${HEPMC3_EXT_DIR}/lib
         ${HEPMC3_EXT_DIR}
-        ${CMAKE_PREFIX_PATH}
-        ${CMAKE_PREFIX_PATH}/lib
-        ${CMAKE_PREFIX_PATH}/lib64
+    NO_DEFAULT_PATH
 )
+
+if(NOT HEPMC3_LIBRARIES)
+    find_library(HEPMC3_LIBRARIES
+        NAMES HepMC3 libHepMC3
+        PATHS
+            ${CMAKE_PREFIX_PATH}
+            ${CMAKE_PREFIX_PATH}/lib
+            ${CMAKE_PREFIX_PATH}/lib64
+    )
+endif()
 
 find_library(HEPMC3_ROOT_LIBRARIES
     NAMES HepMC3rootIO libHepMC3rootIO
@@ -124,10 +140,18 @@ find_library(HEPMC3_ROOT_LIBRARIES
         ${HEPMC3_EXT_DIR}/lib64
         ${HEPMC3_EXT_DIR}/lib
         ${HEPMC3_EXT_DIR}
-        ${CMAKE_PREFIX_PATH}
-        ${CMAKE_PREFIX_PATH}/lib
-        ${CMAKE_PREFIX_PATH}/lib64
+    NO_DEFAULT_PATH
 )
+
+if(NOT HEPMC3_ROOT_LIBRARIES)
+    find_library(HEPMC3_ROOT_LIBRARIES
+        NAMES HepMC3rootIO libHepMC3rootIO
+        PATHS
+            ${CMAKE_PREFIX_PATH}
+            ${CMAKE_PREFIX_PATH}/lib
+            ${CMAKE_PREFIX_PATH}/lib64
+    )
+endif()
 
 message(STATUS "Found HepMC3 headers: ${HEPMC3_INCLUDE_DIR}")
 message(STATUS "Found HepMC3 library: ${HEPMC3_LIBRARIES}")
