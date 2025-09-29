@@ -1,4 +1,5 @@
 #include <pythia_generator/PythiaGenerator.h>
+#include <pythia_generator/PythiaToHepMC3.h>
 
 //standard library includes
 #include <algorithm> // std::transform
@@ -7,57 +8,101 @@
 #include "Pythia8/Pythia.h"
 #include "Pythia8/Event.h"
 
-// Pythia8 plugin includes -- HepMC3 interface.
-// NOTE: In general we don't require Pythia8
-//       to be built against our local HepMC3 install,
-//       which has some custom features -- we're just
-//       going to use "standard" HepMC3/ROOT writing.
-#include "Pythia8Plugins/HepMC3.h"
+#include "Pythia8/PythiaParallel.h"
 
 // HepMC3 includes
 #include "HepMC3/GenEvent.h"
 #include "HepMC3/WriterRootTree.h"
+#include "HepMC3/WriterAscii.h"
+#include "HepMC3/GenRunInfo.h"
 
 using namespace std;
 
 namespace PythiaGenerator{
 
-  Generator::Generator(){
-    _pythia = new Pythia8::Pythia("",kFALSE); // avoid printing the banner
-
-    _converter = new HepMC3::Pythia8ToHepMC3();
+  Generator::Generator(Bool_t parallel){
+    createGenerator(parallel);
+    _converter = new Pythia8ToHepMC3();
   }
 
   Generator::~Generator(){
-    delete _pythia;
+    if (_parallel) delete _pythiaParallel;
+    else delete _pythia;
     delete _converter;
     for (auto entry : _events) delete entry;
   }
 
+  void Generator::createGenerator(Bool_t parallel){
+    _parallel = parallel;
+    if(_parallel){
+      if(_instantiated) delete _pythiaParallel;
+      _pythiaParallel = new Pythia8::PythiaParallel("",kFALSE);
+    }
+    else{
+      if(_instantiated) delete _pythia;
+      _pythia = new Pythia8::Pythia("",kFALSE); // avoid printing the banner
+    }
+    _instantiated = kTRUE;
+  }
+
   void Generator::readString(TString string){
-    _pythia->readString(string.Data());
+    if(!_parallel) _pythia->readString(string.Data());
+    else _pythiaParallel->readString(string.Data());;
     return;
   }
 
   void Generator::setQuiet(){
-    _pythia->readString("Print:quiet = on");
+    if(!_parallel) _pythia->readString("Print:quiet = on");
+    else _pythiaParallel->readString("Print:quiet = on");
   }
 
   void Generator::init(){
-    _pythia->init();
+    if(!_parallel) _pythia->init();
+    else _pythiaParallel->init();
     _initialized = kTRUE;
     return;
   }
 
   void Generator::writeHepMC3File(TString filename){
-    if(!_hepmcMode) return; // nothing to write
-
-    HepMC3::WriterRootTree* writer = new HepMC3::WriterRootTree(filename.Data());
-
-    for(HepMC3::GenEvent* event : _events){
-      writer->write_event(*event);
+    if(!_hepmcMode){
+      cout << "PythiaGenerator::Generator::writeHepMc3File: Skipping write, HepMC3 mode is off." << endl;
+      return; // nothing to write
     }
-    writer->close();
+    if(_events.size() == 0){
+      cout << "PythiaGenerator::Generator::writeHepMc3File: No events in buffer." << endl;
+      return; // nothing to write
+    }
+
+    if(!(_hepmcRootMode || _hepmcAsciiMode)){
+      cout << "PythiaGenerator::Generator::writeHepMc3File: Neither ROOT nor ASCII writing turned on." << endl;
+      return; // nothing to write
+    }
+
+    if(_hepmcRootMode && _hepmcAsciiMode){
+      cout << "PythiaGenerator::Generator::writeHepMc3File: Both ROOT nor ASCII writing turned on. This is currently unsupported." << endl;
+      return; // nothing to write
+    }
+
+    if(_hepmcRootMode){
+      HepMC3::WriterRootTree* writer = new HepMC3::WriterRootTree(
+        filename.Data(),
+        shared_ptr<HepMC3::GenRunInfo>(),
+        kTRUE // append mode -- might not be available in HepMC3 via CVMFS, it's a new feature I added. -Jan
+      );
+      for(HepMC3::GenEvent* event : _events){
+        writer->write_event(*event);
+      }
+      writer->close();
+      delete writer;
+    }
+    else{ // Ascii mode
+      HepMC3::WriterAscii* writer = new HepMC3::WriterAscii(filename.Data());
+      for(HepMC3::GenEvent* event : _events){
+        writer->write_event(*event);
+      }
+      writer->close();
+      delete writer;
+    }
     _ClearHepMC3Events();
   }
 
@@ -108,7 +153,7 @@ namespace PythiaGenerator{
     _events.clear();
   }
 
-  void Generator::_FillArrays(){
+  void Generator::_FillArrays(Pythia8::Pythia* pythia){
     // Deal with particle-level information.
     vector<Int_t> pid = {};
     vector<Int_t> status = {};
@@ -128,40 +173,40 @@ namespace PythiaGenerator{
     vector<Int_t> col = {};
     vector<Int_t> acol = {};
 
-    for (Int_t j = 1; j < _pythia->event.size(); j++){ // Skip entry 0, which represents "the event as a whole"
+    for (Int_t j = 1; j < pythia->event.size(); j++){ // Skip entry 0, which represents "the event as a whole"
 
-      pid.push_back(_pythia->event[j].id());
-      status.push_back(_pythia->event[j].status());
-      statusHepMC.push_back(_pythia->event[j].statusHepMC());
+      pid.push_back(pythia->event[j].id());
+      status.push_back(pythia->event[j].status());
+      statusHepMC.push_back(pythia->event[j].statusHepMC());
 
-      vector<Double_t> momentum = {_pythia->event[j].e(), _pythia->event[j].px(), _pythia->event[j].py(), _pythia->event[j].pz()};
+      vector<Double_t> momentum = {pythia->event[j].e(), pythia->event[j].px(), pythia->event[j].py(), pythia->event[j].pz()};
       p.push_back(momentum);
 
-      vector<Double_t> vertex = {_pythia->event[j].tProd(), _pythia->event[j].xProd(), _pythia->event[j].yProd(), _pythia->event[j].zProd()};
+      vector<Double_t> vertex = {pythia->event[j].tProd(), pythia->event[j].xProd(), pythia->event[j].yProd(), pythia->event[j].zProd()};
       vProd.push_back(vertex);
-      hasVertex.push_back(_pythia->event[j].hasVertex());
+      hasVertex.push_back(pythia->event[j].hasVertex());
 
-      mass.push_back(_pythia->event[j].m());
+      mass.push_back(pythia->event[j].m());
 
       // For mother and daughter info, convert from 1-indexing to 0-indexing
-      mother1.push_back(_pythia->event[j].mother1() - 1);
-      mother2.push_back(_pythia->event[j].mother2() - 1);
+      mother1.push_back(pythia->event[j].mother1() - 1);
+      mother2.push_back(pythia->event[j].mother2() - 1);
       mothers.push_back([&](){
-        vector<Int_t> ml = _pythia->event[j].motherList();
+        vector<Int_t> ml = pythia->event[j].motherList();
         std::transform(ml.begin(), ml.end(), ml.begin(), [](Int_t x) { return x - 1; });
         return ml;
       }());
 
-      daughter1.push_back(_pythia->event[j].daughter1() - 1);
-      daughter2.push_back(_pythia->event[j].daughter2() - 1);
+      daughter1.push_back(pythia->event[j].daughter1() - 1);
+      daughter2.push_back(pythia->event[j].daughter2() - 1);
       daughters.push_back([&](){
-        vector<Int_t> dl = _pythia->event[j].daughterList();
+        vector<Int_t> dl = pythia->event[j].daughterList();
         std::transform(dl.begin(), dl.end(), dl.begin(), [](Int_t x) { return x - 1; });
         return dl;
       }());
 
-      col.push_back(_pythia->event[j].col());
-      acol.push_back(_pythia->event[j].acol());
+      col.push_back(pythia->event[j].col());
+      acol.push_back(pythia->event[j].acol());
     }
     _pid.push_back(pid);
     _status.push_back(status);
@@ -183,45 +228,50 @@ namespace PythiaGenerator{
     _acol.push_back(acol);
 
     // Now, deal with some event information.
-    _id1Pdf.push_back(_pythia->info.id1pdf());
-    _id2Pdf.push_back(_pythia->info.id2pdf());
+    _id1Pdf.push_back(pythia->info.id1pdf());
+    _id2Pdf.push_back(pythia->info.id2pdf());
 
-    _pdf1.push_back(_pythia->info.pdf1());
-    _pdf2.push_back(_pythia->info.pdf2());
+    _pdf1.push_back(pythia->info.pdf1());
+    _pdf2.push_back(pythia->info.pdf2());
 
-    _x1Pdf.push_back(_pythia->info.x1pdf());
-    _x2Pdf.push_back(_pythia->info.x2pdf());
+    _x1Pdf.push_back(pythia->info.x1pdf());
+    _x2Pdf.push_back(pythia->info.x2pdf());
 
-    _QFac.push_back(_pythia->info.QFac());
-    _QRen.push_back(_pythia->info.QRen());
+    _QFac.push_back(pythia->info.QFac());
+    _QRen.push_back(pythia->info.QRen());
 
-    _nMPI.push_back(_pythia->info.nMPI());
-    _code.push_back(_pythia->info.code());
+    _nMPI.push_back(pythia->info.nMPI());
+    _code.push_back(pythia->info.code());
 
-    _alphaS.push_back(_pythia->info.alphaS());
-    _alphaEM.push_back(_pythia->info.alphaEM());
+    _alphaS.push_back(pythia->info.alphaS());
+    _alphaEM.push_back(pythia->info.alphaEM());
 
-    _sigmaGen.push_back(_pythia->info.sigmaGen());
-    _sigmaErr.push_back(_pythia->info.sigmaErr());
+    _sigmaGen.push_back(pythia->info.sigmaGen());
+    _sigmaErr.push_back(pythia->info.sigmaErr());
 
-    Int_t nWeights = _pythia->info.nWeights();
+    Int_t nWeights = pythia->info.nWeights();
     _nWeights.push_back(nWeights);
 
     vector<Double_t> weights = {};
     for(Int_t j = 0; j < nWeights; j++){
-      weights.push_back(_pythia->info.weight(j));
+      weights.push_back(pythia->info.weight(j));
     }
     _weights.push_back(weights);
 
   }
 
-  void Generator::_FillHepMC3Events(){
+  void Generator::_FillHepMC3Event(Pythia8::Pythia* pythia){
     HepMC3::GenEvent* evt = new HepMC3::GenEvent();
-    _converter->fill_next_event(*_pythia,evt);
+    _converter->fill_next_event(*pythia,evt);
     _events.push_back(evt);
   }
 
   void Generator::generate(Int_t nevents, Bool_t refresh){
+    if(_parallel){
+      generateParallel(nevents,refresh);
+      return;
+    }
+
     if(!_initialized){
       cout << "Error: PythiaGenerator::Generator is not yet initialized." << endl;
       return;
@@ -234,8 +284,35 @@ namespace PythiaGenerator{
       Bool_t stat = _pythia->next();
 
       // In array mode, we fill the arrays with the various particle/event attributes.
-      if(_arrayMode) _FillArrays();
+      if(_arrayMode) _FillArrays(_pythia);
+
+      // in HepMC3 mode, we will fill a vector of HepMC3 events, which we can later flush to a file.
+      if(_hepmcMode) _FillHepMC3Event(_pythia);
     }
+
+    // In array mode, we take the opportunity to compute the number of particles per event.
+    if(_arrayMode) _nParticlesPerEvent = get2VectorCounts(_status);
+    return;
+  }
+
+  void Generator::generateParallel(Int_t nevents, Bool_t refresh){
+    if(!_initialized){
+      cout << "Error: PythiaGenerator::Generator is not yet initialized." << endl;
+      return;
+    }
+
+    // For array mode, we need to clear the arrays if requested.
+    if(refresh && _arrayMode) _ClearContainers();
+
+    // Generate the events using PythiaParallel
+    _pythiaParallel->run(
+      [&](Pythia8::Pythia* pythiaPtr) {
+        // In array mode, we fill the arrays with the various particle/event attributes.
+      if(_arrayMode) _FillArrays(pythiaPtr);
+
+      // in HepMC3 mode, we will fill a vector of HepMC3 events, which we can later flush to a file.
+      if(_hepmcMode) _FillHepMC3Event(pythiaPtr);
+    });
 
     // In array mode, we take the opportunity to compute the number of particles per event.
     if(_arrayMode) _nParticlesPerEvent = get2VectorCounts(_status);
@@ -313,6 +390,4 @@ namespace PythiaGenerator{
   template vector<Int_t> Generator::get3VectorCounts<Double_t>(const vector<vector<vector<Double_t>>>& nested_data);
   template vector<Int_t> Generator::get3VectorFlat<Int_t>(const vector<vector<vector<Int_t>>>& nested_data);
   template vector<Double_t> Generator::get3VectorFlat<Double_t>(const vector<vector<vector<Double_t>>>& nested_data);
-
-
 }

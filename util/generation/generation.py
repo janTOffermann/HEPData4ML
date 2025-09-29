@@ -1,10 +1,10 @@
 import os
 import numpy as np
 import subprocess as sub
-from util.pythia.pythia import PythiaPythonWrapper, PythiaWrapper, PythiaWrapperV2
+from util.pythia.pythia import PythiaPythonWrapper, PythiaWrapper
 from util.hepmc.hepmc import Pythia8HepMC3Writer
-from util.hepmc.Pythia8ToHepMC3 import PythiaToHepMC, PythiaToHepMCBatch, PythiaWrapperToHepMCBatch
-from util.hepmc.setup import HepMCSetup, prepend_to_pythonpath
+from util.hepmc.Pythia8ToHepMC3 import PythiaToHepMC
+from util.hepmc.setup import HepMCSetup, prepend_to_pythonpath, uncache_hepmc3
 from util.qol_utils.progress_bar import printProgressBarColor
 from util.misc.timing import profile_method, profile_block
 from typing import Optional,TYPE_CHECKING
@@ -29,20 +29,27 @@ class PythiaGenerator:
         self.pythia_rng = pythia_rng
         self.verbose = self.configurator.GetPythiaVerbosity()
 
-        if(use_custom_pythia_interface):
-            self.pythia = PythiaWrapper(verbose=self.verbose)
-            self.hepmc_converter_batch = PythiaWrapperToHepMCBatch(self.configurator.GetHepMC3Directory())
-        else:
+        # Determine how we're accessing Pythia. Are we:
+        # 0) Using Pythia's native Python interface?
+        # 1) Using our own Pythia (+HepMC3) library? (which we might need to build on-the-fly)
+        # 2) Same as #2, but leveraging the Pythia8::PythiaParallel class for multithreading?
+        pythia_mode = self.configurator.GetGenerationMode()
+        if pythia_mode not in [0,1,2]:
+            pythia_mode = 2
+
+        if(pythia_mode == 0):
             self.pythia = PythiaPythonWrapper(verbose=self.verbose)
-            self.hepmc_converter_batch = PythiaToHepMCBatch(self.configurator.GetHepMC3Directory())
+        else:
+            parallelism = pythia_mode == 2
+            self.pythia = PythiaWrapper(verbose=self.verbose,parallel=parallelism)
 
         self.ConfigPythia(config_file=pythia_config_file,verbose=self.verbose)
 
         # Set up HepMC, and create our HepMC converter
-        self.hepmc_setup = HepMCSetup(self.configurator.GetHepMC3Directory(),verbose=False)
-        # self.hepmc_setup.PrepHepMC()
+        # TODO: Move this all the way up to the run.py script?
+        self.hepmc_setup = HepMCSetup(self.configurator.GetHepMC3Directory())
         python_dir = self.hepmc_setup.GetPythonDirectory()
-        # uncache_hepmc3()
+        uncache_hepmc3()
         prepend_to_pythonpath(python_dir)
 
         # Also set the configurator's HepMC directory, so that in case it was "None" we don't end up
@@ -83,8 +90,10 @@ class PythiaGenerator:
         self.loop_number = 0 # used for keeping track of successful generation loops
         self.nevents = None # number of events requested, will be set in generation function
 
+        buffer_size = self.configurator.GetGenerationBufferSize()
+
         self.hepev_buffer = []
-        self.SetBufferSize(100) # TODO: Should this be configurable? Could be too much detail.
+        self.SetBufferSize(buffer_size)
         self.buffername = None
         self.buffername_truth = None
         self.nevents_success = 0 # number of events successfully generated
@@ -195,7 +204,6 @@ class PythiaGenerator:
         # Now apply these configurations to our Generator's instance of PythiaWrapper.
         self.pythia.ClearConfigDict()
         self.pythia.AddToConfigDict(self.pythia_config)
-        # self.pythia.ReadConfigDict()
         self.pythia.ReadStringsFromFile(self.pythia_config_file)
         self.pythia.InitializePythia()
 
@@ -222,19 +230,9 @@ class PythiaGenerator:
         if(footer): self.footer_status = True
 
         self.writer.Write(self.hepev_buffer)
-
-        # PyHepMCOutput(self.hepev_buffer,self.buffername,self.filename_fullpath,header,footer)
-        # HepMCOutputAscii(self.hepev_buffer,self.buffername,self.filename_fullpath,header,footer)
-
         self.ClearEventBuffer()
 
-
     def GenerateBatch(self, nevents, i_real:int=1, nevents_disp:Optional[int]=None):
-        if(isinstance(self.pythia,PythiaPythonWrapper)):
-            return self._generateBatchPythiaPythonWrapper(nevents, i_real, nevents_disp)
-        return self._generateBatchPythiaWrapper(nevents, i_real, nevents_disp)
-
-    def _generateBatchPythiaWrapper(self, nevents, i_real:int=1, nevents_disp:Optional[int]=None):
         if(nevents_disp is None): nevents_disp = nevents # number of events to display in progress bar
 
         # The way that HepMC3's ASCII writing works, writing an event will overwrite the whole file.
@@ -244,9 +242,16 @@ class PythiaGenerator:
         # we can do with HepMC3's ROOT TTree format.
         self.filename_fullpath = '{}/{}'.format(self.outdir,self.filename)
 
-        # For ASCII mode, create buffer file.
-        if(self.writer.GetMode().lower() == 'ascii'):
-            self.buffername = self.filename_fullpath.replace('.hepmc','_buffer.hepmc')
+        self.pythia.SetArrayMode(False)
+        self.pythia.SetHepMC3Mode(True)
+
+        # TODO: Our code might not be built against a HepMC3 installation that supports
+        #       append functionality -- for now, we just write to the final output file,
+        #       without the event filter this should be invoked only once and write the
+        #       correct number of files. Eventually, we can have this write to a new file
+        #       on each call, and then combine them using pyHepMC3 w/ append functionality
+        #       (from our local installation) or maybe even utilized hadd for ROOT?
+        self.pythia.SetOutputFilename(self.filename_fullpath)
 
         # Determine how many events to actually generate on this call.
         # We base this on what was requested, but also on the current
@@ -259,77 +264,15 @@ class PythiaGenerator:
 
         # TODO: (Re)implement event filter logic.
 
-        # Convert the Pythia8 events into HepMC3 events.
-        hepmc_events = self.hepmc_converter_batch.fill_batch_events(self.pythia.GetData(), i_real)
-
-        # Fill the memory buffer with the event list.
-        self.AddToEventBuffer(hepmc_events)
-
-        # Write to the buffer, then flush it. Note that this is different than in GenerationLoop.
-        self.WriteEventBufferToFile(header=True,footer=True)
-
         i_real += nevents_real # counter for number of successful events
 
         if(self.progress_bar): printProgressBarColor(i_real-1,nevents_disp, prefix=self.prefix, suffix=self.suffix, length=self.bl)
 
-        # Delete the buffer files, if relevant.
-        if(self.buffername is not None):
-            comm = ['rm', self.buffername]
-            try: sub.check_call(comm,stderr=sub.DEVNULL)
-            except: pass
+        # Write the file.
+        with profile_block('Generator.GenerateBatch - write HepMC3'):
+            self.pythia.WriteHepMC3File()
 
         return i_real-1, 0 # note that i_real is using 1-indexing, which is what HepMC events use
-
-
-
-    def _generateBatchPythiaPythonWrapper(self, nevents, i_real:int=1, nevents_disp:Optional[int]=None):
-
-
-        if(nevents_disp is None): nevents_disp = nevents # number of events to display in progress bar
-
-        # The way that HepMC3's ASCII writing works, writing an event will overwrite the whole file.
-        # Thus for the time being, we will circumvent this limitation by making a buffer file where each event
-        # is written, and then copied to the "main" file before the next event is generated. This I/O might slow
-        # down things, so we ultimately want to find some way to do a write with "append" functionality, which
-        # we can do with HepMC3's ROOT TTree format.
-        self.filename_fullpath = '{}/{}'.format(self.outdir,self.filename)
-
-        # For ASCII mode, create buffer file.
-        if(self.writer.GetMode().lower() == 'ascii'):
-            self.buffername = self.filename_fullpath.replace('.hepmc','_buffer.hepmc')
-
-        # Determine how many events to actually generate on this call.
-        # We base this on what was requested, but also on the current
-        # buffer size.
-        nevents_real = np.minimum(nevents,self.buffer_size - self.GetCurrentBufferSize())
-
-        # Generate the events -- does the whole batch all at once!
-        with profile_block('Generator.GenerateBatch - pythia'):
-            self.pythia.GenerateBatch(nevents_real) # fills self.pythia.events
-
-        # TODO: (Re)implement event filter logic.
-
-        # Convert the Pythia8 events into HepMC3 events.
-        hepmc_events = self.hepmc_converter_batch.fill_batch_events(self.pythia.events,self.pythia.GetPythia().infoPython(), i_real)
-
-        # Fill the memory buffer with the event list.
-        self.AddToEventBuffer(hepmc_events)
-
-        # Write to the buffer, then flush it. Note that this is different than in GenerationLoop.
-        self.WriteEventBufferToFile(header=True,footer=True)
-
-        i_real += nevents_real # counter for number of successful events
-
-        if(self.progress_bar): printProgressBarColor(i_real-1,nevents_disp, prefix=self.prefix, suffix=self.suffix, length=self.bl)
-
-        # Delete the buffer files, if relevant.
-        if(self.buffername is not None):
-            comm = ['rm', self.buffername]
-            try: sub.check_call(comm,stderr=sub.DEVNULL)
-            except: pass
-
-        return i_real-1, 0 # note that i_real is using 1-indexing, which is what HepMC events use
-
 
     def GenerationLoop(self, nevents,i_real:int = 1, nevents_disp:Optional[int]=None):
         """
@@ -420,19 +363,25 @@ class PythiaGenerator:
     # We do perform event selection: Only certain particles are saved to the file to begin with.
     @profile_method('PythiaGenerator.Generate')
     def Generate(self,nevents:int):
+
         self.nevents = nevents # total number of events we request
-
-        self.writer.InitializeWriter()
-
         if(self.progress_bar): printProgressBarColor(0,nevents, prefix=self.prefix, suffix=self.suffix, length=self.bl)
 
-        # TODO: Eventually make this toggleable, or pick whichever method performs better.
-        #       Right now, batch is only ~10% faster due to the HepMC3 conversion, but
-        #       pythia.nextBatch() output has some issues with production vertices.
-        #       See: https://gitlab.com/Pythia8/releases/-/issues/634
-        use_batch = True
+        # TODO: Eventually, we should move towards always using batch event production since this
+        #       will likely be faster (though it requires some reworking of our event filter logic).
+        #       For now, we will only use batch production if a PythiaWrapper is used, and not if a
+        #       PythiaPythonWrapper is used. This is because the latter depends entirely on Pythia8's
+        #       built-in Python interface, and its nextBatch() function has some issues with returning
+        #       production vertices: https://gitlab.com/Pythia8/releases/-/issues/634
+        #       In addition, it forces us to compute the motherList/daughterList info in our Python-based
+        #       Pythia->HepMC conversion, which is quite slow and largely negates the speed advantages of
+        #       using this batch production. By contrast, PythiaWrapper uses our own interface, but it will
+        #       require your Pythia8 installation to have been built against (some) HepMC3 installation.
+        use_batch = isinstance(self.pythia,PythiaWrapper)
 
         if(not use_batch):
+            self.writer.InitializeWriter()
+
             # Loop in such a way as to guarantee that we get as many events as requested.
             # This logic is required as events could technically fail selections, e.g. not have the
             # requested truth particles (depends on requested truth particles & processes).
@@ -446,8 +395,10 @@ class PythiaGenerator:
                     nevents_disp = nevents
                 )
                 self.loop_number += 1
+                self.writer.Close()
 
-        else:
+        else: # writing is handled within GenerateBatch()
+            # TODO: We don't have any event_filter logic implemented for batch generation -> everything will pass
             self.nevents_success = 0
             batch_size_default = self.buffer_size
             batch_size = batch_size_default
@@ -456,8 +407,6 @@ class PythiaGenerator:
                 batch_size = np.minimum(batch_size_default, nevents - self.nevents_success)
                 self.nevents_success, n_fail = self.GenerateBatch(batch_size,i_real = self.nevents_success+1,nevents_disp=nevents)
                 self.loop_number += 1
-
-        self.writer.Close()
 
         self.metadata_handler.AddCitations(self.GetCitations())
         return

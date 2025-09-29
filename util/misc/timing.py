@@ -3,6 +3,7 @@ import functools
 from collections import defaultdict
 from contextlib import contextmanager
 from threading import local
+import numpy as np
 
 class TimingProfiler:
     def __init__(self):
@@ -31,12 +32,13 @@ class TimingProfiler:
         return decorator
 
     def report(self):
-        print(f"{'Method':<40} {'Total Time (s)':<15} {'Avg Time (s)':<15} {'Calls':<10}")
-        print("-" * 80)
+        width = int(np.max([len(x) for x in self.times.keys()]) + 3)
+        print(f"{'Method':<{width}} {'Total Time (s)':<15} {'Avg Time (s)':<15} {'Calls':<10}")
+        print("-" * (40 + width))
         for method, total_time in sorted(self.total_times.items(), key=lambda x: x[1], reverse=True):
             avg_time = total_time / len(self.times[method])
             calls = len(self.times[method])
-            print(f"{method:<40} {total_time:<15.4f} {avg_time:<15.6f} {calls:<10}")
+            print(f"{method:<{width}} {total_time:<15.4f} {avg_time:<15.6f} {calls:<10}")
 
 # Thread-local storage for current profiler
 _thread_local = local()

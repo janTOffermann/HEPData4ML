@@ -5,6 +5,7 @@
 import numpy as np
 from typing import List, TYPE_CHECKING
 from collections import deque
+from util.hepmc.setup import uncache_hepmc3
 
 if TYPE_CHECKING: # Only imported during type checking -- avoids risk of circular imports
     from util.hepmc.setup import HepMCSetup, prepend_to_pythonpath
@@ -12,6 +13,8 @@ if TYPE_CHECKING: # Only imported during type checking -- avoids risk of circula
     # make sure Python HepMC3 bindings are setup
     setup = HepMCSetup(verbose=False)
     python_dir = setup.GetPythonDirectory()
+
+    uncache_hepmc3()
     prepend_to_pythonpath(python_dir)
 
     from pyHepMC3 import HepMC3 as hm
