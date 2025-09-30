@@ -6,7 +6,7 @@
 # the reading might be quite slow there.
 #============================================
 import sys, importlib
-from util.hepmc.setup import HepMCSetup, prepend_to_pythonpath
+from util.hepmc.setup import HepMCSetup, prepend_to_pythonpath, uncache_hepmc3
 from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
@@ -121,12 +121,26 @@ class ReaderAscii:
 
 class ReaderRootTree:
     def __init__(self, filename: str):
+
+        # NOTE: Here, we do some HepMC3 setup stuff.
+        #       This might look redundant, but we do
+        #       it since we *might* have previously
+        #       loaded a library built against a
+        #       *different* HepMC3, e.g. the CVMFS
+        #       Pythia8 installation (that our custom
+        #       Pythia wrappers use). It seems like this
+        #       can cause some mess, and this load here
+        #       is a potential workaround. - Jan
+        # TODO: Could probably use some general cleanup,
+        #       and will have to ensure this is implemented
+        #       throughout the code as necessary.
+
         self.setup = HepMCSetup(verbose=False)
         python_dir = self.setup.GetPythonDirectory()
         prepend_to_pythonpath(python_dir)
-        import pyHepMC3.rootIO.pyHepMC3rootIO.HepMC3 as hm_root_io
+        import pyHepMC3.rootIO as hm_root_io
 
-        self._reader = hm_root_io.ReaderRootTree(filename)
+        self._reader = hm_root_io.HepMC3.ReaderRootTree(filename)
         self._current_event_number = 0
         self.filename = filename
 

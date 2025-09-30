@@ -1,9 +1,47 @@
-import time
-import functools
+import time, functools, datetime
 from collections import defaultdict
 from contextlib import contextmanager
 from threading import local
 import numpy as np
+
+class BasicTimer:
+    def __init__(self):
+        self.dict = {}
+
+    def start_main(self):
+        self.start_time = time.time()
+
+    def end_main(self):
+        self.end_time = time.time()
+
+    # Function to help with timestamps (for our very basic profiling)
+    def start_timestamp(self, key):
+        if(key) not in self.dict.keys():
+            self.dict[key] = {'start':[],'end':[]}
+        self.dict[key]['start'].append(time.time())
+
+    def end_timestamp(self, key):
+        if(key) not in self.dict.keys():
+            self.dict[key] = {'start':[],'end':[]}
+        self.dict[key]['end'].append(time.time())
+
+    def _summarize_main(self):
+        elapsed_time = self.end_time - self.start_time
+        elapsed_time_readable = str(datetime.timedelta(seconds=elapsed_time))
+        print('Time elapsed = {:.1f} seconds.'.format(elapsed_time))
+        print('({})'.format(elapsed_time_readable))
+
+    def summarize_time(self):
+        print('\n#############################')
+        self._summarize_main()
+        print('Breakdown by step:')
+        for key in self.dict.keys():
+            elapsed_time = np.sum(np.array(self.dict[key]['end']) - np.array(self.dict[key]['start']))
+            elapsed_time_readable = str(datetime.timedelta(seconds=elapsed_time))
+            print('\tTime on {} step: {:.1f} seconds\t({})'.format(key, elapsed_time,elapsed_time_readable))
+        print('\n#############################')
+        return
+
 
 class TimingProfiler:
     def __init__(self):

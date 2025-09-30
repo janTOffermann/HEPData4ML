@@ -85,10 +85,10 @@ class HDF5FlushHandler(BufferFlushHandler):
             self.status = 'a'
 
     def flush(self, data: Dict[str, np.ndarray], start_event: int, end_event: int, nevents: int):
-        
+
         if(self.f is None):
             self._init_file()
-        
+
         if(self.verbose): self._print("\tFlushing events {}-{} to {}".format(start_event,end_event-1,self.filename))
         # self.f = h5.File(self.filename,self.status)
         for key, array in data.items():
@@ -113,20 +113,20 @@ class HDF5FlushHandler(BufferFlushHandler):
         else:
             chunks = True # or set to False?
         dset = self.f.create_dataset(
-            key, 
+            key,
             data=np.zeros(dset_shape,dtype=array.dtype),
             compression='gzip',
             compression_opts=self.copts,
             chunks=chunks
         )
         return dset
-    
+
     def close(self,output_file:Optional[str]=None, copts=0):
 
         # First, close the buffer output.
         self.f.close()
 
-        # Now, we optionally merge the buffer output 
+        # Now, we optionally merge the buffer output
         # into the  provided output_file.
         if(output_file is not None):
             MergeH5(output_file,
@@ -365,12 +365,15 @@ class OutputBuffer:
         self._number_written[key] = np.sum(self._written[key])
 
     @profile_method('OutputBuffer.set')
-    def set(self,key: str, index: int, value: Any):
+    def set(self,key: str, index: Optional[int], value: Any):
         """
         For setting values of entries in the Buffer. (i.e. particular BufferArrays).
         Handles embedding/zero-padding as needed.
         In general, this is the function one should use for putting data into the buffer.
         """
+
+        index = slice(None) if index is None else index
+
         if(isinstance(value,int) or isinstance(value,float)):
             self[key][index] = value
         else:
@@ -418,8 +421,8 @@ class OutputBuffer:
             self._initialize_array(key, arr_shape, dtype)
         return self._buffer_arrays[key]
 
-    def close(self,output_file:str):
+    def close(self,output_file:Optional[str]=None):
         self.flush_handler.close(output_file)
-        
+
     def _print(self,val:str):
         print('{} {}'.format(self.print_prefix,val))
