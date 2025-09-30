@@ -39,9 +39,12 @@ class PythiaGenerator:
 
         if(pythia_mode == 0):
             self.pythia = PythiaPythonWrapper(verbose=self.verbose)
+            self.writer = Pythia8HepMC3Writer()
+
         else:
             parallelism = pythia_mode == 2
             self.pythia = PythiaWrapper(verbose=self.verbose,parallel=parallelism)
+            self.writer = None
 
         self.ConfigPythia(config_file=pythia_config_file,verbose=self.verbose)
 
@@ -73,8 +76,6 @@ class PythiaGenerator:
         self.bl = 50
 
         self.SetOutputDirectory()
-
-        self.writer = Pythia8HepMC3Writer()
 
         self.SetFilename('events.hepmc')
         self.filename_fullpath = None

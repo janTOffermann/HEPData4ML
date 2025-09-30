@@ -8,7 +8,6 @@ from util.fastjet.jetfinderbase import JetFinderBase
 from util.qol_utils.progress_bar import printProgressBarColor
 from util.buffer.output import OutputBuffer
 from util.misc.timing import profile_method, profile_block
-from util.hdf5.hdf5 import MergeH5 # TODO: Maybe work this into the OutputBuffer's flush handler somehow?
 
 import util.reconstruction.post_processing.utils.ghost_association as ghost_assoc
 import util.reconstruction.post_processing.utils.softdrop as softdrop
@@ -46,7 +45,7 @@ class JetFinder(JetFinderBase):
         self.fastjet_dir = fastjet_dir
 
         self.buffer_size = 500
-        self.buffer = OutputBuffer(500) # TODO: Make buffer size configurable. Larger sizes use more memory, but may be faster since we do fewer flushes and thus less I/O (depends on how good the flushing code is, shouldn't be open/closing files repeatedly!)
+        self.buffer = OutputBuffer(self.buffer_size) # TODO: Make buffer size configurable. Larger sizes use more memory, but may be faster since we do fewer flushes and thus less I/O (depends on how good the flushing code is, shouldn't be open/closing files repeatedly!)
 
         self.input_collection_arrays = None
         self.input_collection_arrays_cyl = None
@@ -93,7 +92,7 @@ class JetFinder(JetFinderBase):
     def SetH5EventFile(self,file:str):
         """
         Sets the input HDF5 file.
-        Also creates a name for the 
+        Also creates a name for the
         (temporary) output file.
         """
         self.h5_file = file
@@ -218,11 +217,11 @@ class JetFinder(JetFinderBase):
         """
         Reads in the input HDF5 file, and places the required arrays in memory.
         """
-        # TODO: May want to consider chunking things and using a buffer? 
-        # Memory usage will scale better for larger files. 
-        # However, need to be careful if input and output are the same file, 
+        # TODO: May want to consider chunking things and using a buffer?
+        # Memory usage will scale better for larger files.
+        # However, need to be careful if input and output are the same file,
         # since writing maybe needs to keep it open in order to avoid lots of
-        # opening/closing that will slow down the program. 
+        # opening/closing that will slow down the program.
 
         # If already initialized, no need to do it again.
         if(self.status):

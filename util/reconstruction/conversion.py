@@ -4,6 +4,7 @@ import h5py as h5
 import ROOT as rt
 from util.math.embedding import embed_array
 from util.buffer.input import UprootBatchLoader
+from util.buffer.output import OutputBuffer
 from util.qol_utils.progress_bar import printProgressBarColor
 from util.hepmc.hepmc import ExtractHepMCEvents, ExtractHepMCParticles, ParticleToProductionVertex, ParticleToEndVertex, ParticleToMomenta
 from typing import Union, Optional, List, TYPE_CHECKING
@@ -44,15 +45,16 @@ class Processor:
 
         self.SetPostProcessing()
 
-        # Data buffer
-        self.data = {}
-
         # Various integers for buffer size, number of particles read into memory from HepMC, number saved to file, etc.
-        self.nevents_per_chunk = 100 # Can be configured. Affects memory footprint.
+        self.buffer_size = 100 # Can be configured. Affects memory footprint.
         self.nparticles_max = int(1e4) # TODO: This is some hardcoded max number of particles to be read in from HepMC. Should be plenty.
         self.nparticles_stable = self.configurator.GetNPars()['n_stable']
         self.nparticles_truth_selected = self.configurator.GetNPars()['n_truth']
         self.n_delphes = self.configurator.GetNPars()['n_delphes']
+
+        # Data buffer
+        self.buffer = OutputBuffer(self.buffer_size)
+
 
         # truth selector
         self.SetParticleSelection()
@@ -71,7 +73,7 @@ class Processor:
             val = 9
         elif(val < 0):
             val = 0
-        self.copts = int
+        self.copts = val
 
     def SetMetadataHandler(self,handler:'MetaDataHandler'):
         self.metadata_handler = handler
@@ -88,8 +90,8 @@ class Processor:
         else:
             self.truth_selection = self.configurator.GetParticleSelection()
 
-    def SetNentriesPerChunk(self,val:int):
-        self.nevents_per_chunk = int(val)
+    def SetBufferSize(self,val:int):
+        self.buffer_size = int(val)
 
     def SetDelphesFiles(self,val:List[str]):
         if(len(val) > 0):
@@ -139,121 +141,118 @@ class Processor:
         ## Extract truth particle info from the HepMC files.
         hepmc_events, nentries = ExtractHepMCEvents(hepmc_files,get_nevents=True)
 
-        # Some indexing preparation for writing in chunks.
-        start_idxs,stop_idxs,ranges = self.PrepIndexRanges(nentries,self.nevents_per_chunk)
-        nchunks = len(ranges)
+        ## Extract particles from the HepMC events
+        particles = ExtractHepMCParticles(hepmc_events,self.nparticles_max)
 
-        dsets = None
+        if(self.truth_selection is None):
+            self.truth_selection = {}
+        truth_selected_event_particles = {}
+        for key,selection in self.truth_selection.items():
+            truth_selected_event_particles[key] = ExtractHepMCParticles(hepmc_events,self.nparticles_truth_selected,selection)
 
-        if(verbosity == 1): printProgressBarColor(0,nchunks, prefix=self.prefix_level1, suffix=self.suffix, length=self.bl)
+        # Set up buffer -- set output file, and total number of entries
+        self.buffer.SetFilename(h5_file)
+        self.buffer.SetNEvents(nentries)
 
-        for i in range(nchunks):
+        if(verbosity == 1): printProgressBarColor(0,nentries, prefix=self.prefix_level1, suffix=self.suffix, length=self.bl)
+
+        for i in range(nentries):
             # Clear the buffer (for safety).
-            for key in self.data.keys(): self.data[key][:] = 0
 
             # 0) Write some keys that are the same across all events in this chunk.
-            self.WriteToDataBuffer(None,'SignalFlag',self.configurator.GetSignalFlag())
+            # NOTE: After switching to OutputBuffer usage, have to avoid filling the whole buffer
+            #       since this is the 1st key, and that might trigger a flush.
+            self.WriteToDataBuffer(i,'SignalFlag',self.configurator.GetSignalFlag())
 
             # 1) Save the stable truth-level particles from the event.
             # Extract all the particles from the HepMC events, into memory.
             with profile_block('Processor.Process: Truth Stable'):
 
-                particles = ExtractHepMCParticles(hepmc_events[start_idxs[i]:stop_idxs[i]],self.nparticles_max)
+                with profile_block('Processor.Process: Truth Stable - 1'):
+                    status = np.array([x.status() for x in particles[i]])
+                with profile_block('Processor.Process: Truth Stable - 2'):
+                    stable_particles = list(itertools.compress(particles[i], status == 1))
 
-                for j,event_particles in enumerate(particles): # Loop over events in this chunk
-
-                    with profile_block('Processor.Process: Truth Stable - 1'):
-                        status = np.array([x.status() for x in event_particles])
-                    with profile_block('Processor.Process: Truth Stable - 2'):
-                        stable_particles = list(itertools.compress(event_particles, status == 1))
-
-                    # Explicitly fetch/compute 4-momentum components.
+                with profile_block('Processor.Process: Truth Stable - 3'):
+                # Explicitly fetch/compute 4-momentum components.
                     momenta = np.array([ParticleToMomenta(particle) for particle in stable_particles])
                     stable_particle_momenta = momenta[:,0,:]
                     stable_particle_momenta_cyl = momenta[:,1,:]
-                    
-                    self.WriteToDataBuffer(j,'{}.N'.format(self.stable_truth_particle_name),len(stable_particles))
 
-                    self.WriteToDataBuffer(j, '{}.Pmu'.format(self.stable_truth_particle_name),
+                with profile_block('Processor.Process: Truth Stable - 4'):
+                    self.WriteToDataBuffer(i,'{}.N'.format(self.stable_truth_particle_name),len(stable_particles))
+
+                    self.WriteToDataBuffer(i, '{}.Pmu'.format(self.stable_truth_particle_name),
                                         stable_particle_momenta,
                                         dimensions={1:self.nparticles_stable}
                     )
 
-                    self.WriteToDataBuffer(j, '{}.Pmu_cyl'.format(self.stable_truth_particle_name),
+                    self.WriteToDataBuffer(i, '{}.Pmu_cyl'.format(self.stable_truth_particle_name),
                                         stable_particle_momenta_cyl,
                                         dimensions={1:self.nparticles_stable}
                     )
 
-                    self.WriteToDataBuffer(j,'{}.PdgId'.format(self.stable_truth_particle_name),[x.pid() for x in stable_particles],
+                    self.WriteToDataBuffer(i,'{}.PdgId'.format(self.stable_truth_particle_name),[x.pid() for x in stable_particles],
                                         dimensions={1:self.nparticles_stable}, dtype=np.dtype('i4')
                     )
 
-                    self.WriteToDataBuffer(j,'{}.HepMC3Index'.format(self.stable_truth_particle_name),[x.id() for x in stable_particles],
+                    self.WriteToDataBuffer(i,'{}.HepMC3Index'.format(self.stable_truth_particle_name),[x.id() for x in stable_particles],
                                         dimensions={1:self.nparticles_stable}, dtype=np.dtype('i4')
                     )
 
+                with profile_block('Processor.Process: Truth Stable - 5'):
                     prod_vertices = np.array([ParticleToProductionVertex(x) for x in stable_particles])
 
-                    # prod_vertices = np.array([
-                    #     [x.production_vertex().position().t(),x.production_vertex().position().x(),x.production_vertex().position().y(),x.production_vertex().position().z()]
-                    #     for x in stable_particles]
-                    # )
-
-                    self.WriteToDataBuffer(j, '{}.Production.Xmu'.format(self.stable_truth_particle_name),
+                    self.WriteToDataBuffer(i, '{}.Production.Xmu'.format(self.stable_truth_particle_name),
                                         prod_vertices,
                                         dimensions={1:self.nparticles_stable}
                     )
 
             # 2) Extract the filtered truth record from the events.
             with profile_block('Processor.Process: Truth Selection'):
-                if(self.truth_selection is None):
-                    self.truth_selection = {}
-                for key,selection in self.truth_selection.items():
+                for key,truth_selected_particles in truth_selected_event_particles.items():
 
-                    truth_selected_event_particles = ExtractHepMCParticles(hepmc_events[start_idxs[i]:stop_idxs[i]],self.nparticles_truth_selected,selection)
-                    for j,truth_selected_particles in enumerate(truth_selected_event_particles): # Loop over events in this chunk
+                    momenta = np.array([ParticleToMomenta(particle) for particle in truth_selected_particles[i]])
+                    truth_particle_momenta = momenta[:,0,:]
+                    truth_particle_momenta_cyl = momenta[:,1,:]
 
-                        momenta = np.array([ParticleToMomenta(particle) for particle in truth_selected_particles])
-                        truth_particle_momenta = momenta[:,0,:]
-                        truth_particle_momenta_cyl = momenta[:,1,:]
-                    
-                        self.WriteToDataBuffer(j,'{}.N'.format(key),len(truth_selected_particles))
+                    self.WriteToDataBuffer(i,'{}.N'.format(key),len(truth_selected_particles[i]))
 
-                        self.WriteToDataBuffer(j, '{}.Pmu'.format(key),
-                                                truth_particle_momenta,
-                                                dimensions={1:self.nparticles_truth_selected}
-                        )
-
-                        self.WriteToDataBuffer(j, '{}.Pmu_cyl'.format(key),
-                                                truth_particle_momenta_cyl,
-                                                dimensions={1:self.nparticles_truth_selected}
-                        )
-
-                        self.WriteToDataBuffer(j,'{}.PdgId'.format(key),[x.pid() for x in truth_selected_particles],
-                                                dimensions={1:self.nparticles_truth_selected}, dtype=np.dtype('i4')
-                        )
-
-                        self.WriteToDataBuffer(j,'{}.HepMC3Index'.format(key),[x.id() for x in truth_selected_particles],
-                                                dimensions={1:self.nparticles_truth_selected}, dtype=np.dtype('i4')
-                        )
-
-                        prod_vertices = np.array([ParticleToProductionVertex(x) for x in truth_selected_particles])
-
-                        self.WriteToDataBuffer(j, '{}.Production.Xmu'.format(key),
-                                            prod_vertices,
+                    self.WriteToDataBuffer(i, '{}.Pmu'.format(key),
+                                            truth_particle_momenta,
                                             dimensions={1:self.nparticles_truth_selected}
-                        )
+                    )
 
-                        self.WriteToDataBuffer(j,'{}.Stable'.format(key),[x.status()==1 for x in truth_selected_particles],
-                                                dimensions={1:self.nparticles_truth_selected}, dtype=np.dtype('bool')
-                        )
-
-                        end_vertices = np.array([ParticleToEndVertex(x) for x in truth_selected_particles])
-
-                        self.WriteToDataBuffer(j, '{}.Decay.Xmu'.format(key),
-                                            end_vertices,
+                    self.WriteToDataBuffer(i, '{}.Pmu_cyl'.format(key),
+                                            truth_particle_momenta_cyl,
                                             dimensions={1:self.nparticles_truth_selected}
-                        )
+                    )
+
+                    self.WriteToDataBuffer(i,'{}.PdgId'.format(key),[x.pid() for x in truth_selected_particles[i]],
+                                            dimensions={1:self.nparticles_truth_selected}, dtype=np.dtype('i4')
+                    )
+
+                    self.WriteToDataBuffer(i,'{}.HepMC3Index'.format(key),[x.id() for x in truth_selected_particles[i]],
+                                            dimensions={1:self.nparticles_truth_selected}, dtype=np.dtype('i4')
+                    )
+
+                    prod_vertices = np.array([ParticleToProductionVertex(x) for x in truth_selected_particles[i]])
+
+                    self.WriteToDataBuffer(i, '{}.Production.Xmu'.format(key),
+                                        prod_vertices,
+                                        dimensions={1:self.nparticles_truth_selected}
+                    )
+
+                    self.WriteToDataBuffer(i,'{}.Stable'.format(key),[x.status()==1 for x in truth_selected_particles[i]],
+                                            dimensions={1:self.nparticles_truth_selected}, dtype=np.dtype('bool')
+                    )
+
+                    end_vertices = np.array([ParticleToEndVertex(x) for x in truth_selected_particles[i]])
+
+                    self.WriteToDataBuffer(i, '{}.Decay.Xmu'.format(key),
+                                        end_vertices,
+                                        dimensions={1:self.nparticles_truth_selected}
+                    )
 
             # 3) If Delphes was run, we will also extract the relevant information.
             #    Note that PrepDelphesArrays() has been called earlier, if delphes=True.
@@ -267,178 +266,173 @@ class Processor:
             if(self.delphes):
                 with profile_block('Processor.Process: Delphes'):
 
-                    for j in range(len(particles)): # TODO: reusing len(particles) (== number of events in chunk), OK but looks kind of hacky
-                        for k,delphes_type in enumerate(var_map.keys()): # loop over different kinds of Delphes collections
-                            is_track = False
+                    for k,delphes_type in enumerate(var_map.keys()): # loop over different kinds of Delphes collections
+                        is_track = False
 
-                            with profile_block('Processor.Process: Delphes - {}'.format(delphes_type)):
+                        with profile_block('Processor.Process: Delphes - {}'.format(delphes_type)):
 
-                                if('missinget' in delphes_type.lower()):
-                                    self.n_delphes[k] = 1 # TODO: Would be nice to eliminate this dimension altogether
+                            if('missinget' in delphes_type.lower()):
+                                self.n_delphes[k] = 1 # TODO: Would be nice to eliminate this dimension altogether
 
-                                # Not all objects have all fields, so we do a lot of checking here.
-                                if('pt' in var_map[delphes_type].keys()):
+                            # Not all objects have all fields, so we do a lot of checking here.
+                            if('pt' in var_map[delphes_type].keys()):
 
-                                    delphes_pt  = delphes_arr[var_map[delphes_type]['pt' ]][start_idxs[i]+j].to_numpy().astype(float)
-                                    delphes_eta = delphes_arr[var_map[delphes_type]['eta']][start_idxs[i]+j].to_numpy().astype(float)
-                                    delphes_phi = delphes_arr[var_map[delphes_type]['phi']][start_idxs[i]+j].to_numpy().astype(float)
-                                    delphes_m   = np.zeros(delphes_pt.shape)
+                                delphes_pt  = delphes_arr[var_map[delphes_type]['pt' ]][i].to_numpy().astype(float)
+                                delphes_eta = delphes_arr[var_map[delphes_type]['eta']][i].to_numpy().astype(float)
+                                delphes_phi = delphes_arr[var_map[delphes_type]['phi']][i].to_numpy().astype(float)
+                                delphes_m   = np.zeros(delphes_pt.shape)
 
-                                    # Rather than use rt.Math.PtEtaPhiMVector, vectorize operations with numpy.
-                                    # This should be faster (although it's typically nicer to use the ROOT objects to safely
-                                    # handle the coordinate conversions!). - Jan
-                                    delphes_px = delphes_pt * np.cos(delphes_phi)
-                                    delphes_py = delphes_pt * np.sin(delphes_phi)
-                                    delphes_pz = delphes_pt * np.sinh(delphes_eta)
-                                    delphes_e  = np.sqrt(np.square(delphes_px) + np.square(delphes_py) + np.square(delphes_pz)) # masses set to zero -> can leave out
+                                # Rather than use rt.Math.PtEtaPhiMVector, vectorize operations with numpy.
+                                # This should be faster (although it's typically nicer to use the ROOT objects to safely
+                                # handle the coordinate conversions!). - Jan
+                                delphes_px = delphes_pt * np.cos(delphes_phi)
+                                delphes_py = delphes_pt * np.sin(delphes_phi)
+                                delphes_pz = delphes_pt * np.sinh(delphes_eta)
+                                delphes_e  = np.sqrt(np.square(delphes_px) + np.square(delphes_py) + np.square(delphes_pz)) # masses set to zero -> can leave out
 
-                                    self.WriteToDataBuffer(j,'{}.N'.format(delphes_type),len(delphes_pt))
+                                self.WriteToDataBuffer(i,'{}.N'.format(delphes_type),len(delphes_pt))
 
-                                    self.WriteToDataBuffer(j, '{}.Pmu'.format(delphes_type),
-                                                        np.column_stack([delphes_e,delphes_px,delphes_py,delphes_pz]),
-                                                        dimensions={1:self.n_delphes[k]}
-                                    )
+                                self.WriteToDataBuffer(i, '{}.Pmu'.format(delphes_type),
+                                                    np.column_stack([delphes_e,delphes_px,delphes_py,delphes_pz]),
+                                                    dimensions={1:self.n_delphes[k]}
+                                )
 
-                                    self.WriteToDataBuffer(j, '{}.Pmu_cyl'.format(delphes_type),
-                                                        np.column_stack([delphes_pt,delphes_eta,delphes_phi,delphes_m]),
-                                                        dimensions={1:self.n_delphes[k]}
-                                    )
+                                self.WriteToDataBuffer(i, '{}.Pmu_cyl'.format(delphes_type),
+                                                    np.column_stack([delphes_pt,delphes_eta,delphes_phi,delphes_m]),
+                                                    dimensions={1:self.n_delphes[k]}
+                                )
 
-                                if('d0' in var_map[delphes_type].keys()):
-                                    delphes_d0  = delphes_arr[var_map[delphes_type]['d0']][start_idxs[i]+j].to_numpy()
-                                    delphes_z0  = delphes_arr[var_map[delphes_type]['z0']][start_idxs[i]+j].to_numpy()
-                                    delphes_d0e  = delphes_arr[var_map[delphes_type]['errord0']][start_idxs[i]+j].to_numpy()
-                                    delphes_z0e  = delphes_arr[var_map[delphes_type]['errorz0']][start_idxs[i]+j].to_numpy()
+                            if('d0' in var_map[delphes_type].keys()):
+                                delphes_d0  = delphes_arr[var_map[delphes_type]['d0']][i].to_numpy()
+                                delphes_z0  = delphes_arr[var_map[delphes_type]['z0']][i].to_numpy()
+                                delphes_d0e  = delphes_arr[var_map[delphes_type]['errord0']][i].to_numpy()
+                                delphes_z0e  = delphes_arr[var_map[delphes_type]['errorz0']][i].to_numpy()
 
-                                    self.WriteToDataBuffer(j, '{}.D0'.format(delphes_type), delphes_d0, dimensions={1:self.n_delphes[k]})
-                                    self.WriteToDataBuffer(j, '{}.D0.Error'.format(delphes_type), delphes_d0e, dimensions={1:self.n_delphes[k]})
-                                    self.WriteToDataBuffer(j, '{}.Z0'.format(delphes_type), delphes_z0, dimensions={1:self.n_delphes[k]})
-                                    self.WriteToDataBuffer(j, '{}.Z0.Error'.format(delphes_type), delphes_z0e, dimensions={1:self.n_delphes[k]})
+                                self.WriteToDataBuffer(i, '{}.D0'.format(delphes_type), delphes_d0, dimensions={1:self.n_delphes[k]})
+                                self.WriteToDataBuffer(i, '{}.D0.Error'.format(delphes_type), delphes_d0e, dimensions={1:self.n_delphes[k]})
+                                self.WriteToDataBuffer(i, '{}.Z0'.format(delphes_type), delphes_z0, dimensions={1:self.n_delphes[k]})
+                                self.WriteToDataBuffer(i, '{}.Z0.Error'.format(delphes_type), delphes_z0e, dimensions={1:self.n_delphes[k]})
 
-                                if('xd' in var_map[delphes_type].keys()):
-                                    delphes_xd  = delphes_arr[var_map[delphes_type]['xd']][start_idxs[i]+j].to_numpy()
-                                    delphes_yd  = delphes_arr[var_map[delphes_type]['yd']][start_idxs[i]+j].to_numpy()
-                                    delphes_zd  = delphes_arr[var_map[delphes_type]['zd']][start_idxs[i]+j].to_numpy()
+                            if('xd' in var_map[delphes_type].keys()):
+                                delphes_xd  = delphes_arr[var_map[delphes_type]['xd']][i].to_numpy()
+                                delphes_yd  = delphes_arr[var_map[delphes_type]['yd']][i].to_numpy()
+                                delphes_zd  = delphes_arr[var_map[delphes_type]['zd']][i].to_numpy()
 
-                                    # store 3-position of closest approach as a vector (Xd, Yd, Zd). Unfortunately Delphes' ParticlePropagator computes Td but doesn't save it...?!
-                                    #  NOTE: Could consider adding in Td on my own branch of Delphes -- already use this for some other things.
-                                    self.WriteToDataBuffer(j, '{}.Xdi'.format(delphes_type), np.vstack([
-                                        delphes_xd, delphes_yd, delphes_zd
-                                    ]).T,
-                                                        dimensions={1:self.n_delphes[k]}
-                                    )
-                                    is_track = True # only tracks have this component
+                                # store 3-position of closest approach as a vector (Xd, Yd, Zd). Unfortunately Delphes' ParticlePropagator computes Td but doesn't save it...?!
+                                #  NOTE: Could consider adding in Td on my own branch of Delphes -- already use this for some other things.
+                                self.WriteToDataBuffer(i, '{}.Xdi'.format(delphes_type), np.vstack([
+                                    delphes_xd, delphes_yd, delphes_zd
+                                ]).T,
+                                                    dimensions={1:self.n_delphes[k]}
+                                )
+                                is_track = True # only tracks have this component
 
-                                # In principle, d0, dz and phi give a different way to get Xdi.
-                                # TODO: Double-check this!
-                                elif('d0' in var_map[delphes_type].keys() and 'z0' in var_map[delphes_type].keys() and 'phi' in var_map[delphes_type].keys()):
-                                    # d0, z0 and phi already extracted above
-                                    delphes_xd = delphes_d0 * np.cos(delphes_phi)
-                                    delphes_yd = delphes_d0 * np.sin(delphes_phi)
-                                    delphes_zd = delphes_z0
-                                    self.WriteToDataBuffer(j, '{}.Xdi'.format(delphes_type), np.vstack([
-                                        delphes_xd, delphes_yd, delphes_zd
-                                    ]).T,
-                                                        dimensions={1:self.n_delphes[k]}
-                                    )
+                            # In principle, d0, dz and phi give a different way to get Xdi.
+                            # TODO: Double-check this!
+                            elif('d0' in var_map[delphes_type].keys() and 'z0' in var_map[delphes_type].keys() and 'phi' in var_map[delphes_type].keys()):
+                                # d0, z0 and phi already extracted above
+                                delphes_xd = delphes_d0 * np.cos(delphes_phi)
+                                delphes_yd = delphes_d0 * np.sin(delphes_phi)
+                                delphes_zd = delphes_z0
+                                self.WriteToDataBuffer(i, '{}.Xdi'.format(delphes_type), np.vstack([
+                                    delphes_xd, delphes_yd, delphes_zd
+                                ]).T,
+                                                    dimensions={1:self.n_delphes[k]}
+                                )
 
-                                if('charge' in var_map[delphes_type].keys()):
-                                    delphes_charge = delphes_arr[var_map[delphes_type]['charge']][start_idxs[i]+j].to_numpy()
-                                    self.WriteToDataBuffer(j, '{}.Charge'.format(delphes_type), delphes_charge, dimensions={1:self.n_delphes[k]}, dtype=float)
+                            if('charge' in var_map[delphes_type].keys()):
+                                delphes_charge = delphes_arr[var_map[delphes_type]['charge']][i].to_numpy()
+                                self.WriteToDataBuffer(i, '{}.Charge'.format(delphes_type), delphes_charge, dimensions={1:self.n_delphes[k]}, dtype=float)
 
-                                if('pid' in var_map[delphes_type].keys()):
-                                    delphes_pid  = delphes_arr[var_map[delphes_type]['pid']][start_idxs[i]+j].to_numpy()
-                                    self.WriteToDataBuffer(j, '{}.PdgId'.format(delphes_type), delphes_pid, dimensions={1:self.n_delphes[k]}, dtype=np.dtype('i4'))
+                            if('pid' in var_map[delphes_type].keys()):
+                                delphes_pid  = delphes_arr[var_map[delphes_type]['pid']][i].to_numpy()
+                                self.WriteToDataBuffer(i, '{}.PdgId'.format(delphes_type), delphes_pid, dimensions={1:self.n_delphes[k]}, dtype=np.dtype('i4'))
 
-                                if('eem' in var_map[delphes_type].keys()): # assume Eem and Ehad together
-                                    delphes_e_em   = delphes_arr[var_map[delphes_type]['eem' ]][start_idxs[i]+j].to_numpy()
-                                    self.WriteToDataBuffer(j, '{}.E.EM'.format(delphes_type), delphes_e_em, dimensions={1:self.n_delphes[k]}, dtype=float)
+                            if('eem' in var_map[delphes_type].keys()): # assume Eem and Ehad together
+                                delphes_e_em   = delphes_arr[var_map[delphes_type]['eem' ]][i].to_numpy()
+                                self.WriteToDataBuffer(i, '{}.E.EM'.format(delphes_type), delphes_e_em, dimensions={1:self.n_delphes[k]}, dtype=float)
 
-                                if('ehad' in var_map[delphes_type].keys()):
-                                    delphes_e_had  = delphes_arr[var_map[delphes_type]['ehad']][start_idxs[i]+j].to_numpy()
-                                    self.WriteToDataBuffer(j, '{}.E.Hadronic'.format(delphes_type), delphes_e_had, dimensions={1:self.n_delphes[k]}, dtype=float)
+                            if('ehad' in var_map[delphes_type].keys()):
+                                delphes_e_had  = delphes_arr[var_map[delphes_type]['ehad']][i].to_numpy()
+                                self.WriteToDataBuffer(i, '{}.E.Hadronic'.format(delphes_type), delphes_e_had, dimensions={1:self.n_delphes[k]}, dtype=float)
 
-                                if('etrk' in var_map[delphes_type].keys()):
-                                    delphes_e_trk  = delphes_arr[var_map[delphes_type]['etrk']][start_idxs[i]+j].to_numpy()
-                                    self.WriteToDataBuffer(j, '{}.E.Track'.format(delphes_type), delphes_e_trk, dimensions={1:self.n_delphes[k]}, dtype=float)
+                            if('etrk' in var_map[delphes_type].keys()):
+                                delphes_e_trk  = delphes_arr[var_map[delphes_type]['etrk']][i].to_numpy()
+                                self.WriteToDataBuffer(i, '{}.E.Track'.format(delphes_type), delphes_e_trk, dimensions={1:self.n_delphes[k]}, dtype=float)
 
-                                # Calorimeter towers indicate their edges in (eta,phi).
-                                if('edges' in var_map[delphes_type].keys()):
-                                    delphes_edges  = delphes_arr[var_map[delphes_type]['edges']][start_idxs[i]+j].to_numpy()
-                                    # separate eta and phi edges -- I think this is clearer for later reference
-                                    self.WriteToDataBuffer(j, '{}.Edges.Eta'.format(delphes_type), delphes_edges[:,:2], dimensions={1:self.n_delphes[k]})
-                                    self.WriteToDataBuffer(j, '{}.Edges.Phi'.format(delphes_type), delphes_edges[:,2:4], dimensions={1:self.n_delphes[k]})
+                            # Calorimeter towers indicate their edges in (eta,phi).
+                            if('edges' in var_map[delphes_type].keys()):
+                                delphes_edges  = delphes_arr[var_map[delphes_type]['edges']][i].to_numpy()
+                                # separate eta and phi edges -- I think this is clearer for later reference
+                                self.WriteToDataBuffer(i, '{}.Edges.Eta'.format(delphes_type), delphes_edges[:,:2], dimensions={1:self.n_delphes[k]})
+                                self.WriteToDataBuffer(i, '{}.Edges.Phi'.format(delphes_type), delphes_edges[:,2:4], dimensions={1:self.n_delphes[k]})
 
-                                # Certain objects record their position in (t,x,y,z). Note that tracks *do not* do this (those are all zero for them).
-                                if('x' in var_map[delphes_type].keys() and not is_track):
-                                    delphes_t  = delphes_arr[var_map[delphes_type]['t' ]][start_idxs[i]+j].to_numpy()
-                                    delphes_x  = delphes_arr[var_map[delphes_type]['x' ]][start_idxs[i]+j].to_numpy()
-                                    delphes_y  = delphes_arr[var_map[delphes_type]['y' ]][start_idxs[i]+j].to_numpy()
-                                    delphes_z  = delphes_arr[var_map[delphes_type]['z' ]][start_idxs[i]+j].to_numpy()
+                            # Certain objects record their position in (t,x,y,z). Note that tracks *do not* do this (those are all zero for them).
+                            if('x' in var_map[delphes_type].keys() and not is_track):
+                                delphes_t  = delphes_arr[var_map[delphes_type]['t' ]][i].to_numpy()
+                                delphes_x  = delphes_arr[var_map[delphes_type]['x' ]][i].to_numpy()
+                                delphes_y  = delphes_arr[var_map[delphes_type]['y' ]][i].to_numpy()
+                                delphes_z  = delphes_arr[var_map[delphes_type]['z' ]][i].to_numpy()
 
-                                    self.WriteToDataBuffer(j, '{}.Xmu'.format(delphes_type),
-                                                        np.column_stack([delphes_t,delphes_x,delphes_y,delphes_z]),
-                                                        dimensions={1:self.n_delphes[k]}
-                                    )
+                                self.WriteToDataBuffer(i, '{}.Xmu'.format(delphes_type),
+                                                    np.column_stack([delphes_t,delphes_x,delphes_y,delphes_z]),
+                                                    dimensions={1:self.n_delphes[k]}
+                                )
 
-                                    # another opportunity to add multiplicity, if we haven't already
-                                    self.WriteToDataBuffer(j,'{}.N'.format(delphes_type),len(delphes_t))
+                                # another opportunity to add multiplicity, if we haven't already
+                                self.WriteToDataBuffer(i,'{}.N'.format(delphes_type),len(delphes_t))
 
-            # We have now filled a chunk, time to write it.
-            # If this is the first instance of the loop, we will initialize the HDF5 file.
-            # NOTE: We assume that after this first loop, we've generated all the necessary keys.
-            #       Probably a safe assumption for now.
-            if(i == 0):
-                dsets = self.PrepH5File(h5_file,nentries,self.data,copts=self.copts)
+            if(verbosity == 1): printProgressBarColor(i+1,nentries, prefix=self.prefix_level1, suffix=self.suffix, length=self.bl)
 
-            with h5.File(h5_file, 'a') as f:
-                for key in dsets.keys():
-                    dset = f[key]
-                    dset[start_idxs[i]:stop_idxs[i]] = self.data[key][:ranges[i]]
-            # if(verbosity == 1): printProgressBarColor(i+1,nchunks, prefix=self.prefix_level1, suffix=self.suffix, length=self.bl)
-            if(verbosity == 1): printProgressBarColor(i+1,nchunks, prefix=self.prefix_level1, suffix=self.suffix, length=self.bl)
+        # Final flush, in case there are any stragglers in the buffer.
+        self.buffer.flush()
 
-        # if(self.diagnostic_plots): self.OutputHistograms()
+        # Close
+        self.buffer.close()
+
         return h5_file
 
     def AddKeyToDataBuffer(self,key:str,value:Union[int,float,np.ndarray,list],dtype:Optional[Union[str,np.dtype]]=None,dimensions:dict=None):
-        if(key in self.data.keys()):
+        if(key in self.buffer.keys()):
             return
         value_array = np.asarray(value)
 
         if(dtype is None):
             dtype = value_array.dtype
 
+        # Create the buffer shape.
+        # Note that the 1st dimension, the "event index" dimension,
+        # is the buffer size. That will be handled internally by
+        # OutputBuffer, so we just need to give the *rest*
+        # of the shape.
+
         if value_array.shape == ():  # Scalar value
-            # Create shape (N,)
-            self.data[key] = np.zeros(self.nevents_per_chunk, dtype=dtype)
+            # In buffer, will create shape (N,) where N = buffer size
+            buffer_shape = value_array.shape
         else:
-            # Create the buffer shape.
             # The user can optionally specify dimensions via a dictionary,
             # otherwise they are inferred.
-            buffer_shape = list((self.nevents_per_chunk,) + value_array.shape)
+            # NOTE: Keep in mind that the 1st dimension here is a dummy dimension,
+            #       just keeping it to make the code a bit more readable.
+            buffer_shape = list((1,) + value_array.shape)
             if(dimensions is not None):
                 for idx,val in dimensions.items():
                     try:
                         buffer_shape[idx] = int(val)
                     except:
                         pass # TODO: Add warning
+            buffer_shape = tuple(buffer_shape[1:]) # remove dummy dimension, OutputBuffer will prepend buffer size dimension
 
-            # # Collapse buffer_shape to remove any zeros
-            # buffer_shape = [x for x in buffer_shape if x!=0]
-            self.data[key] = np.zeros(buffer_shape, dtype=dtype)
+        self.buffer.create_array(key,buffer_shape,dtype)
         return
 
     @profile_method('Processor.WriteToDataBuffer')
     def WriteToDataBuffer(self,event_index:Optional[int],key:str,value:Union[int,float,np.ndarray,list],dtype:Optional[Union[str,np.dtype]]=None,dimensions:dict=None):
-        if(key not in self.data.keys()):
+        if(key not in self.buffer.keys()):
             self.AddKeyToDataBuffer(key,value,dtype,dimensions)
 
         value_array = np.asarray(value) # TODO: not sure if needed?
-        if(event_index is not None):
-            self.data[key][event_index] = embed_array(value_array,self.data[key][event_index].shape)
-        else:
-            self.data[key][:] = embed_array(value_array,self.data[key].shape)
+        self.buffer.set(key,event_index,value_array)
         return
 
     @profile_method('Processor.PostProcess')
@@ -507,12 +501,3 @@ class Processor:
                 shape = tuple(shape)
                 dsets[key] = f.create_dataset(key, shape, val.dtype,compression='gzip',compression_opts=copts)
         return dsets
-
-    def PrepIndexRanges(self,nentries,nentries_per_chunk):
-        nchunks = int(np.ceil(nentries / nentries_per_chunk))
-        start_idxs = np.zeros(nchunks,dtype = np.dtype('i8'))
-        for i in range(1,start_idxs.shape[0]): start_idxs[i] = start_idxs[i-1] + nentries_per_chunk
-        stop_idxs = start_idxs + nentries_per_chunk
-        stop_idxs[-1] = nentries
-        ranges = stop_idxs - start_idxs
-        return start_idxs,stop_idxs,ranges
