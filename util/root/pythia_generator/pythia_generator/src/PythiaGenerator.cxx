@@ -7,7 +7,6 @@
 // Pythia8 includes
 #include "Pythia8/Pythia.h"
 #include "Pythia8/Event.h"
-
 #include "Pythia8/PythiaParallel.h"
 
 // HepMC3 includes
@@ -300,12 +299,12 @@ namespace PythiaGenerator{
       cout << "Error: PythiaGenerator::Generator is not yet initialized." << endl;
       return;
     }
-
     // For array mode, we need to clear the arrays if requested.
     if(refresh && _arrayMode) _ClearContainers();
 
     // Generate the events using PythiaParallel
     _pythiaParallel->run(
+      nevents, 
       [&](Pythia8::Pythia* pythiaPtr) {
         // In array mode, we fill the arrays with the various particle/event attributes.
       if(_arrayMode) _FillArrays(pythiaPtr);

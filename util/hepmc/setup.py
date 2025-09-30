@@ -378,14 +378,14 @@ class _HepMCSetupInternal:
             self._vprint('| BASIC CHECK |')
             self._vprint(10 * '=' + '\n')
 
-            self._vprint('About to uncache HepMC3. Here is sys.path, length {}'.format(len(sys.path)))
+            self._vprint('About to prepend HepMC3. Here is sys.path, length {}'.format(len(sys.path)))
             for i,entry in enumerate(sys.path):
                 self._vprint('\t[{}] {}'.format(i,entry))
 
         prepend_to_pythonpath(self.python_dir)
 
         if(self.verbose):
-            self._vprint('Uncached and prepended self.python_dir. Here is sys.path, length {}'.format(len(sys.path)))
+            self._vprint('Prepended self.python_dir. Here is sys.path, length {}'.format(len(sys.path)))
             for i,entry in enumerate(sys.path):
                 self._vprint('\t[{}] {}'.format(i,entry))
             self._vprint('\t\t(self.python_dir = {} )'.format(self.python_dir))
@@ -506,18 +506,9 @@ class _HepMCSetupInternal:
             import pyHepMC3.rootIO
             self._vprint("    ✓ Success: {}".format(pyHepMC3.rootIO.__file__))
 
-            # For some reason, these checks break on a reload?
-            # self._vprint("  Step 3: import pyHepMC3.rootIO.pyHepMC3rootIO")
-            # import pyHepMC3.rootIO.pyHepMC3rootIO
-            # self._vprint(f"    ✓ Success: {pyHepMC3.rootIO.pyHepMC3rootIO.__file__}")
-
-            # self._vprint("  Step 4: import pyHepMC3.rootIO.pyHepMC3rootIO.HepMC3")
-            # import pyHepMC3.rootIO.pyHepMC3rootIO.HepMC3 as hmroot
-            # self._vprint("    ✓ Success: HepMC3 imported")
-
-            # self._vprint("  Step 5: access ReaderRootTree")
-            # reader_class = hmroot.ReaderRootTree
-            # self._vprint("    ✓ Success: ReaderRootTree found")
+            self._vprint("  Step 3: access ReaderRootTree")
+            reader_class = pyHepMC3.rootIO.HepMC3.ReaderRootTree
+            self._vprint("    ✓ Success: ReaderRootTree found")
 
             return True
 
@@ -594,18 +585,14 @@ class _HepMCSetupInternal:
             from pyHepMC3 import HepMC3 as hm
 
             self._vprint("  Step 2: import pyHepMC3.rootIO")
-            import pyHepMC3.rootIO
+            import pyHepMC3.rootIO as hmroot
             self._vprint("    ✓ Success: {}".format(pyHepMC3.rootIO.__file__))
-
-            self._vprint("  Step 3: import pyHepMC3.rootIO.pyHepMC3rootIO.HepMC3")
-            import pyHepMC3.rootIO.pyHepMC3rootIO.HepMC3 as hmroot
-            self._vprint("    ✓ Success.")
 
             test_file = os.path.dirname(os.path.abspath(__file__)) + '/test/test_events.root'
 
-            self._vprint("  Step 4: Attempt to read event from test file into memory: {}".format(test_file))
+            self._vprint("  Step 3: Attempt to read event from test file into memory: {}".format(test_file))
 
-            reader = hmroot.ReaderRootTree(test_file)
+            reader = hmroot.HepMC3.ReaderRootTree(test_file)
             evt = hm.GenEvent()
             reader.read_event(evt) # Test file should have 2 events. This will break due to the 2nd argument, if we don't have the right ReaderRootTree::read_event() functionality.
             reader.close()
@@ -618,9 +605,9 @@ class _HepMCSetupInternal:
             test_file_copy = test_file.replace('test_events.root',test_file_name)
             sub.check_call(['cp',test_file,test_file_copy])
 
-            self._vprint("  Step 5: Attempt to append event to copy of test file: {}".format(test_file_copy))
+            self._vprint("  Step 4: Attempt to append event to copy of test file: {}".format(test_file_copy))
 
-            writer = hmroot.WriterRootTree(test_file_copy,True) # turns on "append" mode if it's available
+            writer = hmroot.HepMC3.WriterRootTree(test_file_copy,True) # turns on "append" mode if it's available
 
             writer.write_event(evt)
             writer.close()
@@ -719,18 +706,14 @@ class _HepMCSetupInternal:
             from pyHepMC3 import HepMC3 as hm
 
             self._vprint("  Step 2: import pyHepMC3.rootIO")
-            import pyHepMC3.rootIO
+            import pyHepMC3.rootIO as hmroot
             self._vprint("    ✓ Success: {}".format(pyHepMC3.rootIO.__file__))
-
-            self._vprint("  Step 3: import pyHepMC3.rootIO.pyHepMC3rootIO.HepMC3")
-            import pyHepMC3.rootIO.pyHepMC3rootIO.HepMC3 as hmroot
-            self._vprint("    ✓ Success.")
 
             test_file = os.path.dirname(os.path.abspath(__file__)) + '/test/test_events.root'
 
-            self._vprint("  Step 4: Attempt to read event from test file into memory: {}".format(test_file))
+            self._vprint("  Step 3: Attempt to read event from test file into memory: {}".format(test_file))
 
-            reader = hmroot.ReaderRootTree(test_file)
+            reader = hmroot.HepMC3.ReaderRootTree(test_file)
             evt = hm.GenEvent()
             reader.read_event_at_index(evt,0) # Test file should have 2 events. This will break due to the 2nd argument if we don't have the right ReaderRootTree::read_event_at_index() functionality.
             reader.close()

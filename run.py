@@ -1,4 +1,4 @@
-import sys,os,pathlib,time,datetime,re,shlex
+import sys,os,pathlib,re,shlex
 import argparse as ap
 import subprocess as sub
 from contextlib import nullcontext
@@ -11,51 +11,13 @@ from util.config.config import Configurator,GetConfigFileContent, GetConfigDicti
 from util.config.args import parse_mc_steps, FloatListAction, none_or_str
 from util.metadata.meta import MetaDataHandler, AddMetaDataWithReference
 
-from util.misc.timing import profiling_context
+from util.misc.timing import BasicTimer, profiling_context
 
 # Convenience function for file naming
 def float_to_str(value):
     value_str = str(value)
     value_str = value_str.replace('.',',')
     return re.sub(',0$','',value_str)
-
-class BasicTimer:
-    def __init__(self):
-        self.dict = {}
-
-    def start_main(self):
-        self.start_time = time.time()
-
-    def end_main(self):
-        self.end_time = time.time()
-
-    # Function to help with timestamps (for our very basic profiling)
-    def start_timestamp(self, key):
-        if(key) not in self.dict.keys():
-            self.dict[key] = {}
-        self.dict[key]['start'] = time.time()
-
-    def end_timestamp(self, key):
-        if(key) not in self.dict.keys():
-            self.dict[key] = {}
-        self.dict[key]['end'] = time.time()
-
-    def _summarize_main(self):
-        elapsed_time = self.end_time - self.start_time
-        elapsed_time_readable = str(datetime.timedelta(seconds=elapsed_time))
-        print('Time elapsed = {:.1f} seconds.'.format(elapsed_time))
-        print('({})'.format(elapsed_time_readable))
-
-    def summarize_time(self):
-        print('\n#############################')
-        self._summarize_main()
-        print('Breakdown by step:')
-        for key in self.dict.keys():
-            elapsed_time = self.dict[key]['end'] - self.dict[key]['start']
-            elapsed_time_readable = str(datetime.timedelta(seconds=elapsed_time))
-            print('\tTime on {} step: {:.1f} seconds\t({})'.format(key, elapsed_time,elapsed_time_readable))
-        print('\n#############################')
-        return
 
 def main(args):
     parser = ap.ArgumentParser()
@@ -376,7 +338,7 @@ def main(args):
             # Do reco and put everything into an HDF5 file. # TODO: Support formats other than HDF5? Consider ROOT ntuple output.
             if(verbose): print('\nRunning recoonstruction and producing final HDF5 output.\n')
             processor = Processor(configurator)
-            processor.SetNentriesPerChunk(100) # the larger this is, the larger the chunks in memory (and higher the memory usage)
+            processor.SetBufferSize(100) # the larger this is, the larger the chunks in memory (and higher the memory usage)
             processor.SetDelphesFiles(delphes_files) # TODO: Handle case of no delphes_files?
             processor.SetOutputDirectory(outdir)
             processor.SetMetadataHandler(metadata_handler)

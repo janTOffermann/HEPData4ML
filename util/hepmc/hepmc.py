@@ -20,12 +20,10 @@ if TYPE_CHECKING: # Only imported during type checking -- avoids risk of circula
     from util.pythia.pythia import PythiaPythonWrapper
     from util.particle_selection.particle_selection import BaseSelector
 
-    # make sure Python HepMC3 bindings are setup
+    # make sure the correct Python HepMC3 bindings are setup
     setup = HepMCSetup(verbose=False)
     python_dir = setup.GetPythonDirectory()
-
     prepend_to_pythonpath(python_dir)
-
     from pyHepMC3 import HepMC3 as hm
 
 class Pythia8HepMC3Writer:
@@ -211,7 +209,6 @@ def ExtractHepMCEventsAscii(files:Union[list,str],get_nevents:bool=False, silent
 
 def ExtractHepMCEventsROOT(files:Union[list,str],get_nevents:bool=False, silent:bool=False):
     from pyHepMC3 import HepMC3 as hm
-    # from pyHepMC3.rootIO.pyHepMC3rootIO.HepMC3 import ReaderRootTree
     events = []
     nevents = 0
     if(isinstance(files,str)): files = [files]
@@ -256,7 +253,7 @@ def ExtractHepMCParticles(events: List['hm.GenEvent'], nparticles_max: Optional[
         ]
     return particles
 
-def ParticleToMomenta(particle:'hm.GenParticle',):
+def ParticleToMomenta(particle:'hm.GenParticle'):
     """
     Produce 4-momenta in both Cartesian and cylindrical (pt,eta,phi,m) bases,
     stacked as one array.
