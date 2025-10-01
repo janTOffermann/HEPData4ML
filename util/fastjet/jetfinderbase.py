@@ -1,5 +1,6 @@
 import sys, operator
 import numpy as np
+import ROOT as rt
 from util.fastjet.setup import FastJetSetup
 from typing import Optional, Any
 from util.misc.timing import profile_method, profile_block
@@ -173,6 +174,7 @@ class JetFinderBase:
             self.cluster_sequence = fj.ClusterSequence(self.pseudojets[:n_pseudojets], self.jetdef) # member of class, otherwise goes out-of-scope when ref'd later
         self.jets_dict = {i:jet for i,jet in enumerate(self.cluster_sequence.inclusive_jets())} # NOTE: Repeated calls to ClusterSequence::inclusive_jets() seems OK, I think it is just an accessor.
         self.jet_ordering = np.arange(len(self.jets_dict))
+        self.pt_sorting = self.jet_ordering
         self._jetsToVectors()
         return
 
@@ -254,7 +256,7 @@ class JetFinderBase:
     def _fetchJetConstituents(self):
         results = {i:self._fetchJetConstituentsSingle(i, jet, self.n_constituents_max) for i,jet in self.jets_dict.items()}
         self.constituent_vectors = {i:self.input_vecs[x] for i,x in results.items()}
-        self.constituent_vectors_cyl = {i:self.input_vecs[x] for i,x in results.items()}
+        self.constituent_vectors_cyl = {i:self.input_vecs_cyl[x] for i,x in results.items()}
         self.constituent_indices = {i:x for i,x in results.items()}
 
     def _fetchJetConstituentsSingle(self, key, jet, n_constituents=-1):
