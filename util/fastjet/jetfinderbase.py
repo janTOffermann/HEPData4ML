@@ -254,12 +254,11 @@ class JetFinderBase:
 
     @profile_method('JetFinderBase._fetchJetConstituents')
     def _fetchJetConstituents(self):
-        results = {i:self._fetchJetConstituentsSingle(i, jet, self.n_constituents_max) for i,jet in self.jets_dict.items()}
-        self.constituent_vectors = {i:self.input_vecs[x] for i,x in results.items()}
-        self.constituent_vectors_cyl = {i:self.input_vecs_cyl[x] for i,x in results.items()}
-        self.constituent_indices = {i:x for i,x in results.items()}
+        self.constituent_indices = {i:self._fetchJetConstituentsSingle(jet, self.n_constituents_max) for i,jet in self.jets_dict.items()}
+        self.constituent_vectors = {i:self.input_vecs[x] for i,x in self.constituent_indices.items()}
+        self.constituent_vectors_cyl = {i:self.input_vecs_cyl[x] for i,x in self.constituent_indices.items()}
 
-    def _fetchJetConstituentsSingle(self, key, jet, n_constituents=-1):
+    def _fetchJetConstituentsSingle(self, jet, n_constituents=-1):
         """
         Returns indices of the jet constituents, w.r.t. the
         self.input_vecs list. The indices have been pt-sorted
@@ -290,13 +289,6 @@ class JetFinderBase:
         # For the indices, we can directly return the sorted indices
         # since, by construction, the "indices" are just a 0-indexed range.
         result = np.argsort(-pt)[:max_constituents]
-
-        # print('######')
-        # print('# {}'.format(key))
-        # print('Constituent indices: ', result)
-        # print('pt: ',pt[result])
-        # print('######')
-        # print()
 
         return result
 
