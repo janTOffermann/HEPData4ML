@@ -52,8 +52,8 @@ class Processor:
         self.nparticles_truth_selected = self.configurator.GetNPars()['n_truth']
         self.n_delphes = self.configurator.GetNPars()['n_delphes']
 
-        # Data buffer
-        self.buffer = OutputBuffer(self.buffer_size)
+        # Data buffer -- will be initialized in Process()
+        self.buffer = None
 
 
         # truth selector
@@ -151,8 +151,14 @@ class Processor:
             truth_selected_event_particles[key] = ExtractHepMCParticles(hepmc_events,self.nparticles_truth_selected,selection)
 
         # Set up buffer -- set output file, and total number of entries
+
+        if(self.buffer_size > nentries):
+            self.SetBufferSize(nentries)
+        self.buffer = OutputBuffer(self.buffer_size)
         self.buffer.SetFilename(h5_file)
         self.buffer.SetNEvents(nentries)
+
+        progress_bar_chunk = int(nentries/20)
 
         if(verbosity == 1): printProgressBarColor(0,nentries, prefix=self.prefix_level1, suffix=self.suffix, length=self.bl)
 
@@ -165,7 +171,6 @@ class Processor:
             self.WriteToDataBuffer(i,'SignalFlag',self.configurator.GetSignalFlag())
 
             # 1) Save the stable truth-level particles from the event.
-            # Extract all the particles from the HepMC events, into memory.
             with profile_block('Processor.Process: Truth Stable'):
 
                 with profile_block('Processor.Process: Truth Stable - 1'):
@@ -382,7 +387,9 @@ class Processor:
                                 # another opportunity to add multiplicity, if we haven't already
                                 self.WriteToDataBuffer(i,'{}.N'.format(delphes_type),len(delphes_t))
 
-            if(verbosity == 1): printProgressBarColor(i+1,nentries, prefix=self.prefix_level1, suffix=self.suffix, length=self.bl)
+            if(verbosity == 1):
+                if(((i+1)%progress_bar_chunk == 0) or i+1==nentries):
+                    printProgressBarColor(i+1,nentries, prefix=self.prefix_level1, suffix=self.suffix, length=self.bl)
 
         # Final flush, in case there are any stragglers in the buffer.
         self.buffer.flush()
