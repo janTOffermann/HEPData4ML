@@ -252,6 +252,8 @@ class JetFinder(JetFinderBase):
         # Also fetch rapidity & phi, for potentially speeding up some FastJet computations.
         self._fetch_rapidity(f)
 
+        f.close()
+
         # Get maximum size of jet inputs.
         n_max = self._get_max_input_size()
         self._initialize_pseudojets(n_max)
@@ -266,7 +268,6 @@ class JetFinder(JetFinderBase):
         self._generate_citations()
 
         self.status = True
-        f.close()
 
     def _fetch_inputs(self, f:h5.File):
         self.input_collection_arrays = {

@@ -3,7 +3,7 @@ import numpy as np
 import h5py as h5
 import ROOT as rt
 from util.math.embedding import embed_array
-from util.buffer.input import UprootBatchLoader
+from util.buffer.input import UprootTreeLoader
 from util.buffer.output import OutputBuffer
 from util.qol_utils.progress_bar import printProgressBarColor
 from util.hepmc.hepmc import ExtractHepMCEvents, ExtractHepMCParticles, ParticleToProductionVertex, ParticleToEndVertex, ParticleToMomenta
@@ -325,9 +325,8 @@ class Processor:
 
                                 # store 3-position of closest approach as a vector (Xd, Yd, Zd). Unfortunately Delphes' ParticlePropagator computes Td but doesn't save it...?!
                                 #  NOTE: Could consider adding in Td on my own branch of Delphes -- already use this for some other things.
-                                self.WriteToDataBuffer(i, '{}.Xdi'.format(delphes_type), np.vstack([
-                                    delphes_xd, delphes_yd, delphes_zd
-                                ]).T,
+                                self.WriteToDataBuffer(i, '{}.Xdi'.format(delphes_type),
+                                                    np.column_stack([delphes_xd, delphes_yd, delphes_zd]),
                                                     dimensions={1:self.n_delphes[k]}
                                 )
                                 is_track = True # only tracks have this component
@@ -339,9 +338,8 @@ class Processor:
                                 delphes_xd = delphes_d0 * np.cos(delphes_phi)
                                 delphes_yd = delphes_d0 * np.sin(delphes_phi)
                                 delphes_zd = delphes_z0
-                                self.WriteToDataBuffer(i, '{}.Xdi'.format(delphes_type), np.vstack([
-                                    delphes_xd, delphes_yd, delphes_zd
-                                ]).T,
+                                self.WriteToDataBuffer(i, '{}.Xdi'.format(delphes_type),
+                                                    np.column_stack([delphes_xd, delphes_yd, delphes_zd]),
                                                     dimensions={1:self.n_delphes[k]}
                                 )
 
@@ -353,7 +351,7 @@ class Processor:
                                 delphes_pid  = delphes_arr[var_map[delphes_type]['pid']][i].to_numpy()
                                 self.WriteToDataBuffer(i, '{}.PdgId'.format(delphes_type), delphes_pid, dimensions={1:self.n_delphes[k]}, dtype=np.dtype('i4'))
 
-                            if('eem' in var_map[delphes_type].keys()): # assume Eem and Ehad together
+                            if('eem' in var_map[delphes_type].keys()):
                                 delphes_e_em   = delphes_arr[var_map[delphes_type]['eem' ]][i].to_numpy()
                                 self.WriteToDataBuffer(i, '{}.E.EM'.format(delphes_type), delphes_e_em, dimensions={1:self.n_delphes[k]}, dtype=float)
 
@@ -438,8 +436,7 @@ class Processor:
         if(key not in self.buffer.keys()):
             self.AddKeyToDataBuffer(key,value,dtype,dimensions)
 
-        value_array = np.asarray(value) # TODO: not sure if needed?
-        self.buffer.set(key,event_index,value_array)
+        self.buffer.set(key,event_index,value)
         return
 
     @profile_method('Processor.PostProcess')
@@ -479,7 +476,7 @@ class Processor:
         delphes_tree = 'Delphes'
         delphes_files = ['{}/{}'.format(self.outdir, x) for x in self.delphes_files]
 
-        delphes_arr = UprootBatchLoader(delphes_files, delphes_tree, delphes_keys)
+        delphes_arr = UprootTreeLoader(delphes_files, delphes_tree, delphes_keys)
         delphes_keys = delphes_arr.fields # keeps only the fields that actually exist!
 
         # Create var_map as before
