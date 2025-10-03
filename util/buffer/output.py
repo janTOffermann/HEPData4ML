@@ -1,6 +1,8 @@
 import pathlib
 import numpy as np
 import h5py as h5
+import ROOT as rt
+import subprocess as sub
 from typing import Dict, Any, Tuple, Optional, Union
 from abc import ABC, abstractmethod
 from util.math.embedding import embed_array
@@ -272,7 +274,7 @@ class OutputBuffer:
 
         self.SetBufferSize(buffer_size)
 
-        self.print_prefix = 'Buffer:'
+        self.print_prefix = 'OutputBuffer:'
 
     def SetBufferSize(self,buffer_size:int):
         self.buffer_size = buffer_size
@@ -411,7 +413,7 @@ class OutputBuffer:
 
         Args:
             key: Array key
-            shape: Shape including event dimension (e.g., (max_events, n_jets, 4))
+            shape: Shape excluding event dimension
             dtype: Data type for the array
         """
         if(isinstance(shape,int)):
@@ -423,6 +425,146 @@ class OutputBuffer:
 
     def close(self,output_file:Optional[str]=None):
         self.flush_handler.close(output_file)
+
+    def _print(self,val:str):
+        print('{} {}'.format(self.print_prefix,val))
+
+
+class RootOutputBuffer:
+    """
+    Similar in usage to OutputBuffer, but doesn't do complex buffering;
+    it writes output to a ROOT file in the "standard" way,
+    """
+
+    def __init__(self, filename:Optional[str]=None, tree_name:Optional[str]=None):
+        self.filename = None
+        self.tree_name = tree_name if tree_name is not None else "hepdata4ml_tree"
+        self.print_prefix = 'RootOutputBuffer:'
+        self.buffers = {} # each buffer will be of length 1 w.r.t. number of events
+        self.buffer_status = {} # keep track of what buffers have been filled
+        self.f = None
+        self.t = None
+        self.init_status = False
+
+        self.SetFilename(filename)
+
+    def SetFilename(self, filename: str):
+        if(filename is None):
+            return
+        self.filename = filename
+        self._init_tree()
+
+    def _init_tree(self):
+        self.f = rt.TFile(self.filename,'RECREATE')
+        self.t = rt.TTree(self.tree_name,self.tree_name)
+        self.init_status = True
+        return
+
+    def create_array(self, key: str, shape: Tuple=(), dtype: np.dtype = np.float64):
+        """
+        Explicitly create an array in the buffer with specified shape and dtype.
+        Based on OutputBuffer.create_array()
+        Args:
+            key: Array key
+            shape: Shape excluding event dimension (used to determine if scalar or std::vector)
+            dtype: Data type for the array
+        """
+        if(key in self.buffers.keys()):
+            return
+
+        if(shape==()): # scalar -- one per event
+            self._init_scalar_branch(key,dtype)
+        else:
+            self._init_vector_branch(key,shape, dtype)
+        self.buffer_status[key] = False
+        return
+
+    def _init_scalar_branch(self,key,dtype):
+        self.buffers[key] = np.zeros(1,dtype=dtype)
+
+        #TODO: Support more types?
+        if(dtype == np.dtype('float')):
+            self.t.Branch(key,self.buffers[key],'{}/D'.format(key))
+        elif(dtype == np.dtype('int')): # also covers long
+            self.t.Branch(key,self.buffers[key],'{}/I'.format(key))
+        if(dtype == np.dtype('uint')):
+            self.t.Branch(key,self.buffers[key],'{}/i'.format(key))
+        elif(dtype == np.dtype('short')):
+            self.t.Branch(key,self.buffers[key],'{}/S'.format(key))
+        elif(dtype == np.dtype('ushort')):
+            self.t.Branch(key,self.buffers[key],'{}/s'.format(key))
+        elif(dtype == np.dtype('bool')):
+            self.t.Branch(key,self.buffers[key],'{}/o'.format(key))
+        else: # not recognized
+            print('Warning: dtype {} not recognized for branch {}.'.format(dtype,key))
+        return
+
+    def _init_vector_branch(self,key,shape, dtype):
+        dtype_str = 'double'
+        for type_str in ['int','uint','short','ushort','bool']:
+            if(dtype == np.dtype(type_str)):
+                dtype_str = 'type_str'
+                break
+
+        # For now, we will support 1D, 2D and 3D vectors
+        if(len(shape) == 1):
+            self.buffers[key] = rt.std.vector[dtype_str]()
+        elif(len(shape == 2)):
+            self.buffers[key] = rt.std.vector[rt.std.vector[dtype_str]]()
+        elif(len(shape == 3)):
+            self.buffers[key] = rt.std.vector[rt.std.vector[rt.std.vector[rt.std.vector[dtype_str]]]]()
+        else:
+            print('Warning: vector branch of dimension {} not supported.'.format(len(shape)))
+            return
+
+        self.t.Branch(key,self.buffers[key])
+        return
+
+    def set(self,key: str, index: Optional[int], value: Any):
+        """
+        For setting values of entries in the buffer.
+        In general, this is the function one should use for putting data into the buffer.
+        """
+        # We need to cover multiple cases: scalar-type branches, and vector-type branches.
+        # For the case of vectors, they can be multi-dimensional (e.g. vector<vector<Double_t>>).
+
+        is_scalar = (not isinstance(value,np.ndarray)) or (isinstance(value,np.ndarray) and np.asarray(value).ndim < 2) or(isinstance(value,list) and len(list(value)) == 1)
+
+        # Check if we need to flush the buffer. We do this if we find that
+        # the buffer we're about to fill is not empty; this works as long
+        # as the code that's leveraging this class is filling all the buffers
+        # for a single event before moving on to the next one.
+        # (which is a pretty sensible assumption) - Jan
+        if(self.buffer_status[key]):
+            self.flush()
+
+        if(is_scalar):
+            self.buffers[key][0] = value # buffer is a 1D length-1 array
+        else: # non-scalar -- this possibly gets more complex
+            self.buffers[key].assign(value) # TODO: Does this work as expected?
+        self.buffer_status[key] = True
+        return
+
+    def flush(self):
+        self.t.Fill()
+        self._clear_buffers()
+
+    def _clear_buffers(self):
+        self.buffer_status = {key: False for key in self.buffer_status} # clearing status is sufficient
+        return
+
+    def close(self,output_file:Optional[str]=None):
+        self.t.Write()
+        self.f.Close()
+
+        if(output_file is not None):
+            command = ['mv',self.filename,output_file]
+            sub.check_call(command)
+        return
+
+    def keys(self):
+        """Return the keys in the buffer."""
+        return self.buffers.keys()
 
     def _print(self,val:str):
         print('{} {}'.format(self.print_prefix,val))
