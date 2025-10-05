@@ -127,35 +127,6 @@ def MergeH5(target_file, input_file, cwd=None, delete_input=False, compression='
 
     return
 
-def RemoveFailedFromHDF5(h5_file, cwd=None, copts=9):
-    """
-    Remove any failed events from the HDF5 file -- these are identified
-    as those with a negative value in the "SignalFlag" dataset.
-    """
-    if(cwd is not None): h5_file = '{}/{}'.format(cwd,h5_file)
-
-    fname_tmp = h5_file.replace('.h5','_{}.h5'.format(str(uuid.uuid4())))
-
-    f = h5.File(h5_file,'r')
-    keys = list(f.keys())
-    shapes = [f[key].shape for key in keys]
-    N = shapes[0][0] # number of events
-
-    keep_indices = f['SignalFlag'][:] >= 0
-    if(np.sum(keep_indices) == N): return
-
-    g = h5.File(fname_tmp,'w')
-
-    for i,key in enumerate(keys):
-        g.create_dataset(key, data = f[key][:][keep_indices],compression='gzip',compression_opts=copts)
-
-    f.close()
-    g.close()
-
-    sub.check_call(['rm',h5_file])
-    sub.check_call(['mv',fname_tmp, h5_file])
-    return
-
 # Add a column with event indices.
 def AddEventIndices(h5_file,cwd=None,copts=9,key='Event.Index',offset=0):
     """

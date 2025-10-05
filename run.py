@@ -5,11 +5,11 @@ from contextlib import nullcontext
 from util.generation.generation import PythiaGenerator
 from util.simulation.simulation import DelphesSimulator
 from util.reconstruction.conversion import Processor
-from util.hdf5.hdf5 import RemoveFailedFromHDF5, SplitH5, AddEventIndices, ConcatenateH5
+from util.hdf5.hdf5 import SplitH5
 from util.hepmc.hepmc import CompressHepMC
 from util.config.config import Configurator,GetConfigFileContent, GetConfigDictionary
 from util.config.args import parse_mc_steps, FloatListAction, none_or_str
-from util.metadata.meta import MetaDataHandler, AddMetaDataWithReference
+from util.metadata.meta import MetaDataHandler
 
 from util.misc.timing import BasicTimer, profiling_context
 
@@ -25,7 +25,7 @@ def main(args):
     parser.add_argument('-n',            '--nevents',           type=int,          required=True,            help='Number of events per pt bin.')
     parser.add_argument('-steps',        '--steps',             type = parse_mc_steps, default = 'generation pileup simulation reconstruction', help='Comma- or space-separated list of step. Options are [generation,pileup, simulation,reconstruction].')
     parser.add_argument('-p',            '--ptbins',            action = FloatListAction, default=[-1,-1], nargs='*',    help='Transverse momentum bin edges, for outgoing particles of the hard process. Can be a list of floats, or a string of comma- or space-separated floats. In GeV.')
-    parser.add_argument('-o',            '--outfile',           type=str,          default='events.h5',      help='Output HDF5 file name.')
+    parser.add_argument('-o',            '--outfile',           type=str,          default='events',      help='Output ntuple file name, excluding extension.')
     parser.add_argument('-O',            '--outdir',            type=none_or_str,  default=None,             help='Output directory.')
     parser.add_argument('-v',            '--verbose',           action='store_true',                         help='Verbosity.')
     parser.add_argument('-f',            '--force',             type=int,          default=0,                help='Whether or not to force generation -- if true, will possibly overwrite existing HepMC files in output directory.')
@@ -58,12 +58,10 @@ def main(args):
     timer = BasicTimer()
     timer.start_main()
 
-    metadata_handler = MetaDataHandler()
-
     steps = args['steps']
     nevents_per_bin = args['nevents']
     pt_bin_edges = args['ptbins']
-    h5_file = args['outfile']
+    ntuple_file = args['outfile']
     outdir = args['outdir']
     verbose = args['verbose']
     compress_hepmc = args['compress']
@@ -118,6 +116,8 @@ def main(args):
         print('Error: Configuration has bad status. Exiting.')
         assert(False)
 
+    metadata_handler = MetaDataHandler(configurator)
+
     # # Set up FastJet -- we will need this later on (except for the special use case of no jet clustering!).
     # # To keep our printouts clean, we are initializing FastJet here instead of later on in a loop, so that
     # # we can get the FastJet banner printout out of the way. We remove the banner with some ANSI printing
@@ -134,9 +134,9 @@ def main(args):
     # Setting the verbosity for the HDF5 conversion.
     # If there are many events it might take a bit, so some printout
     # is helpful to monitor the progress.
-    h5_conversion_verbosity = 0
-    if(nevents_per_bin >= 100): h5_conversion_verbosity = 1
-    elif(nevents_per_bin >= 10000): h5_conversion_verbosity = 2
+    ntuple_verbosity = 0
+    if(nevents_per_bin >= 100): ntuple_verbosity = 1
+    elif(nevents_per_bin >= 10000): ntuple_verbosity = 2
 
     # Prepare the output directory.
     if(outdir is None): outdir = os.getcwd()
@@ -209,7 +209,7 @@ def main(args):
 
             hepmc_extension = 'hepmc'
             if(configurator.GetHepMCFormat().lower() == 'root'):
-                hepmc_extension = 'root'
+                hepmc_extension = 'hepmc.root'
 
             hep_file = 'events_{}.{}'.format(i,hepmc_extension)
 
@@ -244,7 +244,7 @@ def main(args):
         # make the final dataset harder to reproduce (since you won't directly have info on
         # how the pileup_handlers' input files were created!).
         if(hepmc_extension == 'root'):
-            metadata_handler.AddMetaDataToROOTFiles(hepmc_files,cwd=outdir)
+            metadata_handler.StashMetaDataInROOTFile(hepmc_files,cwd=outdir)
 
         #===============================
         # STEP 2: Pileup (optional)
@@ -293,7 +293,7 @@ def main(args):
                 # the HepMC3/ROOT files have been overwritten. Plus, there's more
                 # metadata to add to them now.
                 if(hepmc_extension == 'root'):
-                    metadata_handler.AddMetaDataToROOTFiles(hepmc_files,cwd=outdir)
+                    metadata_handler.StashMetaDataInROOTFile(hepmc_files,cwd=outdir)
             timer.end_timestamp('pileup')
 
         #===============================
@@ -328,90 +328,77 @@ def main(args):
         # STEP 4: HDF5 conversion + Reconstruction/Post-processing
         #=========================================================
         #
-        # A lot of stuff happens here. We produce the (HDF5) n-tuples.
+        # A lot of stuff happens here. We produce the (ROOT/HDF5) n-tuples.
         # This is also where we'll run things like jet clustering, which
-        # will act upon those n-tuples and add new branches to them.
+        # will act upon those n-tuples as an afterburner (or "post-processor")
+        # and add new branches to them.
         #
 
         if('reconstruction' in steps):
             timer.start_timestamp('reconstruction')
-            # Do reco and put everything into an HDF5 file. # TODO: Support formats other than HDF5? Consider ROOT ntuple output.
-            if(verbose): print('\nRunning recoonstruction and producing final HDF5 output.\n')
+            # Do reco and put everything into an n-tuple file.
+            print('\nRunning reconstruction and producing final N-tuple output.\n')
             processor = Processor(configurator)
-            processor.SetBufferSize(100) # the larger this is, the larger the chunks in memory (and higher the memory usage)
             processor.SetDelphesFiles(delphes_files) # TODO: Handle case of no delphes_files?
             processor.SetOutputDirectory(outdir)
             processor.SetMetadataHandler(metadata_handler)
 
-            h5_files = []
-            print('\nProducing separate HDF5 files for each pT bin, and then concatenating these.')
-            delete_individual_h5 = True
+            # Add the correct file extension to "ntuple_file", so we know what it is.
+            ntuple_file = '{}.{}'.format(ntuple_file,processor.GetOutputExtension())
+
+            ntuple_files = []
+            if(verbose): print('\nProducing separate N-tuple files for each pT bin, and then concatenating these.')
             nentries_per_chunk = int(nentries_per_chunk/nbins)
 
             for i, hepmc_file in enumerate(hepmc_files):
                 # TODO: Rework this a little. Should just generically loop over HepMC files, since they might have an external source and not be pt-binned.
-                pt_min = pt_bin_edges[i]
-                pt_max = pt_bin_edges[i+1]
+                ntuple_file_individual = hepmc_file.split('/')[-1].replace(hepmc_extension,processor.GetOutputExtension())
 
-                h5_file_individual = '.'.join(hepmc_file.split('/')[-1].split('.')[:-1]) + '.h5'
+                processor.SetProgressBarPrefix('\tProducing N-tuple for file {}/{}:'.format(i+1,len(hepmc_files)))
 
-                processor.SetProgressBarPrefix('\tConverting HepMC3 -> HDF5 for file {}/{}:'.format(i+1,len(hepmc_files)))
-
-                processor.Process(hepmc_file,h5_file_individual,verbosity=h5_conversion_verbosity)
-
-                # To each HDF5 event file, we will add event indices. These may be useful/necessary for the post-processing step.
-                # We will remove these indices when concatenating files, since as one of our last steps we'll add indices again
-                # but with respect to the full event listing (not just w.r.t. events in each generation pT bin).
-                AddEventIndices(h5_file_individual,cwd=outdir,copts=compression_opts)
-
-                # Optional post-processing. Any post-processing steps have been configured in the config file, config/config.py.
-                processor.PostProcess(hepmc_file,[h5_file_individual])
+                # TODO: Restructure so that the Delphes files are fed in here too? Can be given as `None` if not present.
+                processor.ProcessFull(hepmc_file,ntuple_file_individual,verbosity=ntuple_verbosity)
 
                 # Add information from the pileup handler (if any).
                 # TODO: This may need a little reworking? The handling of filenames might be a little fragile.
                 if(pileup_handler is not None):
-                    pileup_handler.AddPileupInfoToH5(h5_file_individual,cwd=outdir,file_key=hepmc_file)
+                    pileup_handler.AddPileupInfoToH5(ntuple_file_individual,cwd=outdir,file_key=hepmc_file)
 
-                h5_file_individual = '/'.join((outdir,h5_file_individual))
-                h5_files.append(h5_file_individual)
+                ntuple_file_individual = '/'.join((outdir,ntuple_file_individual))
+                ntuple_files.append(ntuple_file_individual)
 
-            ConcatenateH5(h5_files,'/'.join((outdir,h5_file)),copts=compression_opts,delete_inputs=delete_individual_h5,ignore_keys=['Event.Index'],verbose=False,silent_drop=True)
+            # Now, concatenate the ntuple files together.
+            processor.ConcatenateNtuples(ntuple_files,ntuple_file) # will prepend outdir to the output_file argument (this is all a little messy)
 
             #Cleanup: Compress the HepMC files.
             if(compress_hepmc): CompressHepMC(hepmc_files,True,cwd=outdir)
 
-            # Add some event indices to our dataset.
-            if(index_offset < 0): index_offset = 0
-            print('\tAdding event indices to file {}.'.format('/'.join((outdir,h5_file))))
-            print('\t\tStarting at Event.Index = {}.'.format(index_offset))
-            AddEventIndices(h5_file,cwd=outdir,copts=compression_opts,offset=index_offset)
-
-            # Remove any failed events (e.g. detector-level events with no jets passing cuts).
-            # print('\tRemoving any failed events from file {}.\n\tThese may be events where there weren\'t any jets passing the requested cuts.'.format('/'.join((outdir,h5_file))))
-            print('\tRemoving any failed events from file {}.'.format('/'.join((outdir,h5_file))))
-            RemoveFailedFromHDF5(h5_file,cwd=outdir)
+            # Now, add event indices to the datset. Each of the `ntuple_files` had them (in case useful
+            # for any post-processing), but they are dropped when we call processor.ConcatenateNtuples.
+            # Now, we add them across all the events in the concatenated set.
+            if(index_offset < 0):
+                index_offset = 0
+            processor.AddEventIndices(ntuple_file,offset=index_offset)
 
             #======================================================
-            # STEP 4.5: Metadata (into HDF5).
+            # STEP 4.5: Metadata (into N-tuple).
             #======================================================
-            # Now, add some metadata to the file -- we use the HDF5 file attributes to store lists of metadata, and create columns that reference these lists.
-            # This is handled correctly by metadata.
-            for key,val in metadata_handler.GetMetaData().items():
-                AddMetaDataWithReference(h5_file,cwd=outdir,value=val,key=key)
+            # Now, add some metadata to the file.
+            metadata_handler.AddMetaDataWithReference(ntuple_file,cwd=outdir)
 
             # TODO: Might want to think about offering the ability to split upstream files too? Could be complicated...
             if(split_files):
                 # Now split the HDF5 file into training, testing and validation samples.
                 split_ratio = (train_frac,val_frac,test_frac)
-                print("\tSplitting HDF5 file {} into training, validation and testing samples:".format('/'.join((outdir,h5_file))))
+                print("\tSplitting HDF5 file {} into training, validation and testing samples:".format('/'.join((outdir,ntuple_file))))
                 train_name = 'train.h5'
                 val_name = 'valid.h5'
                 test_name = 'test.h5'
-                SplitH5(h5_file, split_ratio,cwd=outdir,copts=compression_opts, train_name=train_name,val_name=val_name,test_name=test_name,verbose=True,seed=configurator.GetSplitSeed())
+                SplitH5(ntuple_file, split_ratio,cwd=outdir,copts=compression_opts, train_name=train_name,val_name=val_name,test_name=test_name,verbose=True,seed=configurator.GetSplitSeed())
 
-            # Optionally delete the full HDF5 file.
+            # Optionally delete the full N-tuple file.
             if(delete_full):
-                comm = ['rm','{}/{}'.format(outdir,h5_file)]
+                comm = ['rm','{}/{}'.format(outdir,ntuple_file)]
                 sub.check_call(comm)
             timer.end_timestamp('reconstruction')
         timer.end_main()

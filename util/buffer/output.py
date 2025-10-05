@@ -441,7 +441,8 @@ class RootOutputBuffer:
         self.tree_name = tree_name if tree_name is not None else "hepdata4ml_tree"
         self.print_prefix = 'RootOutputBuffer:'
         self.buffers = {} # each buffer will be of length 1 w.r.t. number of events
-        self.buffer_status = {} # keep track of what buffers have been filled
+        self.n_filled = 0 # keep track of what buffers have been filled
+        self.is_scalar = {}
         self.f = None
         self.t = None
         self.init_status = False
@@ -452,13 +453,18 @@ class RootOutputBuffer:
         if(filename is None):
             return
         self.filename = filename
-        self._init_tree()
+
+    def SetTreeName(self,tree_name:str):
+        self.tree_name = tree_name
 
     def _init_tree(self):
         self.f = rt.TFile(self.filename,'RECREATE')
         self.t = rt.TTree(self.tree_name,self.tree_name)
         self.init_status = True
         return
+
+    def GetTreeName(self):
+        return self.tree_name
 
     def create_array(self, key: str, shape: Tuple=(), dtype: np.dtype = np.float64):
         """
@@ -472,11 +478,14 @@ class RootOutputBuffer:
         if(key in self.buffers.keys()):
             return
 
+        if(not self.init_status):
+            self._init_tree()
+
         if(shape==()): # scalar -- one per event
             self._init_scalar_branch(key,dtype)
         else:
             self._init_vector_branch(key,shape, dtype)
-        self.buffer_status[key] = False
+        # self.n_filled[key] = 0
         return
 
     def _init_scalar_branch(self,key,dtype):
@@ -487,7 +496,7 @@ class RootOutputBuffer:
             self.t.Branch(key,self.buffers[key],'{}/D'.format(key))
         elif(dtype == np.dtype('int')): # also covers long
             self.t.Branch(key,self.buffers[key],'{}/I'.format(key))
-        if(dtype == np.dtype('uint')):
+        elif(dtype == np.dtype('uint')):
             self.t.Branch(key,self.buffers[key],'{}/i'.format(key))
         elif(dtype == np.dtype('short')):
             self.t.Branch(key,self.buffers[key],'{}/S'.format(key))
@@ -496,25 +505,25 @@ class RootOutputBuffer:
         elif(dtype == np.dtype('bool')):
             self.t.Branch(key,self.buffers[key],'{}/o'.format(key))
         else: # not recognized
-            print('Warning: dtype {} not recognized for branch {}.'.format(dtype,key))
+            self._print('Warning: dtype {} not recognized for branch {}.'.format(dtype,key))
         return
 
     def _init_vector_branch(self,key,shape, dtype):
         dtype_str = 'double'
         for type_str in ['int','uint','short','ushort','bool']:
             if(dtype == np.dtype(type_str)):
-                dtype_str = 'type_str'
+                dtype_str = type_str
                 break
 
         # For now, we will support 1D, 2D and 3D vectors
         if(len(shape) == 1):
             self.buffers[key] = rt.std.vector[dtype_str]()
-        elif(len(shape == 2)):
+        elif(len(shape) == 2):
             self.buffers[key] = rt.std.vector[rt.std.vector[dtype_str]]()
-        elif(len(shape == 3)):
+        elif(len(shape) == 3):
             self.buffers[key] = rt.std.vector[rt.std.vector[rt.std.vector[rt.std.vector[dtype_str]]]]()
         else:
-            print('Warning: vector branch of dimension {} not supported.'.format(len(shape)))
+            self._print('Warning: vector branch of dimension {} not supported.'.format(len(shape)))
             return
 
         self.t.Branch(key,self.buffers[key])
@@ -527,31 +536,34 @@ class RootOutputBuffer:
         """
         # We need to cover multiple cases: scalar-type branches, and vector-type branches.
         # For the case of vectors, they can be multi-dimensional (e.g. vector<vector<Double_t>>).
-
-        is_scalar = (not isinstance(value,np.ndarray)) or (isinstance(value,np.ndarray) and np.asarray(value).ndim < 2) or(isinstance(value,list) and len(list(value)) == 1)
+        try:
+            is_scalar = self.is_scalar[key]
+        except:
+            # need to determine if this is a scalar branch or not
+            is_scalar = False
+            if(isinstance(value,int) or isinstance(value,float)):
+               is_scalar = True
+            self.is_scalar[key] = is_scalar
 
         # Check if we need to flush the buffer. We do this if we find that
-        # the buffer we're about to fill is not empty; this works as long
+        # we're filling the next event for this buffer, as identified by
+        # the `index` argument ; this works as long
         # as the code that's leveraging this class is filling all the buffers
         # for a single event before moving on to the next one.
         # (which is a pretty sensible assumption) - Jan
-        if(self.buffer_status[key]):
+        if(self.n_filled < index):
             self.flush()
 
         if(is_scalar):
             self.buffers[key][0] = value # buffer is a 1D length-1 array
         else: # non-scalar -- this possibly gets more complex
             self.buffers[key].assign(value) # TODO: Does this work as expected?
-        self.buffer_status[key] = True
         return
 
     def flush(self):
         self.t.Fill()
-        self._clear_buffers()
-
-    def _clear_buffers(self):
-        self.buffer_status = {key: False for key in self.buffer_status} # clearing status is sufficient
-        return
+        self.n_filled += 1
+        # self._clear_buffers()
 
     def close(self,output_file:Optional[str]=None):
         self.t.Write()

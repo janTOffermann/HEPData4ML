@@ -4,11 +4,13 @@ import h5py as h5
 import ROOT as rt
 from util.math.embedding import embed_array
 from util.buffer.input import UprootTreeLoader
-from util.buffer.output import OutputBuffer
+from util.buffer.output import OutputBuffer, RootOutputBuffer
 from util.qol_utils.progress_bar import printProgressBarColor
 from util.hepmc.hepmc import ExtractHepMCEvents, ExtractHepMCParticles, ParticleToProductionVertex, ParticleToEndVertex, ParticleToMomenta
-from typing import Union, Optional, List, TYPE_CHECKING
+from typing import Union, Optional, List, Any, TYPE_CHECKING
 from util.misc.timing import profile_method, profile_block
+import util.hdf5.hdf5 as h5util
+import util.root.utils as rootutil
 
 if(TYPE_CHECKING):
     import sys
@@ -28,9 +30,15 @@ class Processor:
     """
     def __init__(self, configurator:'Configurator'):
         self.configurator = configurator
+        self.print_prefix = 'Processor'
         self.delphes = False # will be set to True if SetDelphesFiles() is called
 
-        self.SetProgressBarPrefix('Converting HepMC3 -> HDF5:')
+        # Set the output format.
+        self.output_format = None
+        self.output_extension = None
+        self._set_output_format()
+
+        self.SetProgressBarPrefix('Converting HepMC3 -> N-tuple:')
         self.suffix = 'Complete'
         self.bl = 50
         self.verbose = False
@@ -39,22 +47,16 @@ class Processor:
 
         self.stable_truth_particle_name = 'StableTruthParticles' # a "special" name for the stable truth particles collection; this is always present
 
-        self.cluster_sequence = None
-        self.jets = None
-        self.jets_filtered = None
-
         self.SetPostProcessing()
 
         # Various integers for buffer size, number of particles read into memory from HepMC, number saved to file, etc.
-        self.buffer_size = 100 # Can be configured. Affects memory footprint.
+        self.buffer_size = configurator.GetReconstructionBufferSize()
         self.nparticles_max = int(1e4) # TODO: This is some hardcoded max number of particles to be read in from HepMC. Should be plenty.
         self.nparticles_stable = self.configurator.GetNPars()['n_stable']
         self.nparticles_truth_selected = self.configurator.GetNPars()['n_truth']
         self.n_delphes = self.configurator.GetNPars()['n_delphes']
-
-        # Data buffer -- will be initialized in Process()
-        self.buffer = None
-
+        self.buffer = None # will be initialized in Process()
+        self.nevents = None
 
         # truth selector
         self.SetParticleSelection()
@@ -67,6 +69,20 @@ class Processor:
 
         # Compression level for HDF5, 0 (least) to 9 (most)
         self.copts = 0
+
+    def _set_output_format(self):
+        self.output_format = self.configurator.GetReconstructionOutputFormat()
+
+        if(self.output_format.lower() == 'hdf5'):
+            self.output_extension = 'h5'
+        elif(self.output_format.lower() == 'root'):
+            self.output_extension = 'root'
+        else:
+            self._print('Error: Output format {} not recognized.'.format(self.output_format))
+            return
+
+    def GetOutputExtension(self):
+        return self.output_extension
 
     def SetH5Compression(self,val:int):
         if(val > 9):
@@ -114,20 +130,39 @@ class Processor:
     def SetOutputDirectory(self,outdir:str):
         self.outdir = outdir
 
-    @profile_method('Processor.Process')
-    def Process(self, hepmc_files:Union[List[str],str], h5_file:Optional[str]=None, verbosity:int=0):
-        if(type(hepmc_files) == list): hepmc_files = ['{}/{}'.format(self.outdir,x) for x in hepmc_files]
-        else: hepmc_files = '{}/{}'.format(self.outdir,hepmc_files)
-
-        if(h5_file is None):
-            if(type(hepmc_files) == list): h5_file = hepmc_files[0]
-            else: h5_file = hepmc_files
-            if(self.delphes): h5_file =  h5_file.replace('*','').replace('.root','.h5')
-            else: h5_file =  h5_file.replace('*','').replace('.root','.h5') # TODO: Probably a bug
+    def _create_buffer(self, output_file):
+        if(self.output_format == 'hdf5'):
+            if(self.buffer_size > self.nentries):
+                self.SetBufferSize(self.nentries)
+            self.buffer = OutputBuffer(self.buffer_size)
+            self.buffer.SetFilename(output_file)
+            self.buffer.SetNEvents(self.nentries)
         else:
-            h5_file = '{}/{}'.format(self.outdir,h5_file)
+            self.buffer = RootOutputBuffer()
+            self.buffer.SetFilename(output_file)
+            self.buffer.SetTreeName(self.configurator.GetReconstructionTreeName())
 
-        if(type(hepmc_files) == str): hepmc_files = glob.glob(hepmc_files,recursive=True)
+    def ProcessFull(self, hepmc_files:Union[List[str],str], output_file:Optional[str]=None, verbosity:int=0):
+        output_file = self.Process(hepmc_files,output_file,verbosity)
+        self.PostProcess(hepmc_files,output_file)
+        return output_file
+
+    @profile_method('Processor.Process')
+    def Process(self, hepmc_files:Union[List[str],str], output_file:Optional[str]=None, verbosity:int=0):
+
+        # Parse hepmc_files
+        if(type(hepmc_files) == list): hepmc_files = ['{}/{}'.format(self.outdir,x) for x in hepmc_files]
+        else:
+            hepmc_files = '{}/{}'.format(self.outdir,hepmc_files)
+            hepmc_files = glob.glob(hepmc_files,recursive=True)
+
+        if(output_file is None):
+            # if(type(hepmc_files) == list): output_file = hepmc_files[0]
+            # else: output_file = hepmc_files
+            # if(self.delphes): output_file =  output_file.replace('*','').replace('.root','.h5')
+            # else: output_file =  output_file.replace('*','').replace('.root','.h5') # TODO: Probably a bug
+            output_file = 'events.hepdata4ml.{}'.format(self.output_extension)
+        output_file = '{}/{}'.format(self.outdir,output_file)
 
         if(self.delphes):
             # NOTE: It's important that the Delphes files and truth HepMC files line up!
@@ -136,10 +171,10 @@ class Processor:
             #       as things will go wrong if final_state_fiels and delphes_files aren't sorted
             #       the same way (or are of different lengths).
             delphes_arr,var_map = self.PrepDelphesArrays()
-            nentries = len(delphes_arr)
+            self.nentries = len(delphes_arr)
 
         ## Extract truth particle info from the HepMC files.
-        hepmc_events, nentries = ExtractHepMCEvents(hepmc_files,get_nevents=True)
+        hepmc_events, self.nentries = ExtractHepMCEvents(hepmc_files,get_nevents=True)
 
         ## Extract particles from the HepMC events
         particles = ExtractHepMCParticles(hepmc_events,self.nparticles_max)
@@ -151,24 +186,19 @@ class Processor:
             truth_selected_event_particles[key] = ExtractHepMCParticles(hepmc_events,self.nparticles_truth_selected,selection)
 
         # Set up buffer -- set output file, and total number of entries
+        self._create_buffer(output_file)
 
-        if(self.buffer_size > nentries):
-            self.SetBufferSize(nentries)
-        self.buffer = OutputBuffer(self.buffer_size)
-        self.buffer.SetFilename(h5_file)
-        self.buffer.SetNEvents(nentries)
+        progress_bar_chunk = int(self.nentries/20)
 
-        progress_bar_chunk = int(nentries/20)
+        if(verbosity == 1): printProgressBarColor(0,self.nentries, prefix=self.prefix_level1, suffix=self.suffix, length=self.bl)
 
-        if(verbosity == 1): printProgressBarColor(0,nentries, prefix=self.prefix_level1, suffix=self.suffix, length=self.bl)
-
-        for i in range(nentries):
-            # Clear the buffer (for safety).
+        for i in range(self.nentries):
 
             # 0) Write some keys that are the same across all events in this chunk.
             # NOTE: After switching to OutputBuffer usage, have to avoid filling the whole buffer
             #       since this is the 1st key, and that might trigger a flush.
             self.WriteToDataBuffer(i,'SignalFlag',self.configurator.GetSignalFlag())
+            self.WriteToDataBuffer(i,'Event.Index',i)
 
             # 1) Save the stable truth-level particles from the event.
             with profile_block('Processor.Process: Truth Stable'):
@@ -386,8 +416,8 @@ class Processor:
                                 self.WriteToDataBuffer(i,'{}.N'.format(delphes_type),len(delphes_t))
 
             if(verbosity == 1):
-                if(((i+1)%progress_bar_chunk == 0) or i+1==nentries):
-                    printProgressBarColor(i+1,nentries, prefix=self.prefix_level1, suffix=self.suffix, length=self.bl)
+                if(((i+1)%progress_bar_chunk == 0) or i+1==self.nentries):
+                    printProgressBarColor(i+1,self.nentries, prefix=self.prefix_level1, suffix=self.suffix, length=self.bl)
 
         # Final flush, in case there are any stragglers in the buffer.
         self.buffer.flush()
@@ -395,7 +425,7 @@ class Processor:
         # Close
         self.buffer.close()
 
-        return h5_file
+        return output_file
 
     def AddKeyToDataBuffer(self,key:str,value:Union[int,float,np.ndarray,list],dtype:Optional[Union[str,np.dtype]]=None,dimensions:dict=None):
         if(key in self.buffer.keys()):
@@ -440,24 +470,17 @@ class Processor:
         return
 
     @profile_method('Processor.PostProcess')
-    def PostProcess(self,hepmc_files:Union[str,List[str]], h5_files:Optional[Union[str,List[str]]]=None):
-        if(not isinstance(hepmc_files,list)):
-            hepmc_files = [hepmc_files]
-
+    def PostProcess(self,hepmc_file:str, ntuple_file:str, prepend_output_directory=False):
         if(self.post_processing is None):
             return
-        nfiles = len(hepmc_files)
-        if(h5_files is not None): assert(nfiles == len(h5_files))
-
         for post_proc in self.post_processing:
             if(post_proc is None): continue
             post_proc.SetConfigurator(self.configurator)
             post_proc.SetMetadataHandler(self.metadata_handler)
-            for i in range(nfiles):
-                h5_file = None
-                if(h5_files is not None): h5_file = '{}/{}'.format(self.outdir,h5_files[i])
-                hepmc_file = '{}/{}'.format(self.outdir,hepmc_files[i])
-                post_proc(hepmc_file,h5_file,h5_file)
+            if(prepend_output_directory): # TODO: Clean this up? A little inconsistent
+                ntuple_file = '{}/{}'.format(self.outdir,ntuple_file)
+                hepmc_file = '{}/{}'.format(self.outdir,hepmc_file)
+            post_proc(hepmc_file,ntuple_file,ntuple_file)
         return
 
     @profile_method('Processor.PrepDelphesArrays')
@@ -476,7 +499,7 @@ class Processor:
         delphes_tree = 'Delphes'
         delphes_files = ['{}/{}'.format(self.outdir, x) for x in self.delphes_files]
 
-        delphes_arr = UprootTreeLoader(delphes_files, delphes_tree, delphes_keys)
+        delphes_arr = UprootTreeLoader(delphes_files, delphes_tree, delphes_keys) # TODO: Switch to using some kind of buffering. This class loads everyhing.
         delphes_keys = delphes_arr.fields # keeps only the fields that actually exist!
 
         # Create var_map as before
@@ -496,12 +519,36 @@ class Processor:
                 var_map[key][var.lower()] = branch
         return delphes_arr, var_map
 
-    def PrepH5File(self,filename,nentries,data_buffer,copts=0):
-        dsets = {}
-        with h5.File(filename, 'w') as f:
-            for key, val in data_buffer.items():
-                shape = list(val.shape)
-                shape[0] = nentries
-                shape = tuple(shape)
-                dsets[key] = f.create_dataset(key, shape, val.dtype,compression='gzip',compression_opts=copts)
-        return dsets
+    ################################################################
+    # Some member functions that will behave like utilities,
+    # i.e. we'll call them separate from the main Processor routine.
+    ################################################################
+
+    def ConcatenateNtuples(self,input_files:list,output_file):
+            """
+            This is a utility function for concatenating output ntuples.
+            """
+            output_filepath = '/'.join((self.outdir,output_file))
+            if(self.output_format.lower() == 'hdf5'):
+                compression_opts = 1 # TODO fetch from configuration?
+                h5util.ConcatenateH5(input_files,output_filepath,copts=compression_opts,delete_inputs=True,ignore_keys=['Event.Index'],verbose=False,silent_drop=True)
+            elif(self.output_format.lower() == 'root'):
+                rootutil.ConcatenateRootTreeFiles(input_files,output_filepath,self.buffer.GetTreeName(),['Event.Index'])
+            else:
+                self._print('Error: ConcatenateNtuples() not implemented for format {}.'.format(self.output_format))
+                return
+
+    def AddEventIndices(self,input_file,key='Event.Index',offset=0):
+        key = 'Event.Index' # TODO: Make this member variable?
+        if(self.output_format.lower() == 'hdf5'):
+            compression_opts = 1 # TODO fetch from configuration?
+            h5util.AddEventIndices(input_file,cwd=self.outdir,copts=compression_opts,key=key,offset=offset)
+        elif(self.output_format.lower() == 'root'):
+            rootutil.AddEventIndices(input_file,self.buffer.GetTreeName(),cwd=self.outdir,index_branch_name='Event.Index',offset=offset)
+        else:
+            self._print('Error: AddEventIndices() not implemented for format {}.'.format(self.output_format))
+            return
+
+    def _print(self,val:Any):
+        print('{}: {}'.format(self.print_prefix,val))
+        return

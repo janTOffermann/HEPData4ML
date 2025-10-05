@@ -4,12 +4,14 @@ import numpy as np
 import h5py as h5
 import ROOT as rt
 from typing import Union, List
+from util.config.config import Configurator
 
 class MetaDataHandler:
 
-    def __init__(self):
+    def __init__(self,configurator:'Configurator'):
         self.metadata = {}
         self.print_prefix = 'MetaDataHandler: '
+        self.configurator = configurator
         self.Initialize()
 
     def _init_citations(self):
@@ -22,7 +24,7 @@ class MetaDataHandler:
             """
 @software{Offermann:HEPData4ML,
     author = {Offermann, Jan Tuzli\\'c and Liu, Xiaoyang and Hoffman, Timothy},
-    title = {\\textttnohyphen{HEPData4ML}},
+    title = {\\texttt{HEPData4ML}},
     url = {https://github.com/janTOffermann/HEPData4ML},
     year = {2023}
 }
@@ -98,18 +100,18 @@ class MetaDataHandler:
             result='NO_HOSTNAME'
         return result
 
-    def AddMetaDataToROOTFiles(self,root_file:Union[List[str],str], cwd=None, tree_name:str='hepmc3_tree'):
+    def StashMetaDataInROOTFile(self,root_file:Union[List[str],str], cwd=None, tree_name:str='hepmc3_tree'):
         """
         This utility function adds the existing metadata (in self.metadata)
         to the "UserInfo" of a TTree in the input ROOT file.
-        This is a convenient way to stash the metadata into a HepMC3/ROOT file,
-        for example -- which may be handy in use cases such as creating input
-        pileup files, where we want to store the metadata but don't have a final
-        HDF5 output.
+        Note that this simply stashes the metadata, it does *not* produce
+        branches marking which metadata entries correspond with which events.
+        This is to be used, for example, for stashing metadata into HepMC3/ROOT
+        files during the "generation" step.
         """
         if(isinstance(root_file,list)):
             for entry in root_file:
-                self.AddMetaDataToROOTFiles(entry,cwd,tree_name)
+                self.StashMetaDataInROOTFile(entry,cwd,tree_name)
                 return
 
         if(cwd is not None):
@@ -126,7 +128,7 @@ class MetaDataHandler:
             self._print('Input file {} does not contain tree {}.'.format(root_file,tree_name))
             self._print('Available keys in file:')
             for key in keys:
-                print('\t{}'.format(key))
+                self._print('\t{}'.format(key))
             f.Close()
             return
 
@@ -229,52 +231,192 @@ class MetaDataHandler:
         print('{}: {}'.format(self.print_prefix,val))
         return
 
-def AddMetaData(h5_file,cwd=None,value='',key='metadata'):
-    """
-    Generic function for adding a value to the HDF5 file
-    metadata container.
-    """
-    if(cwd is not None): h5_file = '{}/{}'.format(cwd,h5_file)
-    f = h5.File(h5_file,'r+')
-    f.attrs[key] = value
-    f.close()
+    def AddMetaDataWithReference(self,ntuple_file,cwd=None,overwrite=False, copts=9):
+        """
+        Adds an entry to the metadata -- if under an existing key, appends it to the list at that key.
+        Also creates a column in the dataset that will point to this metadata's index.
+        Somewhat redundant for file generation but this type of logic will be useful when concatenating files
+        with different entries in the metadata fields.
+        """
+        if(self.configurator.GetReconstructionOutputFormat().lower() == 'hdf5'):
+            self.AddMetaDataWithReferenceH5(ntuple_file,cwd,overwrite,copts)
+        elif(self.configurator.GetReconstructionOutputFormat().lower() == 'root'):
+            self.AddMetaDataWithReferenceRoot(ntuple_file,self.configurator.GetReconstructionTreeName(),cwd)
+        else:
+            self._print('Warning: AddMetaDataWithReference() not implemented for file format {}.'.format(self.configurator.GetReconstructionOutputFormat()))
+        return
 
-def AddMetaDataWithReference(h5_file,cwd=None,value='',key='metadata',overwrite=False, copts=9):
-    """
-    Adds an entry to the metadata -- if under an existing key, appends it to the list at that key.
-    Also creates a column in the dataset that will point to this metadata's index.
-    Somewhat redundant for file generation but this type of logic will be useful when concatenating files
-    with different entries in the metadata fields.
-    """
+    def AddMetaDataWithReferenceH5(self,ntuple_file,cwd=None,overwrite=False, copts=9):
+        """
+        Adds an entry to the metadata -- if under an existing key, appends it to the list at that key.
+        Also creates a column in the dataset that will point to this metadata's index.
+        Somewhat redundant for file generation but this type of logic will be useful when concatenating files
+        with different entries in the metadata fields.
+        """
 
-    if(key.split('.')[0] != 'Metadata'):
-        key = 'Metadata.{}'.format(key)
+        if(cwd is not None): ntuple_file = '{}/{}'.format(cwd,ntuple_file)
+        f = h5.File(ntuple_file,'r+')
+        check_key = list(f.keys())[0]
+        nevents = f[check_key].shape[0]
+        metadata = f.attrs
 
-    if(cwd is not None): h5_file = '{}/{}'.format(cwd,h5_file)
-    f = h5.File(h5_file,'r+')
-    check_key = list(f.keys())[0]
-    nevents = f[check_key].shape[0]
-    metadata = f.attrs
+        for key,value in self.metadata.items():
 
-    # Dictionaries are not supported in HDF5, but we can convert to JSON.
-    if(isinstance(value,dict)):
-        value = json.dumps(value)
+            if(key.split('.')[0] != 'Metadata'):
+                key = 'Metadata.{}'.format(key)
 
-    if((key not in metadata.keys()) or overwrite): f.attrs[key] = [value]
-    else: f.attrs[key] = list(f.attrs[key]) + [value] # I think the list <-> array stuff should be OK here
-    idx = len(f.attrs[key]) - 1
+            # Dictionaries are not supported in HDF5, but we can convert to JSON.
+            if(isinstance(value,dict)):
+                value = json.dumps(value)
 
-    if(key not in f.keys()):
-        f.create_dataset(key,data=np.full(nevents,idx,dtype=np.dtype('i4')),compression='gzip',compression_opts=copts)
+            if((key not in metadata.keys()) or overwrite):
+                f.attrs[key] = [value]
+                idx = 0
+            else:
+                # Check if this value already exists in the metadata list.
+                # NOTE: This check is a bit unnecessary based on how this class is being used,
+                #       but we might as well do it for flexibility in case we leverage this
+                #       function in a different way. Typically, we're never going to encounter
+                #       a duplicate value.
+                if(value in f.attrs[key]):
+                    idx = list(f.attrs[key]).index(value)
+                else:
+                    f.attrs[key] = list(f.attrs[key]) + [value] # I think the list <-> array stuff should be OK here
+                    idx = len(f.attrs[key]) - 1
 
-    f.close()
+            if(key not in f.keys()):
+                f.create_dataset(key,data=np.full(nevents,idx,dtype=np.dtype('i4')),compression='gzip',compression_opts=copts)
+        f.close()
 
-def GetMetadata(h5_file,cwd=None,key='metadata'):
-    result = None
-    if(cwd is not None): h5_file = '{}/{}'.format(cwd,h5_file)
-    f = h5.File(h5_file,'r+')
-    if(key in f.attrs.keys()):
-        result =  f.attrs[key]
-    f.close()
-    return result
+    def AddMetaDataWithReferenceRoot(self,ntuple_file,tree_name, cwd=None):
+        """
+        Adds an entry to the metadata -- if under an existing key, appends it to the list at that key.
+        Also creates a branch in the dataset that will point to this metadata's index.
+        Somewhat redundant for file generation but this type of logic will be useful when concatenating files
+        with different entries in the metadata fields.
+        """
 
+        if(cwd is not None): ntuple_file = '{}/{}'.format(cwd,ntuple_file)
+        f = rt.TFile(ntuple_file,'UPDATE')
+        t = f.Get(tree_name)
+
+        # We are modifying the TTree "in-place", so we actually make a temporary output file,
+        # which we'll copy over the input file at the end.
+        output_file = ntuple_file.replace('.root','_tmp_{}.root'.format(str(uuid.uuid4())))
+        out_file = rt.TFile.Open(output_file, "RECREATE")
+        out_file.SetCompressionAlgorithm(f.GetCompressionAlgorithm())
+        out_file.SetCompressionLevel(f.GetCompressionLevel())
+
+        # Clone the tree structure (no entries yet)
+        out_tree = t.CloneTree(0)
+
+        index_values = self._add_list_to_ttree(out_tree)
+
+        # Create branches for the metadata references
+        branches = {}
+        buffers = {key:np.full(1,index_values[key],dtype=np.dtype('uint64')) for key in self.metadata.keys()}
+        for key in self.metadata.keys():
+            if(key.split('.')[0] != 'Metadata'):
+                key = 'Metadata.{}'.format(key)
+            branches[key] = out_tree.Branch(key, buffers[key],"{}/l".format(key))
+        for i in range(out_tree.GetEntries()):
+            t.GetEntry(i)
+            out_tree.Fill()
+
+        # Write and close
+        out_file.cd()
+        out_tree.Write()
+        out_file.Close()
+        f.Close()
+        sub.check_call(['mv',output_file,ntuple_file])
+        return
+
+    def _add_list_to_ttree(self,tree:rt.TTree):
+        """
+        We store the information in a TMap, within the TTree's UserInfo
+        (which is a TList). For dictionary-type information, we serialize
+        using the json package.
+
+        Here, we store TLists of metadata -- this is the way to store
+        things in the final n-tuple, so that these lists can be appended
+        to when concatenating datasets.
+        """
+        user_info = tree.GetUserInfo()
+        existing_keys = [x.GetName() for x in user_info]
+        index_values = {}
+
+        for key, value in self.metadata.items():
+            is_dictionary = False
+            if(key in existing_keys):
+                idx = user_info.Find(key).GetEntries()
+            else:
+                idx = 0
+            name = '{}[{}]'.format(key,idx)
+            index_values[key] = idx
+
+            if isinstance(value, int):
+                # TParameter<int> for ints
+                param = rt.TParameter(int)(name, value)
+            elif isinstance(value, float):
+                # TParameter<double> for floats
+                param = rt.TParameter(float)(name, value)
+            elif isinstance(value, str):
+                # TNamed for strings (name=key, title=value)
+                param = rt.TNamed(name, value)
+            elif isinstance(value,np.ndarray): # TODO: Add support for reading
+                # TList of TParameter for numpy array
+                param = rt.TList()
+                param.SetName(name)
+
+                for i,entry in enumerate(value):
+                    if(value.dtype==int):
+                        param.Add(rt.TParameter(int)('{}[{}]'.format(name,i),entry))
+                    else: # assume float
+                        param.Add(rt.TParameter(float)('{}[{}]'.format(name,i),entry))
+
+            elif isinstance(value, dict):
+                # Convert dict to JSON string and store as TNamed
+                is_dictionary = True
+                json_str = json.dumps(value)
+                param = rt.TNamed(name, json_str)
+                param.SetUniqueID(999)  # Custom marker for JSON data, to tell it apart from the basic string
+            else:
+                self._print('Warning: _add_list_to_ttree() unable to add metadata associated with key={} to ROOT file. It is of type {}.'.format(key,type(value)))
+                return
+
+            # Now, either package this metadata value into a TList, or add it to an existing one.
+            if(key in existing_keys):
+                param_list = user_info.Find(key)
+                param_list.Add(param)
+
+            else:
+                param_list = rt.TList()
+                param_list.SetName(key) # TODO: Is it an issue if the param inside has the same name?
+                param_list.Add(param)
+                if(is_dictionary):
+                    param_list.SetUniqueID(999)
+                user_info.Add(param_list)
+
+        return index_values
+
+    def _read_list_from_ttree(self,tree:rt.TTree):
+        user_info = tree.GetUserInfo()
+        metadata = {}
+
+        for i in range(user_info.GetEntries()):
+            obj_list = user_info.At(i)
+            key = obj_list.GetName()
+
+            if obj_list.At(0).InheritsFrom("TParameter<int>"):
+                metadata[key] = [obj.GetVal() for obj in obj_list]
+            elif obj_list.At(0).InheritsFrom("TParameter<float>"):
+                metadata[key] = [obj.GetVal() for obj in obj_list]
+            elif obj_list.At(0).InheritsFrom("TParameter<double>"):
+                metadata[key] = [obj.GetVal() for obj in obj_list]
+            elif obj_list.At(0).InheritsFrom("TNamed"):
+                # Check if this was originally a dictionary
+                if obj_list.GetUniqueID() == 999: # this is set on both obj_list and the objects inside it
+                    metadata[key] = [json.loads(obj.GetTitle()) for obj in obj_list]
+                else:
+                    metadata[key] = [obj.GetTitle() for obj in obj_list]
+        return metadata

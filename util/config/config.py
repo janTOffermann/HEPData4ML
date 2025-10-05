@@ -181,7 +181,7 @@ class Configurator:
 
     def GetPythiaRNGSeed(self):
         return self.config['generation']['rng']
-    
+
     def GetGenerationBufferSize(self):
         try:
             return self.config['generation']['buffer_size']
@@ -234,7 +234,10 @@ class Configurator:
         return self.config['reconstruction']['split_seed']
 
     def GetPostProcessing(self):
-        return self.config['reconstruction']['post_processing']
+        try:
+            return self.config['reconstruction']['post_processing']
+        except:
+            return None
 
     def GetEventFilter(self):
         try:
@@ -257,6 +260,27 @@ class Configurator:
 
     def GetFastjetDirectory(self):
         return self.config['reconstruction']['fastjet_dir']
+
+    def GetReconstructionOutputFormat(self):
+        try:
+            format = self.config['reconstruction']['format']
+            if(format.lower() == 'h5'):
+                format = 'hdf5'
+            return format
+        except:
+            return 'hdf5'
+
+    def GetReconstructionTreeName(self):
+        try:
+            return self.config['reconstruction']['tree_name']
+        except:
+            return 'hepdata4ml_tree'
+
+    def GetReconstructionBufferSize(self):
+        try:
+            return self.config['reconstruction']['buffer_size']
+        except:
+            return self.GetGenerationBufferSize()
 
     def GetPrintFastjet(self):
         return self.print_fastjet

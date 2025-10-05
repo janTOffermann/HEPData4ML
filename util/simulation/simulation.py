@@ -147,7 +147,14 @@ class DelphesSimulator(DetectorSimulator):
             else:
                 self.SetMode('hepmc') # or 'ascii'?
 
-            delphes_file = '.'.join(hep_file.split('.')[:-1]) + '_delphes.root'
+            # To automatically name the Delphes file, we will try to identify
+            # and strip off the input filename's extension.
+            # hep_file_no_extension = hep_file.s
+            extensions = ['root','hepmc']
+            hep_file_no_extension = hep_file
+            for ext in extensions:
+                hep_file_no_extension = hep_file_no_extension.replace('.{}'.format(ext),'')
+            delphes_file = hep_file_no_extension + '.delphes.root'
 
             if(self.mode=='root'):
                 print('Running DelphesHepMC3ROOT: {} -> {}.'.format(hep_file,delphes_file))
