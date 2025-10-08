@@ -29,8 +29,6 @@
 #include "HepMC3/GenVertex.h"
 #include "HepMC3/GenParticle.h"
 #include "HepMC3/GenEvent.h"
-#include "HepMC3/WriterAscii.h"
-#include "HepMC3/WriterAsciiHepMC2.h"
 #include "HepMC3/GenHeavyIon.h"
 #include "HepMC3/GenPdfInfo.h"
 
@@ -38,8 +36,8 @@ using namespace std;
 
 namespace PythiaGenerator{
 
-  bool Pythia8ToHepMC3::fill_next_event( Pythia8::Pythia& pythia, HepMC3::GenEvent* evt, int ievnum){ 
-      return fill_next_event( pythia.event, evt, ievnum, &pythia.info, &pythia.settings); 
+  bool Pythia8ToHepMC3::fill_next_event( Pythia8::Pythia& pythia, HepMC3::GenEvent* evt, int ievnum){
+      return fill_next_event( pythia.event, evt, ievnum, &pythia.info, &pythia.settings);
     }
 
   bool Pythia8ToHepMC3::fill_next_event( Pythia8::Event& pyev, HepMC3::GenEvent* evt, int ievnum,

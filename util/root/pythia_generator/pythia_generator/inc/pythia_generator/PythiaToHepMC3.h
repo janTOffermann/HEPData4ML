@@ -21,17 +21,6 @@
 // Standard library includes
 #include <string>
 
-
-// #include "Pythia8/Pythia.h"
-// #include "Pythia8/HIInfo.h"
-// #include "HepMC3/GenVertex.h"
-// #include "HepMC3/GenParticle.h"
-// #include "HepMC3/GenEvent.h"
-// #include "HepMC3/WriterAscii.h"
-// #include "HepMC3/WriterAsciiHepMC2.h"
-// #include "HepMC3/GenHeavyIon.h"
-// #include "HepMC3/GenPdfInfo.h"
-
 namespace Pythia8{
   class Pythia;
   class Settings;
