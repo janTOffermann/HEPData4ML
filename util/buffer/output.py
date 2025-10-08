@@ -514,6 +514,8 @@ class RootOutputBuffer:
             if(dtype == np.dtype(type_str)):
                 dtype_str = type_str
                 break
+        if(dtype == np.dtype('int32')): # special case not caught above
+            dtype_str = 'int'
 
         # For now, we will support 1D, 2D and 3D vectors
         if(len(shape) == 1):
