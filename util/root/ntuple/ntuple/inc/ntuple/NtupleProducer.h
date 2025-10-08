@@ -38,6 +38,93 @@ namespace NtupleProducer{
     const Double_t& operator[](size_t i) const { return data[i]; }
   };
 
+  struct FourMomentumData{ // a simple container for holding both (E,px,py,pz) and (pt,eta,phi,m) bases.
+    Int_t N;
+
+    /*
+      * Using vector<FourVector> instead of <vector<vector<Double_t>>
+      * will be a bit more awkward for uproot access in Python,
+      * but this should offer better compression since the inner
+      * "vector" is fixed-length.
+      */
+    vector<FourVector> pmu;
+    vector<FourVector> pmu_cyl;
+
+    void Clear(){
+      N = 0;
+      pmu.clear();
+      pmu_cyl.clear();
+    }
+  };
+
+  struct TrackData{ // a simple container for holding both (E,px,py,pz) and (pt,eta,phi,m) bases.
+    Int_t N;
+
+    /*
+      * Using vector<FourVector> instead of <vector<vector<Double_t>>
+      * will be a bit more awkward for uproot access in Python,
+      * but this should offer better compression since the inner
+      * "vector" is fixed-length.
+      */
+    vector<Double_t> d0;
+    vector<Double_t> d0Error;
+    vector<Double_t> z0;
+    vector<Double_t> z0Error;
+
+    void Clear(){
+      N = 0;
+      d0.clear();
+      d0Error.clear();
+      z0.clear();
+      z0Error.clear();
+    }
+  };
+
+  struct TruthParticleData {
+    Int_t N;
+    FourMomentumData momentum;
+    vector<Int_t> pdgId;
+    vector<Int_t> indexHepMC;
+    vector<FourVector> xmu_prod;
+
+    void Clear(){
+      N = 0;
+      momentum.Clear();
+      pdgId.clear();
+      indexHepMC.clear();
+      xmu_prod.clear();
+    }
+  };
+
+  struct DelphesReaderData {
+
+    // Output data
+    Int_t N;
+    FourMomentumData outputMomentum;
+    TrackData trackData;
+
+    // add more as needed...
+
+    // Input readers
+    std::unique_ptr<TTreeReaderArray<Float_t>> pt;
+    std::unique_ptr<TTreeReaderArray<Float_t>> eta;
+    std::unique_ptr<TTreeReaderArray<Float_t>> phi;
+    std::unique_ptr<TTreeReaderArray<Float_t>> mass;
+
+    std::unique_ptr<TTreeReaderArray<Float_t>> d0;
+    std::unique_ptr<TTreeReaderArray<Float_t>> d0Error;
+    std::unique_ptr<TTreeReaderArray<Float_t>> z0;
+    std::unique_ptr<TTreeReaderArray<Float_t>> z0Error;
+
+    // will add other leaves as needed...
+
+    void Clear() {
+      N = 0;
+      outputMomentum.Clear();
+      trackData.Clear();
+    }
+  };
+
   class Converter{
 
     public:
@@ -59,61 +146,7 @@ namespace NtupleProducer{
 
       // ----
       void SetStableTruthParticleName(TString name){_truthParticleBranchPrefix = name;};
-
-      struct FourMomentumData{ // a simple container for holding both (E,px,py,pz) and (pt,eta,phi,m) bases.
-        Int_t N;
-
-        /*
-         * Using vector<FourVector> instead of <vector<vector<Double_t>>
-         * will be a bit more awkward for uproot access in Python,
-         * but this should offer better compression since the inner
-         * "vector" is fixed-length.
-         */
-        vector<FourVector> pmu;
-        vector<FourVector> pmu_cyl;
-
-        void Clear(){
-          N = 0;
-          pmu.clear();
-          pmu_cyl.clear();
-        }
-      };
-
-      struct TruthParticleData {
-        Int_t N;
-        FourMomentumData momentum;
-        vector<Int_t> pdgId;
-        vector<Int_t> indexHepMC;
-        vector<FourVector> xmu_prod;
-
-        void Clear(){
-          N = 0;
-          momentum.Clear();
-          pdgId.clear();
-          indexHepMC.clear();
-          xmu_prod.clear();
-        }
-      };
-
-      struct DelphesReaderData {
-
-        // Output data
-        Int_t N;
-        FourMomentumData outputMomentum;
-        // add more as needed...
-
-        // Input readers
-        std::unique_ptr<TTreeReaderArray<Float_t>> pt;
-        std::unique_ptr<TTreeReaderArray<Float_t>> eta;
-        std::unique_ptr<TTreeReaderArray<Float_t>> phi;
-        std::unique_ptr<TTreeReaderArray<Float_t>> mass;
-        // will add other leaves as needed...
-
-        void Clear() {
-          N = 0;
-          outputMomentum.Clear();
-        }
-      };
+      void SetDelphesDefaultMass(TString branchName, Double_t mass){_delphesMassDefault[branchName] = mass;};
 
 
     private:
@@ -162,7 +195,7 @@ namespace NtupleProducer{
       vector<TString> _delphesObjectNames = {}; // which Delphes objects to copy over
       vector<TString> _delphesLeafNames = {};
       // buffers for filling
-      // map<TString, FourMomentumData> _delphesMomentum = {};
+      map<TString, Double_t> _delphesMassDefault = {};
       map<TString, std::unique_ptr<DelphesReaderData>> _delphesData = {};
 
       // variables associated with output ntuple

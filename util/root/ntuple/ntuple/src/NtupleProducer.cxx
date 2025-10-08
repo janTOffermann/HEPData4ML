@@ -210,7 +210,27 @@ namespace NtupleProducer{
       _outputTree->Branch(branchName,&_delphesData[inputBranchName]->outputMomentum.pmu_cyl);
     }
 
-    //
+    // 2) Handling D0/Z0
+    if(_CheckStringVector(attributes,"D0")){
+
+        // Connect it to the input Delphes branches.
+        _delphesData[inputBranchName]->d0 = std::make_unique<TTreeReaderArray<Float_t>>(*_readerDelphes,Form("%s.D0", inputBranchName.Data()));
+        _delphesData[inputBranchName]->d0Error = std::make_unique<TTreeReaderArray<Float_t>>(*_readerDelphes,Form("%s.ErrorD0", inputBranchName.Data()));
+        _delphesData[inputBranchName]->z0 = std::make_unique<TTreeReaderArray<Float_t>>(*_readerDelphes,Form("%s.DZ", inputBranchName.Data())); // Note: Why does Delphes call it "DZ" and not "Z0"?
+        _delphesData[inputBranchName]->z0Error = std::make_unique<TTreeReaderArray<Float_t>>(*_readerDelphes,Form("%s.ErrorDZ", inputBranchName.Data()));
+
+      // Connect it to the output tree branches.
+      branchName = Form("%s.D0", inputBranchName.Data());
+      _outputTree->Branch(branchName,&_delphesData[inputBranchName]->trackData.d0);
+      branchName = Form("%s.D0.Error", inputBranchName.Data());
+      _outputTree->Branch(branchName,&_delphesData[inputBranchName]->trackData.d0Error);
+      branchName = Form("%s.Z0", inputBranchName.Data());
+      _outputTree->Branch(branchName,&_delphesData[inputBranchName]->trackData.z0);
+      branchName = Form("%s.Z0.Error", inputBranchName.Data());
+      _outputTree->Branch(branchName,&_delphesData[inputBranchName]->trackData.z0Error);
+
+    }
+
 
     return;
   }
@@ -298,6 +318,7 @@ namespace NtupleProducer{
     // Can loop in this simple way because the "selection algorithm" is hardcoded:
     // we simply take all particles where the HepMC3 status is equal to 1.
     _stableParticles.Clear();
+    Int_t N = 0;
     for(Size_t i = 0; i < _evt->particles().size(); i++){
       shared_ptr<HepMC3::GenParticle> par = _evt->particles().at(i);
       if(par->status() != 1) continue;
@@ -310,7 +331,9 @@ namespace NtupleProducer{
 
       HepMC3::FourVector production_vertex = par->production_vertex()->position();
       _stableParticles.xmu_prod.push_back({{production_vertex.t(),production_vertex.x(),production_vertex.y(),production_vertex.z()}});
+      N++;
     }
+    _stableParticles.N = N;
     return;
   }
 
@@ -319,6 +342,7 @@ namespace NtupleProducer{
     for(auto& [branchName, data] : _delphesData){
         data->Clear();
 
+        // TODO: Package these chunks up into their own functions
         if(data->pt){
           Int_t N = data->pt->GetSize();
           data->N = N;
@@ -326,12 +350,25 @@ namespace NtupleProducer{
             Double_t pt = (*data->pt)[i];
             Double_t eta = (*data->eta)[i];
             Double_t phi = (*data->phi)[i];
-            Double_t mass = data->mass ? (*data->mass)[i] : 0.0;
-            v.SetCoordinates(pt,eta,phi,mass);
+            Double_t m   = data->mass ? (*data->mass)[i] :
+              _delphesMassDefault.find(branchName) != _delphesMassDefault.end() ? _delphesMassDefault[branchName] :
+              0.0;
+            v.SetCoordinates(pt,eta,phi,m);
             data->outputMomentum.pmu.push_back({{v.E(), v.Px(), v.Py(), v.Pz()}});
-            data->outputMomentum.pmu_cyl.push_back({{pt, eta, phi, mass}});
+            data->outputMomentum.pmu_cyl.push_back({{pt, eta, phi, m}});
           }
         }
+        if(data->d0){
+          Int_t N = data->d0->GetSize();
+          for(Int_t i = 0; i < N; i++){
+            data->trackData.d0.push_back((*data->d0)[i]);
+            data->trackData.d0Error.push_back((*data->d0Error)[i]);
+            data->trackData.z0.push_back((*data->z0)[i]);
+            data->trackData.z0Error.push_back((*data->z0Error)[i]);
+
+          }
+        }
+
         // etc.
     }
   }
