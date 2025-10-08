@@ -45,7 +45,6 @@ set ExecutionPath {
   EFlowFilter
 
   NeutrinoFilter
-  GenJetFinder
   GenMissingET
 
   Rho
@@ -636,21 +635,7 @@ module PdgCodeFilter NeutrinoFilter {
 
 }
 
-#####################
-# MC truth jet finder
-#####################
-
-module FastJetFinder GenJetFinder {
-  set InputArray NeutrinoFilter/filteredParticles
-
-  set OutputArray jets
-
-  # algorithm: 1 CDFJetClu, 2 MidPoint, 3 SIScone, 4 kt, 5 Cambridge/Aachen, 6 antikt
-  set JetAlgorithm 6
-  set ParameterR 0.4
-
-  set JetPTMin 20.0
-}
+# NOTE: Removed GenJetFinder
 
 #########################
 # Gen Missing ET merger
@@ -808,7 +793,6 @@ module TreeWriter TreeWriter {
   add Branch ECal/eflowPhotons EFlowPhoton Tower
   add Branch HCal/eflowNeutralHadrons EFlowNeutralHadron Tower
 
-  add Branch GenJetFinder/jets GenJet Jet
   add Branch GenMissingET/momentum GenMissingET MissingET
 
   add Branch UniqueObjectFinder/electrons Electron Electron
