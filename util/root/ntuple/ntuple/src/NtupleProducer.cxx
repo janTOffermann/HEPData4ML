@@ -8,6 +8,9 @@
 #include "TObjArray.h"
 #include "TObjString.h"
 #include "TFile.h"
+#include "TMath.h"
+// #include "TLeafF.h"
+#include "TLeafElement.h"
 
 // HepMC3 includes
 #include "HepMC3/GenEvent.h"
@@ -31,11 +34,11 @@ namespace NtupleProducer{
     if(_readerAscii != 0) delete _readerAscii;
     if(_readerRoot != 0) delete _readerRoot;
     if(_evt != 0) delete _evt;
-    if(_readerDelphes != 0) delete _readerDelphes;
+    if(_delphesReader != 0) delete _delphesReader;
 
-    if(_fileDelphes != 0){
-      _fileDelphes->Close(); // deletes _treeDelphes?
-      delete _fileDelphes;
+    if(_delphesFile != 0){
+      _delphesFile->Close(); // deletes _delphesTree?
+      delete _delphesFile;
     }
 
     if(_outputFile != 0){
@@ -154,6 +157,155 @@ namespace NtupleProducer{
     return it!=v.end();
   }
 
+  void Converter::_DelphesMultiplicity(TString inputBranchName){
+    TString branchName = Form("%s.N", inputBranchName.Data());
+    _outputTree->Branch(branchName,&_delphesData[inputBranchName]->output.N,Form("%s/I",branchName.Data()));
+    return;
+  }
+
+  void Converter::_DelphesMomentum(TString inputBranchName, vector<TString> attributes){
+    if(_CheckStringVector(attributes,"ET") || _CheckStringVector(attributes,"PT")){
+      // Connect it to the input Delphes branches.
+      if(_CheckStringVector(attributes,"ET")){
+        _delphesData[inputBranchName]->pt = std::make_unique<TTreeReaderArray<Float_t>>(*_delphesReader,Form("%s.ET", inputBranchName.Data()));
+      }
+      else{
+        _delphesData[inputBranchName]->pt = std::make_unique<TTreeReaderArray<Float_t>>(*_delphesReader,Form("%s.PT", inputBranchName.Data()));
+      }
+      // Assuming there's also Eta and Phi. (Should be safe, given how Delphes data is structured)
+      _delphesData[inputBranchName]->eta = std::make_unique<TTreeReaderArray<Float_t>>(*_delphesReader,Form("%s.Eta", inputBranchName.Data()));
+      _delphesData[inputBranchName]->phi = std::make_unique<TTreeReaderArray<Float_t>>(*_delphesReader,Form("%s.Phi", inputBranchName.Data()));
+
+      if(_CheckStringVector(attributes,"Mass")){
+        _delphesData[inputBranchName]->mass = std::make_unique<TTreeReaderArray<Float_t>>(*_delphesReader,Form("%s.Mass", inputBranchName.Data()));
+      }
+
+      // Connect it to the output tree branches.
+      TString branchName;
+      branchName = Form("%s.Pmu", inputBranchName.Data());
+      _outputTree->Branch(branchName,&_delphesData[inputBranchName]->output.momentum.pmu);
+      branchName = Form("%s.Pmu_cyl", inputBranchName.Data());
+      _outputTree->Branch(branchName,&_delphesData[inputBranchName]->output.momentum.pmu_cyl);
+    }
+    return;
+  }
+
+  void Converter::_DelphesD0Z0(TString inputBranchName, vector<TString> attributes){
+    if(_CheckStringVector(attributes,"D0")){
+
+      // Connect it to the input Delphes branches.
+      _delphesData[inputBranchName]->d0 = std::make_unique<TTreeReaderArray<Float_t>>(*_delphesReader,Form("%s.D0", inputBranchName.Data()));
+      _delphesData[inputBranchName]->d0Error = std::make_unique<TTreeReaderArray<Float_t>>(*_delphesReader,Form("%s.ErrorD0", inputBranchName.Data()));
+      _delphesData[inputBranchName]->z0 = std::make_unique<TTreeReaderArray<Float_t>>(*_delphesReader,Form("%s.DZ", inputBranchName.Data())); // Note: Why does Delphes call it "DZ" and not "Z0"?
+      _delphesData[inputBranchName]->z0Error = std::make_unique<TTreeReaderArray<Float_t>>(*_delphesReader,Form("%s.ErrorDZ", inputBranchName.Data()));
+
+      // Connect it to the output tree branches.
+      TString branchName;
+
+      if(!_addedN[branchName]){
+        branchName = Form("%s.N", inputBranchName.Data());
+        _outputTree->Branch(branchName,&_delphesData[inputBranchName]->output.N,Form("%s/I",branchName.Data()));
+        _addedN[branchName] = kTRUE;
+      }
+
+
+      branchName = Form("%s.D0", inputBranchName.Data());
+      _outputTree->Branch(branchName,&_delphesData[inputBranchName]->output.trackData.d0);
+      branchName = Form("%s.D0.Error", inputBranchName.Data());
+      _outputTree->Branch(branchName,&_delphesData[inputBranchName]->output.trackData.d0Error);
+      branchName = Form("%s.Z0", inputBranchName.Data());
+      _outputTree->Branch(branchName,&_delphesData[inputBranchName]->output.trackData.z0);
+      branchName = Form("%s.Z0.Error", inputBranchName.Data());
+      _outputTree->Branch(branchName,&_delphesData[inputBranchName]->output.trackData.z0Error);
+    }
+    return;
+  }
+
+  // Point of nearest approach to z axis
+  void Converter::_DelphesXd(TString inputBranchName, vector<TString> attributes){
+
+    // There are two conditions on which we'll write these Xd, Yd and Zd values to output:
+    // 1) The input Delphes object has these fields (as above).
+    // 2) The input Delphes object has D0, Z0 and Phi fields.
+    _delphesFillXd[inputBranchName] = kFALSE;
+    if(_CheckStringVector(attributes,"Xd")){
+
+      // Connect it to the input Delphes branches.
+      _delphesData[inputBranchName]->xd = std::make_unique<TTreeReaderArray<Float_t>>(*_delphesReader,Form("%s.Xd", inputBranchName.Data()));
+      _delphesData[inputBranchName]->yd = std::make_unique<TTreeReaderArray<Float_t>>(*_delphesReader,Form("%s.Yd", inputBranchName.Data()));
+      _delphesData[inputBranchName]->zd = std::make_unique<TTreeReaderArray<Float_t>>(*_delphesReader,Form("%s.Zd", inputBranchName.Data()));
+
+      _delphesFillXd[inputBranchName] = kTRUE;
+    }
+    else if(_CheckStringVector(attributes,"D0") && _CheckStringVector(attributes,"DZ") && _CheckStringVector(attributes,"Phi"))
+    {
+      _delphesFillXd[inputBranchName] = kTRUE;
+    }
+
+    if(_delphesFillXd[inputBranchName]){
+
+      // Connect it to the output tree branches.
+      TString branchName = Form("%s.Xdi", inputBranchName.Data());
+      _outputTree->Branch(branchName,&_delphesData[inputBranchName]->output.trackData.Xd);
+    }
+    return;
+  }
+
+  void Converter::_DelphesPdgIdCharge(TString inputBranchName, vector<TString> attributes){
+    if(_CheckStringVector(attributes,"PID")){
+      _delphesData[inputBranchName]->pdgId = std::make_unique<TTreeReaderArray<Int_t>>(*_delphesReader,Form("%s.PID", inputBranchName.Data()));
+      TString branchName = Form("%s.PdgId", inputBranchName.Data());
+      _outputTree->Branch(branchName,&_delphesData[inputBranchName]->output.pdgId);
+    }
+    if(_CheckStringVector(attributes,"Charge")){
+      _delphesData[inputBranchName]->charge = std::make_unique<TTreeReaderArray<Int_t>>(*_delphesReader,Form("%s.Charge", inputBranchName.Data()));
+      TString branchName = Form("%s.Charge", inputBranchName.Data());
+      _outputTree->Branch(branchName,&_delphesData[inputBranchName]->output.charge);
+    }
+  }
+
+  void Converter::_DelphesCalorimeter(TString inputBranchName, vector<TString> attributes){
+    if(_CheckStringVector(attributes,"Eem")){
+      _delphesData[inputBranchName]->Eem = std::make_unique<TTreeReaderArray<Float_t>>(*_delphesReader,Form("%s.Eem", inputBranchName.Data()));
+      TString branchName = Form("%s.E.EM", inputBranchName.Data());
+      _outputTree->Branch(branchName,&_delphesData[inputBranchName]->output.caloData.Eem);
+    }
+    if(_CheckStringVector(attributes,"Ehad")){
+      _delphesData[inputBranchName]->Ehad = std::make_unique<TTreeReaderArray<Float_t>>(*_delphesReader,Form("%s.Ehad", inputBranchName.Data()));
+      TString branchName = Form("%s.E.Hadronic", inputBranchName.Data());
+      _outputTree->Branch(branchName,&_delphesData[inputBranchName]->output.caloData.Ehad);
+    }
+    if(_CheckStringVector(attributes,"Etrk")){
+      _delphesData[inputBranchName]->Etrack = std::make_unique<TTreeReaderArray<Float_t>>(*_delphesReader,Form("%s.Etrk", inputBranchName.Data()));
+      TString branchName = Form("%s.E.Track", inputBranchName.Data());
+      _outputTree->Branch(branchName,&_delphesData[inputBranchName]->output.caloData.Etrack);
+    }
+    // We handle Edges specially -- the name passed to TTreeReaderArray must include [N] suffix, where N is fixed array size
+
+    if(_CheckStringVector(attributes,"Edges")){
+      _delphesData[inputBranchName]->hasEdges = kTRUE;
+      TLeaf* edgesLeaf = _delphesTree->GetLeaf(Form("%s.Edges", inputBranchName.Data()));
+      _delphesData[inputBranchName]->edgesSize = edgesLeaf->GetLen();  // typically 4
+      TString branchNameFull = Form("%s.Edges[%i]",inputBranchName.Data(),_delphesData[inputBranchName]->edgesSize);
+      _delphesTree->SetBranchAddress(branchNameFull,&_delphesData[inputBranchName]->Edges);
+
+      TString branchName;
+
+      // Special case for edgesLeaf->GetLen() == 2
+      if(_delphesData[inputBranchName]->edgesSize == 2){
+        branchName = Form("%s.Edges.Eta", inputBranchName.Data());
+        _outputTree->Branch(branchName,&_delphesData[inputBranchName]->output.caloData.edgesEta);
+      }
+      else{
+        branchName = Form("%s.Edges.Eta", inputBranchName.Data());
+        _outputTree->Branch(branchName,&_delphesData[inputBranchName]->output.caloData.edgesEta);
+        branchName = Form("%s.Edges.Phi", inputBranchName.Data());
+        _outputTree->Branch(branchName,&_delphesData[inputBranchName]->output.caloData.edgesPhi);
+      }
+    }
+  }
+
+
   void Converter::_CreateDelphesBranch(TString inputBranchName){
 
     TString branchName;
@@ -169,9 +321,17 @@ namespace NtupleProducer{
         delete tokens;
       }
     }
-    // cout << "\nFor branch " << inputBranchName << ", we have attributes:" << endl;
-    // for(TString attribute : attributes){
-    //   cout << "\t" << attribute << endl;
+
+    // cout << "Branch " << inputBranchName << " has these leaves:" << endl;
+    // for(TString leaf : attributes){
+    //   cout << "\t" << leaf << endl;
+    // }
+
+    // TObjArray* leaves = _delphesTree->GetListOfLeaves();
+    // for(Int_t i = 0; i < leaves->GetEntries(); i++) {
+    //     TLeaf* leaf = (TLeaf*)leaves->At(i);
+    //     cout << "Leaf: " << leaf->GetName()
+    //         << " (Branch: " << leaf->GetBranch()->GetName() << ")" << endl;
     // }
 
     /*
@@ -183,53 +343,25 @@ namespace NtupleProducer{
     // Create the DelphesReaderData object.
     _delphesData[inputBranchName] = std::make_unique<DelphesReaderData>();
 
+    _addedN[inputBranchName] = kFALSE; // we'll have multiple opportunities to add a multiplicity branch; we only do it once
+
+    // 0) Object multiplicity
+    _DelphesMultiplicity(inputBranchName);
+
     // 1) Handling momentum
-    if(_CheckStringVector(attributes,"ET") || _CheckStringVector(attributes,"PT")){
-
-      // Connect it to the input Delphes branches.
-      if(_CheckStringVector(attributes,"ET")){
-        _delphesData[inputBranchName]->pt = std::make_unique<TTreeReaderArray<Float_t>>(*_readerDelphes,Form("%s.ET", inputBranchName.Data()));
-      }
-      else{
-        _delphesData[inputBranchName]->pt = std::make_unique<TTreeReaderArray<Float_t>>(*_readerDelphes,Form("%s.PT", inputBranchName.Data()));
-      }
-      // Assuming there's also Eta and Phi. (Should be safe, given how Delphes data is structured)
-      _delphesData[inputBranchName]->eta = std::make_unique<TTreeReaderArray<Float_t>>(*_readerDelphes,Form("%s.Eta", inputBranchName.Data()));
-      _delphesData[inputBranchName]->phi = std::make_unique<TTreeReaderArray<Float_t>>(*_readerDelphes,Form("%s.Phi", inputBranchName.Data()));
-
-      if(_CheckStringVector(attributes,"Mass")){
-        _delphesData[inputBranchName]->mass = std::make_unique<TTreeReaderArray<Float_t>>(*_readerDelphes,Form("%s.Mass", inputBranchName.Data()));
-      }
-
-      // Connect it to the output tree branches.
-      branchName = Form("%s.N", inputBranchName.Data());
-      _outputTree->Branch(branchName,&_delphesData[inputBranchName]->N,Form("%s/I",branchName.Data()));
-      branchName = Form("%s.Pmu", inputBranchName.Data());
-      _outputTree->Branch(branchName,&_delphesData[inputBranchName]->outputMomentum.pmu);
-      branchName = Form("%s.Pmu_cyl", inputBranchName.Data());
-      _outputTree->Branch(branchName,&_delphesData[inputBranchName]->outputMomentum.pmu_cyl);
-    }
+    _DelphesMomentum(inputBranchName,attributes);
 
     // 2) Handling D0/Z0
-    if(_CheckStringVector(attributes,"D0")){
+    _DelphesD0Z0(inputBranchName,attributes);
 
-        // Connect it to the input Delphes branches.
-        _delphesData[inputBranchName]->d0 = std::make_unique<TTreeReaderArray<Float_t>>(*_readerDelphes,Form("%s.D0", inputBranchName.Data()));
-        _delphesData[inputBranchName]->d0Error = std::make_unique<TTreeReaderArray<Float_t>>(*_readerDelphes,Form("%s.ErrorD0", inputBranchName.Data()));
-        _delphesData[inputBranchName]->z0 = std::make_unique<TTreeReaderArray<Float_t>>(*_readerDelphes,Form("%s.DZ", inputBranchName.Data())); // Note: Why does Delphes call it "DZ" and not "Z0"?
-        _delphesData[inputBranchName]->z0Error = std::make_unique<TTreeReaderArray<Float_t>>(*_readerDelphes,Form("%s.ErrorDZ", inputBranchName.Data()));
+    // 3) Handling Xdi
+    _DelphesXd(inputBranchName,attributes);
 
-      // Connect it to the output tree branches.
-      branchName = Form("%s.D0", inputBranchName.Data());
-      _outputTree->Branch(branchName,&_delphesData[inputBranchName]->trackData.d0);
-      branchName = Form("%s.D0.Error", inputBranchName.Data());
-      _outputTree->Branch(branchName,&_delphesData[inputBranchName]->trackData.d0Error);
-      branchName = Form("%s.Z0", inputBranchName.Data());
-      _outputTree->Branch(branchName,&_delphesData[inputBranchName]->trackData.z0);
-      branchName = Form("%s.Z0.Error", inputBranchName.Data());
-      _outputTree->Branch(branchName,&_delphesData[inputBranchName]->trackData.z0Error);
+    // 4) Handling pdgId and charge
+    _DelphesPdgIdCharge(inputBranchName,attributes);
 
-    }
+    // 5) Handling calorimeter information
+    _DelphesCalorimeter(inputBranchName,attributes);
 
 
     return;
@@ -242,7 +374,7 @@ namespace NtupleProducer{
     _delphesLeafNames.clear();
 
     // For handing Delphes objects, we read in all the available branches and their leaves.
-    TObjArray* branchList = _treeDelphes->GetListOfBranches();
+    TObjArray* branchList = _delphesTree->GetListOfBranches();
 
     // Now, determine which branches we'll actually handle, based on what was requested
     // and what is actually available.
@@ -262,7 +394,7 @@ namespace NtupleProducer{
     }
 
     // Determine what leaves are available.
-    TObjArray* leaveList = _treeDelphes->GetListOfLeaves();
+    TObjArray* leaveList = _delphesTree->GetListOfLeaves();
     for(Int_t i = 0; i < leaveList->GetEntries(); i++){
       // Leaf names incl. the branch name, e.g.: Particle_, Particle.fUniqueID, Particle.fBits, Particle.PID ...
       TString leafName = leaveList->At(i)->GetName();
@@ -292,9 +424,9 @@ namespace NtupleProducer{
     _hasDetectorFiles = kTRUE;
 
     // If we have previously opened a Delphes file, close it.
-    if(_fileDelphes != 0){
-      _fileDelphes->Close();
-      delete _fileDelphes; // TODO: Is this necessary?
+    if(_delphesFile != 0){
+      _delphesFile->Close();
+      delete _delphesFile; // TODO: Is this necessary?
     }
 
     // Since we haven't built against Delphes, ROOT will generate
@@ -302,15 +434,14 @@ namespace NtupleProducer{
     // This is OK since we're reading the leaves.
     Int_t oldIgnoreLevel = gErrorIgnoreLevel;
     gErrorIgnoreLevel = kError;
-    _fileDelphes = new TFile(filename,"READ");
+    _delphesFile = new TFile(filename,"READ");
     TString treeName = "Delphes";
-    _treeDelphes = (TTree*)_fileDelphes->Get(treeName);
-    _readerDelphes = new TTreeReader(_treeDelphes);
+    _delphesTree = (TTree*)_delphesFile->Get(treeName);
+    _delphesReader = new TTreeReader(_delphesTree);
     gErrorIgnoreLevel = oldIgnoreLevel;
 
     //DEBUG
-    _treeDelphes->Print();
-
+    // _delphesTree->Print();
     return;
   }
 
@@ -326,11 +457,11 @@ namespace NtupleProducer{
 
       _stableParticles.pdgId.push_back(par->pid());
       _stableParticles.indexHepMC.push_back(par->id());
-      _stableParticles.momentum.pmu.push_back({{momentum.e(),momentum.px(),momentum.py(),momentum.pz()}}); // note use of double-braces (moved from vector<vector<Double_t>> to vector<FourVector>)
-      _stableParticles.momentum.pmu_cyl.push_back({{momentum.pt(),momentum.eta(),momentum.phi(),momentum.m()}});
+      _stableParticles.momentum.pmu.push_back({momentum.e(),momentum.px(),momentum.py(),momentum.pz()}); // note use of double-braces (moved from vector<vector<Double_t>> to vector<FourVector>)
+      _stableParticles.momentum.pmu_cyl.push_back({momentum.pt(),momentum.eta(),momentum.phi(),momentum.m()});
 
       HepMC3::FourVector production_vertex = par->production_vertex()->position();
-      _stableParticles.xmu_prod.push_back({{production_vertex.t(),production_vertex.x(),production_vertex.y(),production_vertex.z()}});
+      _stableParticles.xmu_prod.push_back({production_vertex.t(),production_vertex.x(),production_vertex.y(),production_vertex.z()});
       N++;
     }
     _stableParticles.N = N;
@@ -345,7 +476,7 @@ namespace NtupleProducer{
         // TODO: Package these chunks up into their own functions
         if(data->pt){
           Int_t N = data->pt->GetSize();
-          data->N = N;
+          data->output.N = N;
           for(Int_t i = 0; i < N; i++){
             Double_t pt = (*data->pt)[i];
             Double_t eta = (*data->eta)[i];
@@ -354,23 +485,124 @@ namespace NtupleProducer{
               _delphesMassDefault.find(branchName) != _delphesMassDefault.end() ? _delphesMassDefault[branchName] :
               0.0;
             v.SetCoordinates(pt,eta,phi,m);
-            data->outputMomentum.pmu.push_back({{v.E(), v.Px(), v.Py(), v.Pz()}});
-            data->outputMomentum.pmu_cyl.push_back({{pt, eta, phi, m}});
+            data->output.momentum.pmu.push_back({v.E(), v.Px(), v.Py(), v.Pz()});
+            data->output.momentum.pmu_cyl.push_back({pt, eta, phi, m});
           }
         }
         if(data->d0){
           Int_t N = data->d0->GetSize();
+          data->output.N = N;
           for(Int_t i = 0; i < N; i++){
-            data->trackData.d0.push_back((*data->d0)[i]);
-            data->trackData.d0Error.push_back((*data->d0Error)[i]);
-            data->trackData.z0.push_back((*data->z0)[i]);
-            data->trackData.z0Error.push_back((*data->z0Error)[i]);
+            data->output.trackData.d0.push_back((*data->d0)[i]);
+            data->output.trackData.d0Error.push_back((*data->d0Error)[i]);
+            data->output.trackData.z0.push_back((*data->z0)[i]);
+            data->output.trackData.z0Error.push_back((*data->z0Error)[i]);
 
           }
         }
 
-        // etc.
+        if(_delphesFillXd[branchName]){ // checking this way since there are two conditions under which we fill
+          if(data->xd){
+            Int_t N = data->xd->GetSize();
+            data->output.N = N;
+            for(Int_t i = 0; i < N; i++){
+              data->output.trackData.Xd.push_back({(*data->xd)[i], (*data->yd)[i], (*data->zd)[i]});
+            }
+          }
+          else{ // earlier setup should guarantee that the necessary inputs exist
+            Int_t N = data->d0->GetSize();
+            data->output.N = N;
+            for(Int_t i = 0; i < N; i++){
+              Double_t d0 = (*data->d0)[i];
+              Double_t z0 = (*data->z0)[i];
+              Double_t phi = (*data->phi)[i];
+              Double_t xd = d0 * TMath::Cos(phi);
+              Double_t yd = d0 * TMath::Sin(phi);
+              data->output.trackData.Xd.push_back({xd, yd, z0});
+            }
+          }
+        }
+
+        if(data->pdgId){
+          Int_t N = data->pdgId->GetSize();
+          data->output.N = N;
+          for(Int_t i = 0; i < N; i++){
+            data->output.pdgId.push_back((*data->pdgId)[i]);
+          }
+        }
+        if(data->charge){
+          Int_t N = data->charge->GetSize();
+          data->output.N = N;
+          for(Int_t i = 0; i < N; i++){
+            data->output.charge.push_back((*data->charge)[i]);
+          }
+        }
+
+        if(data->Eem){
+          Int_t N = data->Eem->GetSize();
+          data->output.N = N;
+          for(Int_t i = 0; i < N; i++){
+            data->output.caloData.Eem.push_back((*data->Eem)[i]);
+          }
+        }
+
+        if(data->Ehad){
+          Int_t N = data->Ehad->GetSize();
+          data->output.N = N;
+          for(Int_t i = 0; i < N; i++){
+            data->output.caloData.Ehad.push_back((*data->Ehad)[i]);
+          }
+        }
+
+        if(data->Etrack){
+          Int_t N = data->Etrack->GetSize();
+          data->output.N = N;
+          for(Int_t i = 0; i < N; i++){
+            data->output.caloData.Etrack.push_back((*data->Etrack)[i]);
+          }
+        }
+
+        if(data->hasEdges){
+
+          // TODO: Could consider something even safer, but we should have picked up N from something above.
+          Int_t N = data->output.N; // assuming we got this already
+
+          Int_t idx = 0;
+
+          for(Int_t i = 0; i < N; i++) {
+
+            if(idx + data->edgesSize >= data->edgesMax){
+              cout << Form("NtupleProducer::Converter::_FillDelphesObjects(): Warning, more edges for branch %s.Edges than allowed by buffer, truncating.",branchName.Data()) << endl;
+              cout << Form("\t(edgesMax = %i, but there are %i objects for event %llu, with %i edges each)",data->edgesMax,N,_i,data->edgesSize);
+              break;
+            }
+
+            if(data->edgesSize == 2){
+              vector<Double_t> rapidityEdges = {(Double_t)data->Edges[idx], (Double_t)data->Edges[idx + 1]};
+              data->output.caloData.edgesEta.push_back(rapidityEdges);
+            }
+            else{
+              vector<Double_t> etaEdges = {};
+              vector<Double_t> phiEdges = {};
+              for(Int_t j = 0; j < data->edgesSize; j++){
+                Double_t val = (Double_t)data->Edges[idx + j];
+                if(j < data->edgesSize / 2) etaEdges.push_back(val);
+                else phiEdges.push_back(val);
+              }
+              data->output.caloData.edgesEta.push_back(etaEdges);
+              data->output.caloData.edgesPhi.push_back(phiEdges);
+            }
+            idx += data->edgesSize;
+          }
+        }
     }
+  }
+
+  // iterate both reader and tree (need latter for some old-fashioned branch access)
+  void Converter::_IterateDelphesTree(Int_t entry){
+    _delphesReader->SetEntry(entry);
+    _delphesTree->GetEntry(entry);
+
   }
 
   void Converter::Process(TString inputFileHepMC, TString inputFileDetector, TString outputFile){
@@ -406,7 +638,7 @@ namespace NtupleProducer{
 
     // Loop over events
     while(_ReadHepMCEvent()){ // fills _evt, will break the loop when we reach the end of the file
-      if(_hasDetectorFiles) _readerDelphes->Next();
+      if(_hasDetectorFiles) _IterateDelphesTree(_i);
 
       // Fetch the stable truth particle data, place it in output buffers.
       _FillStableParticles();

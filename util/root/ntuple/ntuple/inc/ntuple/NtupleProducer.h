@@ -7,8 +7,8 @@
 #include "TString.h"
 #include "TTree.h"
 #include "TTreeReader.h"
-#include "TTreeReaderValue.h"
 #include "TTreeReaderArray.h"
+#include "TLeaf.h"
 
 #include "Math/Vector4D.h"
 #include "Math/VectorUtil.h"
@@ -30,6 +30,14 @@ namespace HepMC3{
 using namespace std;
 namespace NtupleProducer{
 
+  struct ThreeVector {
+    Double_t data[3];
+
+    // Convenience accessors
+    Double_t& operator[](size_t i) { return data[i]; }
+    const Double_t& operator[](size_t i) const { return data[i]; }
+  };
+
   struct FourVector {
     Double_t data[4];
 
@@ -42,13 +50,15 @@ namespace NtupleProducer{
     Int_t N;
 
     /*
-      * Using vector<FourVector> instead of <vector<vector<Double_t>>
-      * will be a bit more awkward for uproot access in Python,
-      * but this should offer better compression since the inner
-      * "vector" is fixed-length.
+      * In principle, we know that the vector will always be length 4.
+      * However we will do vector<vector<Double_t>> instead of vector<>
+      * of some length-4 array struct since reading nested vectors with
+      * ROOT is much easier (for the struct we'll need the class loaded,
+      * otherwise it can't be done nicely with TTreeReader -- just see how
+      * we have to handle the "Edges" of certain Delphes objects). -Jan
       */
-    vector<FourVector> pmu;
-    vector<FourVector> pmu_cyl;
+    vector<vector<Double_t>> pmu;
+    vector<vector<Double_t>> pmu_cyl;
 
     void Clear(){
       N = 0;
@@ -57,19 +67,14 @@ namespace NtupleProducer{
     }
   };
 
-  struct TrackData{ // a simple container for holding both (E,px,py,pz) and (pt,eta,phi,m) bases.
+  struct TrackData{ // a simple container for holding some (typically) track-related data.
     Int_t N;
 
-    /*
-      * Using vector<FourVector> instead of <vector<vector<Double_t>>
-      * will be a bit more awkward for uproot access in Python,
-      * but this should offer better compression since the inner
-      * "vector" is fixed-length.
-      */
     vector<Double_t> d0;
     vector<Double_t> d0Error;
     vector<Double_t> z0;
     vector<Double_t> z0Error;
+    vector<vector<Double_t>> Xd;
 
     void Clear(){
       N = 0;
@@ -77,15 +82,41 @@ namespace NtupleProducer{
       d0Error.clear();
       z0.clear();
       z0Error.clear();
+      Xd.clear();
     }
   };
 
-  struct TruthParticleData {
+  struct CaloData{ // a simple container for holding some calorimeter-related data.
+    Int_t N;
+
+    vector<Double_t> Eem;
+    vector<Double_t> Ehad;
+    vector<Double_t> Etrack;
+
+    // As oppose to doing a vector of "TwoVector" structs, we're keeping these
+    // as vectors of vectors, so that in principle we can accomodate more complex
+    // tower geometries than rectangles in (eta,phi). Of course that would require
+    // some changes upstream in Delphes. - Jan
+    vector<vector<Double_t>> edgesEta;
+    vector<vector<Double_t>> edgesPhi;
+
+    void Clear(){
+      N = 0;
+      Eem.clear();
+      Ehad.clear();
+      Etrack.clear();
+      edgesEta.clear();
+      edgesPhi.clear();
+    }
+  };
+
+
+  struct ParticleData {
     Int_t N;
     FourMomentumData momentum;
     vector<Int_t> pdgId;
     vector<Int_t> indexHepMC;
-    vector<FourVector> xmu_prod;
+    vector<vector<Double_t>> xmu_prod;
 
     void Clear(){
       N = 0;
@@ -96,12 +127,29 @@ namespace NtupleProducer{
     }
   };
 
+  struct DelphesReaderOutput{
+    Int_t N; // object multiplicity
+    FourMomentumData momentum;
+    TrackData trackData;
+    CaloData caloData;
+
+    vector<Int_t> charge;
+    vector<Int_t> pdgId;
+
+    void Clear() {
+      N = 0;
+      momentum.Clear();
+      trackData.Clear();
+      caloData.Clear();
+      charge.clear();
+      pdgId.clear();
+    }
+  };
+
   struct DelphesReaderData {
 
     // Output data
-    Int_t N;
-    FourMomentumData outputMomentum;
-    TrackData trackData;
+    DelphesReaderOutput output;
 
     // add more as needed...
 
@@ -116,13 +164,39 @@ namespace NtupleProducer{
     std::unique_ptr<TTreeReaderArray<Float_t>> z0;
     std::unique_ptr<TTreeReaderArray<Float_t>> z0Error;
 
+    std::unique_ptr<TTreeReaderArray<Float_t>> xd;
+    std::unique_ptr<TTreeReaderArray<Float_t>> yd;
+    std::unique_ptr<TTreeReaderArray<Float_t>> zd;
+
+    std::unique_ptr<TTreeReaderArray<Int_t>> charge; // NOTE: Not currently supporting fractional charges
+    std::unique_ptr<TTreeReaderArray<Int_t>> pdgId;
+
+    std::unique_ptr<TTreeReaderArray<Float_t>> Eem;
+    std::unique_ptr<TTreeReaderArray<Float_t>> Ehad;
+    std::unique_ptr<TTreeReaderArray<Float_t>> Etrack;
+
+    // Edges of calorimeter cells -- this is a bit tricky because they
+    // are fixed-length arrays within a collection.
+    // We can't use TTreeReaderArray for this (yet), so we have to
+    // handle this kind of branch the old-fashioned way. The extra twist
+    // is that there are multiple kinds of Delphes objects that have an
+    // Edges array, but they're not all the same length (typically 4, sometimes 2).
+    // It'd also be nice to support arbitrary length, in case one has
+    // a more complex cell geometry (though this would require changes upstream
+    // in Delphes, and hopefully this would include moving to more modern
+    // objects like std::vector...)
+    Bool_t hasEdges = kFALSE;
+    Int_t edgesSize = 4; // default -- can be adjusted if needed
+    const static Int_t edgesMax = 400000; // unfortunately we need to set a max size -- so make it large (1.6MB)
+    Float_t Edges[edgesMax];
+
+
     // will add other leaves as needed...
 
     void Clear() {
-      N = 0;
-      outputMomentum.Clear();
-      trackData.Clear();
+      output.Clear();
     }
+
   };
 
   class Converter{
@@ -166,9 +240,15 @@ namespace NtupleProducer{
 
       void _CreateDelphesBranches();
       void _CreateDelphesBranch(TString inputBranchName); // for making a single branch
-
+      void _DelphesMultiplicity(TString inputBranchName);
+      void _DelphesMomentum(TString inputBranchName, vector<TString> attributes);
+      void _DelphesD0Z0(TString inputBranchName, vector<TString> attributes);
+      void _DelphesXd(TString inputBranchName, vector<TString> attributes);
+      void _DelphesPdgIdCharge(TString inputBranchName, vector<TString> attributes);
+      void _DelphesCalorimeter(TString inputBranchName, vector<TString> attributes);
       void _FillStableParticles();
       void _FillDelphesObjects();
+      void _IterateDelphesTree(Int_t entry);
 
       // Utility funcs
       Bool_t _CheckStringVector(vector<TString> v, TString target);
@@ -185,17 +265,19 @@ namespace NtupleProducer{
       Bool_t _rootMode = kTRUE; // kTRUE for ROOT, kFALSE for ASCII
       HepMC3::GenEvent* _evt = 0;
       // buffers for filling
-      TruthParticleData _stableParticles;
-      vector<TruthParticleData> _truthParticleStructs = {};
+      ParticleData _stableParticles;
+      vector<ParticleData> _truthParticleStructs = {};
 
       // reader for Delphes, and associated variables
-      TTreeReader* _readerDelphes = 0;
-      TFile* _fileDelphes = 0;
-      TTree* _treeDelphes = 0;
+      TTreeReader* _delphesReader = 0;
+      TFile* _delphesFile = 0;
+      TTree* _delphesTree = 0;
       vector<TString> _delphesObjectNames = {}; // which Delphes objects to copy over
       vector<TString> _delphesLeafNames = {};
-      // buffers for filling
+      // buffers and variables related to filling output
       map<TString, Double_t> _delphesMassDefault = {};
+      map<TString, Bool_t> _delphesFillXd = {};
+      map<TString, Bool_t> _addedN = {};
       map<TString, std::unique_ptr<DelphesReaderData>> _delphesData = {};
 
       // variables associated with output ntuple
