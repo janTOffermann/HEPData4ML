@@ -7,5 +7,8 @@
 #pragma link C++ namespace NtupleProducer;
 #pragma link C++ class NtupleProducer::Converter+;
 
-// #pragma link C++ class NtupleProducer::FourMomentumData+;
+#pragma link C++ class NtupleProducer::BaseSelector+;
+#pragma link C++ class NtupleProducer::FirstSelector+;
+#pragma link C++ class NtupleProducer::MultiSelection+;
+
 #endif

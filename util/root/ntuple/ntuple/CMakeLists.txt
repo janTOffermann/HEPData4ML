@@ -4,8 +4,10 @@
 ROOT_STANDARD_LIBRARY_PACKAGE(NtupleProducer
   HEADERS
     ntuple/NtupleProducer.h
+    ntuple/ParticleSelections.h
   SOURCES
     src/NtupleProducer.cxx
+    src/ParticleSelections.cxx
   LINKDEF
     NtupleProducer_LinkDef.h
   DEPENDENCIES

@@ -20,6 +20,8 @@
 #include <tuple> // std::tuple
 #include <memory> // shared_ptr, unique_ptr
 
+// #include <ntuple/ParticleSelections.h>
+
 // forward declarations for HepMC3
 namespace HepMC3{
   class GenEvent;
@@ -27,24 +29,14 @@ namespace HepMC3{
   class ReaderAscii;
 }
 
+// forward declarations for our own stuff,
+// need this due to how PyROOT loads headers
+namespace NtupleProducer {
+    class BaseSelector;
+}
+
 using namespace std;
 namespace NtupleProducer{
-
-  struct ThreeVector {
-    Double_t data[3];
-
-    // Convenience accessors
-    Double_t& operator[](size_t i) { return data[i]; }
-    const Double_t& operator[](size_t i) const { return data[i]; }
-  };
-
-  struct FourVector {
-    Double_t data[4];
-
-    // Convenience accessors
-    Double_t& operator[](size_t i) { return data[i]; }
-    const Double_t& operator[](size_t i) const { return data[i]; }
-  };
 
   struct FourMomentumData{ // a simple container for holding both (E,px,py,pz) and (pt,eta,phi,m) bases.
     Int_t N;
@@ -110,7 +102,6 @@ namespace NtupleProducer{
     }
   };
 
-
   struct ParticleData {
     Int_t N;
     FourMomentumData momentum;
@@ -132,6 +123,7 @@ namespace NtupleProducer{
     FourMomentumData momentum;
     TrackData trackData;
     CaloData caloData;
+    vector<vector<Double_t>> positionData;
 
     vector<Int_t> charge;
     vector<Int_t> pdgId;
@@ -143,6 +135,7 @@ namespace NtupleProducer{
       caloData.Clear();
       charge.clear();
       pdgId.clear();
+      positionData.clear();
     }
   };
 
@@ -150,8 +143,6 @@ namespace NtupleProducer{
 
     // Output data
     DelphesReaderOutput output;
-
-    // add more as needed...
 
     // Input readers
     std::unique_ptr<TTreeReaderArray<Float_t>> pt;
@@ -190,6 +181,10 @@ namespace NtupleProducer{
     const static Int_t edgesMax = 400000; // unfortunately we need to set a max size -- so make it large (1.6MB)
     Float_t Edges[edgesMax];
 
+    std::unique_ptr<TTreeReaderArray<Float_t>> T;
+    std::unique_ptr<TTreeReaderArray<Float_t>> X;
+    std::unique_ptr<TTreeReaderArray<Float_t>> Y;
+    std::unique_ptr<TTreeReaderArray<Float_t>> Z;
 
     // will add other leaves as needed...
 
@@ -215,9 +210,9 @@ namespace NtupleProducer{
       void AddDelphesObject(TString objectName){_delphesObjectNames.push_back(objectName);};
       void ResetDelphesObjects(){_delphesObjectNames.clear();};
 
+      void AddTruthParticleSelector(TString selectionName, BaseSelector* selector);
+
       void Process(TString inputFileHepMC, TString inputFileDetector, TString outputFile);
-
-
       // ----
       void SetStableTruthParticleName(TString name){_truthParticleBranchPrefix = name;};
       void SetDelphesDefaultMass(TString branchName, Double_t mass){_delphesMassDefault[branchName] = mass;};
@@ -246,6 +241,8 @@ namespace NtupleProducer{
       void _DelphesXd(TString inputBranchName, vector<TString> attributes);
       void _DelphesPdgIdCharge(TString inputBranchName, vector<TString> attributes);
       void _DelphesCalorimeter(TString inputBranchName, vector<TString> attributes);
+      void _DelphesPosition(TString inputBranchName, vector<TString> attributes);
+
       void _FillStableParticles();
       void _FillDelphesObjects();
       void _IterateDelphesTree(Int_t entry);
@@ -268,6 +265,9 @@ namespace NtupleProducer{
       ParticleData _stableParticles;
       vector<ParticleData> _truthParticleStructs = {};
 
+      // HepMC3 event record particle selectors
+      map<TString, unique_ptr<BaseSelector>> _truthParticleSelectors = {};
+
       // reader for Delphes, and associated variables
       TTreeReader* _delphesReader = 0;
       TFile* _delphesFile = 0;
@@ -277,7 +277,8 @@ namespace NtupleProducer{
       // buffers and variables related to filling output
       map<TString, Double_t> _delphesMassDefault = {};
       map<TString, Bool_t> _delphesFillXd = {};
-      map<TString, Bool_t> _addedN = {};
+      map<TString, Bool_t> _delphesAddedN = {};
+      map<TString, Bool_t> _delphesIsTrack = {}; // keep track of what objects are "track-like"
       map<TString, std::unique_ptr<DelphesReaderData>> _delphesData = {};
 
       // variables associated with output ntuple

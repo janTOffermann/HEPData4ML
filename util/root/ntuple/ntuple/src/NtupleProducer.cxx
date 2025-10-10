@@ -1,4 +1,5 @@
 #include <ntuple/NtupleProducer.h>
+#include <ntuple/ParticleSelections.h>
 
 //standard library includes
 #include <algorithm> // std::transform. std::find
@@ -202,10 +203,10 @@ namespace NtupleProducer{
       // Connect it to the output tree branches.
       TString branchName;
 
-      if(!_addedN[branchName]){
+      if(!_delphesAddedN[branchName]){
         branchName = Form("%s.N", inputBranchName.Data());
         _outputTree->Branch(branchName,&_delphesData[inputBranchName]->output.N,Form("%s/I",branchName.Data()));
-        _addedN[branchName] = kTRUE;
+        _delphesAddedN[branchName] = kTRUE;
       }
 
 
@@ -236,6 +237,7 @@ namespace NtupleProducer{
       _delphesData[inputBranchName]->zd = std::make_unique<TTreeReaderArray<Float_t>>(*_delphesReader,Form("%s.Zd", inputBranchName.Data()));
 
       _delphesFillXd[inputBranchName] = kTRUE;
+      _delphesIsTrack[inputBranchName] = kTRUE; // TODO: Should this just be identical to _delphesFillXd[inputBranchName]?
     }
     else if(_CheckStringVector(attributes,"D0") && _CheckStringVector(attributes,"DZ") && _CheckStringVector(attributes,"Phi"))
     {
@@ -305,6 +307,19 @@ namespace NtupleProducer{
     }
   }
 
+  void Converter::_DelphesPosition(TString inputBranchName, vector<TString> attributes){
+    if(_delphesIsTrack[inputBranchName]) return; // don't turn on reading if this is determined to be a track-type object; these variables might just always be zeros there (not filled by Delphes)
+    if(_CheckStringVector(attributes,"X")){ // going to assume X,Y,Z,T all available
+      _delphesData[inputBranchName]->T = std::make_unique<TTreeReaderArray<Float_t>>(*_delphesReader,Form("%s.T", inputBranchName.Data()));
+      _delphesData[inputBranchName]->X = std::make_unique<TTreeReaderArray<Float_t>>(*_delphesReader,Form("%s.X", inputBranchName.Data()));
+      _delphesData[inputBranchName]->Y = std::make_unique<TTreeReaderArray<Float_t>>(*_delphesReader,Form("%s.Y", inputBranchName.Data()));
+      _delphesData[inputBranchName]->Z = std::make_unique<TTreeReaderArray<Float_t>>(*_delphesReader,Form("%s.Z", inputBranchName.Data()));
+
+      TString branchName = Form("%s.Xmu", inputBranchName.Data());
+      _outputTree->Branch(branchName,&_delphesData[inputBranchName]->output.positionData);
+    }
+  }
+
 
   void Converter::_CreateDelphesBranch(TString inputBranchName){
 
@@ -322,18 +337,6 @@ namespace NtupleProducer{
       }
     }
 
-    // cout << "Branch " << inputBranchName << " has these leaves:" << endl;
-    // for(TString leaf : attributes){
-    //   cout << "\t" << leaf << endl;
-    // }
-
-    // TObjArray* leaves = _delphesTree->GetListOfLeaves();
-    // for(Int_t i = 0; i < leaves->GetEntries(); i++) {
-    //     TLeaf* leaf = (TLeaf*)leaves->At(i);
-    //     cout << "Leaf: " << leaf->GetName()
-    //         << " (Branch: " << leaf->GetBranch()->GetName() << ")" << endl;
-    // }
-
     /*
      * Now we roughly mimic the logic of util/reconstruction/conversion.py .
      * We use our DelphesReaderData struct to read whichever branches are available.
@@ -343,7 +346,8 @@ namespace NtupleProducer{
     // Create the DelphesReaderData object.
     _delphesData[inputBranchName] = std::make_unique<DelphesReaderData>();
 
-    _addedN[inputBranchName] = kFALSE; // we'll have multiple opportunities to add a multiplicity branch; we only do it once
+    _delphesAddedN[inputBranchName] = kFALSE; // we'll have multiple opportunities to add a multiplicity branch; we only do it once
+    _delphesIsTrack[inputBranchName] = kFALSE;
 
     // 0) Object multiplicity
     _DelphesMultiplicity(inputBranchName);
@@ -362,6 +366,9 @@ namespace NtupleProducer{
 
     // 5) Handling calorimeter information
     _DelphesCalorimeter(inputBranchName,attributes);
+
+    // 6) Handling position information (for non-track objects)
+    _DelphesPosition(inputBranchName,attributes);
 
 
     return;
@@ -595,6 +602,18 @@ namespace NtupleProducer{
             idx += data->edgesSize;
           }
         }
+        if(data->X){
+          Int_t N = data->X->GetSize();
+          data->output.N = N;
+          for(Int_t i = 0; i < N; i++){
+            Double_t t = (*data->T)[i];
+            Double_t x = (*data->X)[i];
+            Double_t y = (*data->Y)[i];
+            Double_t z = (*data->Z)[i];
+
+            data->output.positionData.push_back({t, x, y, z});
+          }
+        }
     }
   }
 
@@ -603,6 +622,10 @@ namespace NtupleProducer{
     _delphesReader->SetEntry(entry);
     _delphesTree->GetEntry(entry);
 
+  }
+
+  void Converter::AddTruthParticleSelector(TString selectionName, BaseSelector* selector){
+    _truthParticleSelectors[selectionName] = std::unique_ptr<BaseSelector>(selector);
   }
 
   void Converter::Process(TString inputFileHepMC, TString inputFileDetector, TString outputFile){
