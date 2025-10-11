@@ -25,6 +25,17 @@ class PythiaGenerator:
         self.pt_min = pt_min
         self.pt_max = pt_max
 
+        # Set up HepMC, and create our HepMC converter
+        # TODO: Move this all the way up to the run.py script?
+        self.hepmc_setup = HepMCSetup(self.configurator.GetHepMC3Directory())
+        python_dir = self.hepmc_setup.GetPythonDirectory()
+        uncache_hepmc3()
+        prepend_to_pythonpath(python_dir)
+
+        # Also set the configurator's HepMC directory, so that in case it was "None" we don't end up
+        # downloading HepMC3 multiple times.
+        self.configurator.SetHepMC3Directory(self.hepmc_setup.GetDirectory())
+
         # Create our Pythia wrapper.
         self.pythia_rng = pythia_rng
         self.verbose = self.configurator.GetPythiaVerbosity()
@@ -47,17 +58,6 @@ class PythiaGenerator:
             self.writer = None
 
         self.ConfigPythia(config_file=pythia_config_file,verbose=self.verbose)
-
-        # Set up HepMC, and create our HepMC converter
-        # TODO: Move this all the way up to the run.py script?
-        self.hepmc_setup = HepMCSetup(self.configurator.GetHepMC3Directory())
-        python_dir = self.hepmc_setup.GetPythonDirectory()
-        uncache_hepmc3()
-        prepend_to_pythonpath(python_dir)
-
-        # Also set the configurator's HepMC directory, so that in case it was "None" we don't end up
-        # downloading HepMC3 multiple times.
-        self.configurator.SetHepMC3Directory(self.hepmc_setup.GetDirectory())
 
         self.hepmc_converter = PythiaToHepMC(self.configurator.GetHepMC3Directory())
 
