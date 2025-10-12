@@ -61,15 +61,24 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 #####################################
 
 # Pythia8 library.
-find_library(PYTHIA8_LIB
-    NAMES pythia8
-)
 
 if (DEFINED ENV{PYTHIA8})
     message("PYTHIA8 is defined with value: $ENV{PYTHIA8}")
     set(PYTHIA8_INCLUDE_DIR "$ENV{PYTHIA8}/include")
+    find_library(PYTHIA8_LIB
+        NAMES pythia8 libpythia8
+        PATHS
+            "$ENV{PYTHIA8}/lib"
+    )
 else()
-    message("PYTHIA8 environment variable is not defined; can't find include directory.")
+    message("PYTHIA8 environment variable is not defined; possibly can't find lib/include directory.")
+    find_library(PYTHIA8_LIB
+        NAMES pythia8 libpythia8
+    )
+    find_path(PYTHIA8_INCLUDE_DIR
+        NAMES Pythia8
+    )
+
 endif()
 
 message(STATUS "Found Pythia8 library: ${PYTHIA8_LIB}")
