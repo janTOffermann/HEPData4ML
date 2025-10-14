@@ -222,7 +222,8 @@ namespace NtupleProducer{
       // ----
       void SetStableTruthParticleName(TString name){_truthParticleBranchPrefix = name;};
       void SetDelphesDefaultMass(TString branchName, Double_t mass){_delphesMassDefault[branchName] = mass;};
-
+      void SetTreeName(TString name){_treeName = name;};
+      TString GetTreeName(){return _treeName;};
 
     private:
 
@@ -292,6 +293,7 @@ namespace NtupleProducer{
       // variables associated with output ntuple
       TFile* _outputFile = 0;
       TTree* _outputTree = 0;
+      TString _treeName = "hepdata4ml_tree";
 
       // event index -- for looping on the HepMC3/Delphes files, since that's done in a "while" loop (due to how HepMC3 works)
       ULong64_t _i = 0;

@@ -38,15 +38,18 @@ def ConcatenateRootTreeFiles(input_files: List[str], output_file: str, tree_name
 
     # Disable all branches, then enable only the ones we want
     chain.SetBranchStatus("*", 0)
-    for branch in branches_to_keep:
-        chain.SetBranchStatus(branch, 1)
+    for branch in all_branches:
+        if(branch in branches_to_keep):
+            chain.SetBranchStatus(branch, 1)
 
     # Use CloneTree to copy only active branches
-    out_tree = chain.CloneTree(-1, "fast")
+    # out_tree = chain.CloneTree(-1, "fast")
+    out_tree = chain.CloneTree()
 
     out_file.cd()
     out_tree.Write()
     out_file.Close()
+
 
 def FilterBranches(all_branches: List[str], patterns_to_drop: Set[str]) -> List[str]:
     import fnmatch

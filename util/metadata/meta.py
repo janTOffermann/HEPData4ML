@@ -238,7 +238,7 @@ class MetaDataHandler:
         Somewhat redundant for file generation but this type of logic will be useful when concatenating files
         with different entries in the metadata fields.
         """
-        if(self.configurator.GetReconstructionOutputFormat().lower() == 'hdf5'):
+        if(self.configurator.GetReconstructionOutputFormat().lower() == 'hdf5'): # TODO: Rethink this? Reconstruction will always make ROOT -- conversion to HDF5 is a post-processing step, but nice to keep ability to handle metadata there?
             self.AddMetaDataWithReferenceH5(ntuple_file,cwd,overwrite,copts)
         elif(self.configurator.GetReconstructionOutputFormat().lower() == 'root'):
             self.AddMetaDataWithReferenceRoot(ntuple_file,self.configurator.GetReconstructionTreeName(),cwd)
@@ -319,7 +319,7 @@ class MetaDataHandler:
             if(key.split('.')[0] != 'Metadata'):
                 key = 'Metadata.{}'.format(key)
             branches[key] = out_tree.Branch(key, buffers[key],"{}/l".format(key))
-        for i in range(out_tree.GetEntries()):
+        for i in range(t.GetEntries()):
             t.GetEntry(i)
             out_tree.Fill()
 

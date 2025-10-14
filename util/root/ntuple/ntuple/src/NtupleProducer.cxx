@@ -365,8 +365,11 @@ namespace NtupleProducer{
     // Determine what leaves this branch has.
     vector<TString> availableLeaves = {};
     vector<TString> attributes = {};
+
+    TString branchPrefix = inputBranchName + ".";
+
     for(TString leafName : _delphesLeafNames){
-      if(leafName.Contains(inputBranchName + ".")){
+      if(leafName.BeginsWith(branchPrefix)){
         availableLeaves.push_back(leafName);
         TObjArray* tokens = leafName.Tokenize(".");
         attributes.push_back(((TObjString*)tokens->At(tokens->GetEntries()-1))->String());
@@ -724,7 +727,7 @@ namespace NtupleProducer{
     }
 
     _outputFile = new TFile(outputFile,"RECREATE");
-    _outputTree = new TTree("hepdata4ml_tree","");
+    _outputTree = new TTree(_treeName,"");
 
     // Create branches for the HepMC3 information.
     _CreateHepMCBranches();

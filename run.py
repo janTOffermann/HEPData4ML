@@ -339,7 +339,7 @@ def main(args):
             # Do reco and put everything into an n-tuple file.
             print('\nRunning reconstruction and producing final N-tuple output.\n')
             processor = Processor(configurator)
-            processor.SetDelphesFiles(delphes_files) # TODO: Handle case of no delphes_files?
+            # processor.SetDelphesFiles(delphes_files) # TODO: Handle case of no delphes_files?
             processor.SetOutputDirectory(outdir)
             processor.SetMetadataHandler(metadata_handler)
 
@@ -351,13 +351,16 @@ def main(args):
             nentries_per_chunk = int(nentries_per_chunk/nbins)
 
             for i, hepmc_file in enumerate(hepmc_files):
+                delphes_file = None
+                if(len(delphes_files) > 0):
+                    delphes_file = delphes_files[i]
                 # TODO: Rework this a little. Should just generically loop over HepMC files, since they might have an external source and not be pt-binned.
                 ntuple_file_individual = hepmc_file.split('/')[-1].replace(hepmc_extension,processor.GetOutputExtension())
 
                 processor.SetProgressBarPrefix('\tProducing N-tuple for file {}/{}:'.format(i+1,len(hepmc_files)))
 
                 # TODO: Restructure so that the Delphes files are fed in here too? Can be given as `None` if not present.
-                processor.ProcessFull(hepmc_file,ntuple_file_individual,verbosity=ntuple_verbosity)
+                processor.ProcessFull(hepmc_file,delphes_file, ntuple_file_individual,verbosity=ntuple_verbosity)
 
                 # Add information from the pileup handler (if any).
                 # TODO: This may need a little reworking? The handling of filenames might be a little fragile.
@@ -368,7 +371,7 @@ def main(args):
                 ntuple_files.append(ntuple_file_individual)
 
             # Now, concatenate the ntuple files together.
-            processor.ConcatenateNtuples(ntuple_files,ntuple_file) # will prepend outdir to the output_file argument (this is all a little messy)
+            processor.ConcatenateNtuples(ntuple_files,ntuple_file,format='root') # will prepend outdir to the output_file argument (this is all a little messy)
 
             #Cleanup: Compress the HepMC files.
             if(compress_hepmc): CompressHepMC(hepmc_files,True,cwd=outdir)
@@ -384,17 +387,17 @@ def main(args):
             # STEP 4.5: Metadata (into N-tuple).
             #======================================================
             # Now, add some metadata to the file.
-            metadata_handler.AddMetaDataWithReference(ntuple_file,cwd=outdir)
+            metadata_handler.AddMetaDataWithReferenceRoot(ntuple_file,cwd=outdir, tree_name=processor.GetTreeName())
 
             # TODO: Might want to think about offering the ability to split upstream files too? Could be complicated...
-            if(split_files):
-                # Now split the HDF5 file into training, testing and validation samples.
-                split_ratio = (train_frac,val_frac,test_frac)
-                print("\tSplitting HDF5 file {} into training, validation and testing samples:".format('/'.join((outdir,ntuple_file))))
-                train_name = 'train.h5'
-                val_name = 'valid.h5'
-                test_name = 'test.h5'
-                SplitH5(ntuple_file, split_ratio,cwd=outdir,copts=compression_opts, train_name=train_name,val_name=val_name,test_name=test_name,verbose=True,seed=configurator.GetSplitSeed())
+            # if(split_files):
+            #     # Now split the HDF5 file into training, testing and validation samples.
+            #     split_ratio = (train_frac,val_frac,test_frac)
+            #     print("\tSplitting HDF5 file {} into training, validation and testing samples:".format('/'.join((outdir,ntuple_file))))
+            #     train_name = 'train.h5'
+            #     val_name = 'valid.h5'
+            #     test_name = 'test.h5'
+            #     SplitH5(ntuple_file, split_ratio,cwd=outdir,copts=compression_opts, train_name=train_name,val_name=val_name,test_name=test_name,verbose=True,seed=configurator.GetSplitSeed())
 
             # Optionally delete the full N-tuple file.
             if(delete_full):
