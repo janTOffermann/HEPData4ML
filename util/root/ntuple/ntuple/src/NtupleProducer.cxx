@@ -710,14 +710,10 @@ namespace NtupleProducer{
     _i = 0;
 
     // Open the HepMC file -- can be either ASCII or ROOT format.
-    cout << "Opening HepMC..." << endl;
     _OpenHepMC3File(inputFileHepMC); // NOTE: We don't know how many events are in the file; in principle can figure it out for ROOT but not ASCII
-    cout << "\tDone." << endl;
     // Open the detector file, if present.
     // NOTE: For now, we assume it is a Delphes file.
-    cout << "Opening Delphes..." << endl;
     _OpenDelphesFile(inputFileDetector);
-    cout << "\tDone." << endl;
 
     // Create the output file
 

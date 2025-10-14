@@ -66,6 +66,13 @@ namespace NtupleProducer{
     return {static_cast<Int_t>(distance(particles.begin(), it))};
   }
 
+  MultiSelection::MultiSelection(std::vector<BaseSelector*> selections, Bool_t enforceUnique)
+  : _enforceUnique(enforceUnique) {
+    for (auto selector : selections) {
+        _selections.push_back(selector);
+    }
+  }
+
   vector<Int_t> MultiSelection::operator()(HepMC3::GenEvent* evt) const {
     vector<Int_t> result = {};
 
@@ -83,9 +90,13 @@ namespace NtupleProducer{
     return result;
   }
 
-
-
-
+  vector<Int_t> AlgoSelection::operator()(HepMC3::GenEvent* evt) const {
+    vector<Int_t> result = (*_algorithm)(evt);
+    if(_N > 0 && result.size() > _N){ // truncate
+      result.resize(_N);
+    }
+    return result;
+  }
 
   // ---------------------------------------
   // Selection Algorithms, for AlgoSelection

@@ -68,14 +68,13 @@ namespace NtupleProducer{
   // versus "___Selection" for classes that return vector<Int_t>
   class MultiSelection : public BaseSelector{
     public:
-      MultiSelection(std::vector<unique_ptr<BaseSelector>>&& selections, Bool_t enforceUnique=kFALSE)
-      : _selections(std::move(selections)), _enforceUnique(enforceUnique) {};
+      MultiSelection(std::vector<BaseSelector*> selections, Bool_t enforceUnique=kFALSE);
       ~MultiSelection(){};
 
       vector<Int_t> operator()(HepMC3::GenEvent* evt) const;
 
     protected:
-      vector<unique_ptr<BaseSelector>> _selections = {};
+      vector<BaseSelector*> _selections = {};
       Bool_t _enforceUnique = kFALSE;
   };
 
@@ -83,7 +82,9 @@ namespace NtupleProducer{
   // ---------------------------------------
   // Selection Algorithms, for AlgoSelection
   // ---------------------------------------
-  // TODO: Is this an OK way to organize things?
+  // TODO: Is this an OK way to organize things? Can't simply peel off into
+  //       another header, because the algorithms use some selector stuff,
+  //       and the selectors use some algorithms... (circular!)
 
   // Helper function
   vector<Int_t> GetDaughtersSingle(HepMC3::GenEvent* evt, Int_t idx);
@@ -94,6 +95,7 @@ namespace NtupleProducer{
       virtual ~BaseSelectorAlgorithm() = default;
 
       Bool_t GetStatus(){return _status;};
+      virtual vector<Int_t> operator()(HepMC3::GenEvent* evt) const = 0;
 
     protected:
       Bool_t _status = kFALSE;
@@ -136,6 +138,23 @@ namespace NtupleProducer{
       unique_ptr<BaseSelector> _selection = 0;
       vector<Int_t> _GetStableDaughters(HepMC3::GenEvent* evt, Int_t idx);
   };
+
+  // Selector using the algorithms.
+  // TODO: Can the headers be rearranged so that this is grouped with other selectors?
+  class AlgoSelection : public BaseSelector{
+    public:
+      AlgoSelection(unique_ptr<BaseSelectorAlgorithm> algorithm, Int_t n=-1)
+      : _algorithm(std::move(algorithm)), _N(n){};
+      ~AlgoSelection(){};
+
+      vector<Int_t> operator()(HepMC3::GenEvent* evt) const;
+
+
+    protected:
+      unique_ptr<BaseSelectorAlgorithm> _algorithm;
+      Int_t _N = -1;
+  };
+
 
 }
 
