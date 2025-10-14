@@ -82,4 +82,95 @@ namespace NtupleProducer{
 
     return result;
   }
+
+
+
+
+
+  // ---------------------------------------
+  // Selection Algorithms, for AlgoSelection
+  // ---------------------------------------
+
+  vector<Int_t> GetDaughtersSingle(HepMC3::GenEvent* evt, Int_t idx){
+    HepMC3::GenParticlePtr startingParticle = evt->particles().at(idx);
+    //NOTE: For HepmC3::GenParticle::children(),
+    // "Less efficient than via the vertex since return
+    // must be by value (in case there is no vertex)".
+    Int_t status = startingParticle->status();
+    if(status == 1) return {};
+    HepMC3::GenVertexPtr vertex = startingParticle->end_vertex();
+    vector<HepMC3::GenParticlePtr> children = vertex->particles_out();
+    vector<Int_t> indices = {};
+    for(auto const p : children){
+      indices.push_back(p->id());
+    }
+    return indices;
+  }
+
+  SelectDaughters::SelectDaughters(BaseSelector* selection){
+    _selection = unique_ptr<BaseSelector>(selection);
+  }
+
+  vector<Int_t> SelectDaughters::operator()(HepMC3::GenEvent* evt){
+    _status = kTRUE;
+    vector<Int_t> startingParticleIndices = (*_selection)(evt);
+
+    vector<Int_t> allDaughterIndices = {};
+
+    for (Int_t startingIndex : startingParticleIndices){
+      auto daughters = GetDaughtersSingle(evt, startingIndex);
+      allDaughterIndices.insert(allDaughterIndices.end(), daughters.begin(), daughters.end());
+    }
+
+    if(allDaughterIndices.size() == 0){
+      _status = kFALSE;
+    }
+    else{
+      // enforce uniqueness
+      std::sort(allDaughterIndices.begin(), allDaughterIndices.end());
+      allDaughterIndices.erase(std::unique(allDaughterIndices.begin(), allDaughterIndices.end()), allDaughterIndices.end());
+    }
+    return allDaughterIndices;
+  }
+
+  SelectStableDaughters::SelectStableDaughters(BaseSelector* selection){
+    _selection = unique_ptr<BaseSelector>(selection);
+  }
+
+  vector<Int_t> SelectStableDaughters::_GetStableDaughters(HepMC3::GenEvent* evt, Int_t idx){
+    vector<Int_t> result = {};
+    vector<Int_t> daughters = GetDaughtersSingle(evt, idx);
+    for(Int_t j : daughters){
+      Int_t status = evt->particles().at(j)->status();
+      if(status == 1) result.push_back(j);
+      else{
+        vector<Int_t> grandDaughters = _GetStableDaughters(evt, j);
+        result.insert(result.end(),grandDaughters.begin(),grandDaughters.end());
+      }
+    }
+    return result;
+  }
+
+  vector<Int_t> SelectStableDaughters::operator()(HepMC3::GenEvent* evt){
+    _status = kTRUE;
+    vector<Int_t> startingParticleIndices = (*_selection)(evt);
+
+    vector<Int_t> stableDaughterIndices = {};
+
+    for (Int_t startingIndex : startingParticleIndices){
+      auto daughters = _GetStableDaughters(evt,startingIndex);
+      stableDaughterIndices.insert(stableDaughterIndices.end(), daughters.begin(), daughters.end());
+    }
+
+    if(stableDaughterIndices.size() == 0){
+      _status = kFALSE;
+    }
+    else{
+      // enforce uniqueness
+      std::sort(stableDaughterIndices.begin(), stableDaughterIndices.end());
+      stableDaughterIndices.erase(std::unique(stableDaughterIndices.begin(), stableDaughterIndices.end()), stableDaughterIndices.end());
+    }
+    return stableDaughterIndices;
+  }
+
 }

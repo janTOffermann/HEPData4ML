@@ -79,6 +79,64 @@ namespace NtupleProducer{
       Bool_t _enforceUnique = kFALSE;
   };
 
+
+  // ---------------------------------------
+  // Selection Algorithms, for AlgoSelection
+  // ---------------------------------------
+  // TODO: Is this an OK way to organize things?
+
+  // Helper function
+  vector<Int_t> GetDaughtersSingle(HepMC3::GenEvent* evt, Int_t idx);
+
+  class BaseSelectorAlgorithm{
+    public:
+      BaseSelectorAlgorithm(){}
+      virtual ~BaseSelectorAlgorithm() = default;
+
+      Bool_t GetStatus(){return _status;};
+
+    protected:
+      Bool_t _status = kFALSE;
+
+  };
+
+  class SelectDaughters : public BaseSelectorAlgorithm{
+    /*
+     * This algorithm selects the immediate daughters of
+     * the particles selected by _selection.
+     * No check is made on these particles's statuses, and
+     * this algorithm is not recursive -- it only looks
+     * for the immediate daughters.
+     */
+    public:
+      SelectDaughters(BaseSelector* selection);
+      ~SelectDaughters(){};
+
+      vector<Int_t> operator()(HepMC3::GenEvent* evt);
+
+    protected:
+      unique_ptr<BaseSelector> _selection = 0;
+  };
+
+  class SelectStableDaughters : public BaseSelectorAlgorithm{
+    /*
+     * This algorithm selects the stable daughters of
+     * the particles selected by _selection.
+     * This will search the entire decay tree, so the
+     * results are not necessarily the *immediate*
+     * daughters of the results of _selection.
+     */
+    public:
+      SelectStableDaughters(BaseSelector* selection);
+      ~SelectStableDaughters(){};
+
+      vector<Int_t> operator()(HepMC3::GenEvent* evt);
+
+    protected:
+      unique_ptr<BaseSelector> _selection = 0;
+      vector<Int_t> _GetStableDaughters(HepMC3::GenEvent* evt, Int_t idx);
+  };
+
 }
 
 #endif

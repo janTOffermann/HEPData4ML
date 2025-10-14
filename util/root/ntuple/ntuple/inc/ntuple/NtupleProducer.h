@@ -109,12 +109,18 @@ namespace NtupleProducer{
     vector<Int_t> indexHepMC;
     vector<vector<Double_t>> xmu_prod;
 
+    vector<vector<Double_t>> xmu_decay;
+    vector<Bool_t> isStable;
+
     void Clear(){
       N = 0;
       momentum.Clear();
       pdgId.clear();
       indexHepMC.clear();
       xmu_prod.clear();
+
+      isStable.clear();
+      xmu_decay.clear();
     }
   };
 
@@ -232,6 +238,7 @@ namespace NtupleProducer{
       void _SetOutputFiles(vector<TString> files){_outputFiles = files;};
 
       void _CreateHepMCBranches();
+      void _CreateHepMC3BranchesSingle(TString particleCollectionName, ParticleData& data, Bool_t extra=kFALSE); // convenience func, used by _CreateHepMCBranches()
 
       void _CreateDelphesBranches();
       void _CreateDelphesBranch(TString inputBranchName); // for making a single branch
@@ -243,7 +250,8 @@ namespace NtupleProducer{
       void _DelphesCalorimeter(TString inputBranchName, vector<TString> attributes);
       void _DelphesPosition(TString inputBranchName, vector<TString> attributes);
 
-      void _FillStableParticles();
+      void _FillStableParticles(); // fills the *stable* truth particles, which we always do
+      void _FillTruthParticles(); // fills any user-specified truth particles
       void _FillDelphesObjects();
       void _IterateDelphesTree(Int_t entry);
 
@@ -263,7 +271,7 @@ namespace NtupleProducer{
       HepMC3::GenEvent* _evt = 0;
       // buffers for filling
       ParticleData _stableParticles;
-      vector<ParticleData> _truthParticleStructs = {};
+      map<TString, ParticleData> _truthParticleStructs = {};
 
       // HepMC3 event record particle selectors
       map<TString, unique_ptr<BaseSelector>> _truthParticleSelectors = {};

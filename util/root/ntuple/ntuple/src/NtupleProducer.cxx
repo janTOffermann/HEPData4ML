@@ -128,30 +128,67 @@ namespace NtupleProducer{
 
   void Converter::_CreateHepMCBranches(){
 
-    TString branchName;
-    // Branches for the stable truth particles
-    branchName = Form("%s.N", _truthParticleBranchPrefix.Data());
-    _outputTree->Branch(branchName,&_stableParticles.N,Form("%s/I",branchName.Data()));
+    _CreateHepMC3BranchesSingle(_truthParticleBranchPrefix,_stableParticles, kFALSE);
 
-    branchName = Form("%s.Pmu", _truthParticleBranchPrefix.Data());
-    _outputTree->Branch(branchName,&_stableParticles.momentum.pmu);
+    // TString branchName;
+    // // Branches for the stable truth particles
+    // branchName = Form("%s.N", _truthParticleBranchPrefix.Data());
+    // _outputTree->Branch(branchName,&_stableParticles.N,Form("%s/I",branchName.Data()));
 
-    branchName = Form("%s.Pmu_cyl", _truthParticleBranchPrefix.Data());
-    _outputTree->Branch(branchName,&_stableParticles.momentum.pmu_cyl);
+    // branchName = Form("%s.Pmu", _truthParticleBranchPrefix.Data());
+    // _outputTree->Branch(branchName,&_stableParticles.momentum.pmu);
 
-    branchName = Form("%s.PdgId", _truthParticleBranchPrefix.Data());
-    _outputTree->Branch(branchName,&_stableParticles.pdgId);
+    // branchName = Form("%s.Pmu_cyl", _truthParticleBranchPrefix.Data());
+    // _outputTree->Branch(branchName,&_stableParticles.momentum.pmu_cyl);
 
-    branchName = Form("%s.HepMC3Index", _truthParticleBranchPrefix.Data());
-    _outputTree->Branch(branchName,&_stableParticles.indexHepMC);
+    // branchName = Form("%s.PdgId", _truthParticleBranchPrefix.Data());
+    // _outputTree->Branch(branchName,&_stableParticles.pdgId);
 
-    branchName = Form("%s.Production.Xmu", _truthParticleBranchPrefix.Data());
-    _outputTree->Branch(branchName,&_stableParticles.xmu_prod);
+    // branchName = Form("%s.HepMC3Index", _truthParticleBranchPrefix.Data());
+    // _outputTree->Branch(branchName,&_stableParticles.indexHepMC);
 
-    // TODO: Handling of truth particle selections
+    // branchName = Form("%s.Production.Xmu", _truthParticleBranchPrefix.Data());
+    // _outputTree->Branch(branchName,&_stableParticles.xmu_prod);
 
+    // // TODO: Handling of truth particle selections
+    for(auto it = _truthParticleSelectors.begin(); it != _truthParticleSelectors.end(); it++){
+      _truthParticleStructs[it->first] = ParticleData();
+      _CreateHepMC3BranchesSingle(it->first, _truthParticleStructs[it->first], kTRUE);
+    }
     return;
   }
+
+  void Converter::_CreateHepMC3BranchesSingle(TString particleCollectionName, ParticleData& data, Bool_t extra){
+    TString branchName;
+    // Branches for the stable truth particles
+    branchName = Form("%s.N", particleCollectionName.Data());
+    _outputTree->Branch(branchName,&data.N,Form("%s/I",branchName.Data()));
+
+    branchName = Form("%s.Pmu", particleCollectionName.Data());
+    _outputTree->Branch(branchName,&data.momentum.pmu);
+
+    branchName = Form("%s.Pmu_cyl", particleCollectionName.Data());
+    _outputTree->Branch(branchName,&data.momentum.pmu_cyl);
+
+    branchName = Form("%s.PdgId", particleCollectionName.Data());
+    _outputTree->Branch(branchName,&data.pdgId);
+
+    branchName = Form("%s.HepMC3Index", particleCollectionName.Data());
+    _outputTree->Branch(branchName,&data.indexHepMC);
+
+    branchName = Form("%s.Production.Xmu", particleCollectionName.Data());
+    _outputTree->Branch(branchName,&data.xmu_prod);
+
+    if(extra){
+      branchName = Form("%s.Stable", particleCollectionName.Data());
+      _outputTree->Branch(branchName,&data.isStable);
+
+      branchName = Form("%s.Decay.Xmu", particleCollectionName.Data());
+      _outputTree->Branch(branchName,&data.xmu_decay);
+    }
+
+  }
+
 
   Bool_t Converter::_CheckStringVector(vector<TString> v, TString target){
     auto it = std::find(v.begin(), v.end(), target);
@@ -475,6 +512,42 @@ namespace NtupleProducer{
     return;
   }
 
+  void Converter::_FillTruthParticles(){
+
+    for(auto it = _truthParticleStructs.begin(); it != _truthParticleStructs.end(); it++){
+      it->second.Clear();
+
+
+      vector<Int_t> selectedParticleIndices = (*_truthParticleSelectors.at(it->first))(_evt);
+      Int_t N = selectedParticleIndices.size();
+      for(Int_t idx : selectedParticleIndices){
+        shared_ptr<HepMC3::GenParticle> par = _evt->particles().at(idx);
+        HepMC3::FourVector momentum = par->momentum();
+
+        it->second.pdgId.push_back(par->pid());
+        it->second.indexHepMC.push_back(par->id());
+        it->second.momentum.pmu.push_back({momentum.e(),momentum.px(),momentum.py(),momentum.pz()}); // note use of double-braces (moved from vector<vector<Double_t>> to vector<FourVector>)
+        it->second.momentum.pmu_cyl.push_back({momentum.pt(),momentum.eta(),momentum.phi(),momentum.m()});
+
+        HepMC3::FourVector production_vertex = par->production_vertex()->position();
+        it->second.xmu_prod.push_back({production_vertex.t(),production_vertex.x(),production_vertex.y(),production_vertex.z()});
+
+        // Also fill in stability Boolean flag, and decay vertex information
+        Bool_t isStable = (par->status() == 1);
+        it->second.isStable.push_back(isStable);
+        if(isStable){ // put some dummy info for the decay vertex //TODO: Pad it out with zeros? Or make it an empty entry
+          it->second.xmu_decay.push_back({});
+        }
+        else{
+          HepMC3::FourVector end_vertex = par->end_vertex()->position();
+          it->second.xmu_decay.push_back({end_vertex.t(),end_vertex.x(),end_vertex.y(),end_vertex.z()});
+        }
+      }
+      it->second.N = N;
+    }
+    return;
+  }
+
   void Converter::_FillDelphesObjects(){
     ROOT::Math::PtEtaPhiMVector v;
     for(auto& [branchName, data] : _delphesData){
@@ -665,6 +738,9 @@ namespace NtupleProducer{
 
       // Fetch the stable truth particle data, place it in output buffers.
       _FillStableParticles();
+
+      // Fetch the selected truth particle data, place it in output buffers.
+      _FillTruthParticles();
 
       // Fetch the Delphes object data, place it in output buffers.
       _FillDelphesObjects();

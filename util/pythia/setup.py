@@ -3,12 +3,16 @@ from collections import deque
 import subprocess as sub
 import ROOT as rt
 from util.qol_utils.progress_bar import printProgressBar, printProgressWithOutput
+from util.hepmc.setup import HepMCSetup
 
 class PythiaWrapperSetup:
     """
     This class is for setting up the C++/ROOT PythiaGenerator code.
     This allows for a custom Pythia8 Python interface, via PyROOT,
     that offers a couple features not present in the standard interface.
+
+    NOTE: The PythiaGenerator library depends on HepMC3, so it will
+          check on that setup using our setup class for that library!
     """
     def __init__(self,pythia_generator_dir=None):
         self.SetDirectory(pythia_generator_dir)
