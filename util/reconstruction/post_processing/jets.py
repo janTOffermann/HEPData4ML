@@ -514,7 +514,7 @@ class JetFinder(JetFinderBase):
     @profile_method('JetFinder._computeConstituentIndices')
     def _computeConstituentIndices(self):
         # Precompute collection boundaries once
-        n_per_collection = [len(self.input_collection_arrays[key][self._i]) for key in self.input_collection_names_Pmu]
+        n_per_collection = [len(self.input_collection_arrays[key]) for key in self.input_collection_names_Pmu]
         cumulative_lengths = np.cumsum([0] + n_per_collection)
 
         self.constituent_indices_dict = {}
