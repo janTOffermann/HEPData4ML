@@ -78,7 +78,6 @@ namespace NtupleProducer{
       Bool_t _enforceUnique = kFALSE;
   };
 
-
   // ---------------------------------------
   // Selection Algorithms, for AlgoSelection
   // ---------------------------------------
@@ -149,13 +148,10 @@ namespace NtupleProducer{
 
       vector<Int_t> operator()(HepMC3::GenEvent* evt) const;
 
-
     protected:
       unique_ptr<BaseSelectorAlgorithm> _algorithm;
       Int_t _N = -1;
   };
-
-
 }
 
 #endif

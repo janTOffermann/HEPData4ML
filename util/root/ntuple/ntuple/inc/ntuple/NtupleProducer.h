@@ -300,8 +300,6 @@ namespace NtupleProducer{
 
       // misc
       TString _truthParticleBranchPrefix = "StableTruthParticles";
-
-
   };
 }
 

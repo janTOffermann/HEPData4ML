@@ -1,7 +1,10 @@
-
+import re
 import h5py as h5
+import numpy as np
 import uproot as ur
 import awkward as ak
+import ROOT as rt
+from array import array
 from typing import List
 
 # TODO: Consider making more general classes, and using inheritance.
@@ -183,6 +186,112 @@ class UprootTreeLoader:
                 with ur.open(file_path) as f:
                     total += f[self.tree_path].num_entries
             return total
+
+
+class RootTreeLoader:
+
+    def __init__(self,filename,treename):
+        self.filename = filename
+        self.treename = treename
+        self.f = None
+        self.t = None
+        self.keys = []
+
+        self.buffer = {} # buffer for reading the TTree branches
+
+        self.type_map = {
+            'Float_t': np.float32,
+            'Double_t': np.float64,
+            'Int_t': np.int32,
+            'UInt_t': np.uint32,
+            'Long64_t': np.int64,
+            'ULong64_t': np.uint64,
+            'Bool_t': np.bool_,
+            'Char_t': np.int8,
+        }
+
+    def load(self):
+        self.f = rt.TFile(self.filename,"READ")
+        self.t = self.f.Get(self.treename)
+        self.keys = [x.GetName() for x in self.t.GetListOfBranches()]
+
+    def create_buffer_for_branch(self, branch_name):
+        """Create appropriate buffer and set branch address."""
+
+        available_branches = [x.GetName() for x in self.t.GetListOfBranches()]
+        if(branch_name not in available_branches):
+            return
+
+        branch = self.t.GetBranch(branch_name)
+        leaf = branch.GetListOfLeaves()[0]
+
+        type_name = leaf.GetTypeName()
+        class_name = branch.GetClassName()
+        np_type = self.type_map.get(type_name, np.float32)
+        # print('creating buffer for {}, type_name = {}, np_type = {}'.format(branch_name,type_name,np_type))
+
+        # Handle std::vector branches
+        if class_name and 'vector' in class_name:
+            # Need to adjust type_name.
+            # #E.g. "vector<vector<double> >" -> vector<double>
+            # (otherwise we'll end up with one layer of vectors too many
+            #  when we construct the buffer below)
+
+            # TODO: Add here
+            match = re.search(r'vector<(.+)>', type_name)
+            inner_type = match.group(1).strip()
+            # Remove trailing '>' if it's a nested vector (they sometimes have spaces)
+            inner_type = inner_type.rstrip('>')
+            inner_type = inner_type.strip()
+            self.buffer[branch_name] = rt.std.vector[inner_type]()
+            self.t.SetBranchAddress(branch_name, self.buffer[branch_name])
+            return
+
+        # Handle single values, and fixed-size arrays
+
+        array_size = leaf.GetLen()
+        if(type_name == 'ULong64_t'):# TODO: Not implemented properly in PyROOT? Need to use array package for this one
+            self.buffer[branch_name] = array('Q',[0] * array_size)
+        else:
+            self.buffer[branch_name] = np.zeros(array_size, dtype=np_type)
+        self.t.SetBranchAddress(branch_name, self.buffer[branch_name])
+        return
+
+    def read_branch(self,branch_name):
+
+        if(branch_name == '*'):
+            self._read_all_branches()
+        elif(branch_name not in self.buffer.keys()):
+            self.create_buffer_for_branch(branch_name)
+        return
+
+    def _read_all_branches(self):
+        for branch in self.keys:
+            self.read_branch(branch)
+        return
+
+    def set_entry(self,i):
+        self.t.GetEntry(i)
+        return
+
+    def close(self):
+        self.f.Close()
+
+    def __getitem__(self,key):
+        return self.buffer[key]
+
+    def keys(self):
+        return self.keys
+
+    def GetTree(self):
+        return self.t
+
+    def GetTreeName(self):
+        return self.treename
+
+    def GetFilename(self):
+        return self.filename
+
 
 
 ####################

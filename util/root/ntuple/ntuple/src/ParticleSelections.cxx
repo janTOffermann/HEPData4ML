@@ -4,22 +4,12 @@
 #include <algorithm> // std::transform. std::find
 
 // ROOT includes
-#include "TObject.h"
-#include "TObjArray.h"
-#include "TObjString.h"
-#include "TFile.h"
 #include "TMath.h"
-// #include "TLeafF.h"
-#include "TLeafElement.h"
 
 // HepMC3 includes
 #include "HepMC3/GenEvent.h"
 #include "HepMC3/GenParticle.h"
 #include "HepMC3/GenVertex.h"
-#include "HepMC3/ReaderRootTree.h"
-#include "HepMC3/ReaderAscii.h"
-#include "HepMC3/GenRunInfo.h"
-#include "HepMC3/FourVector.h"
 
 using namespace std;
 
@@ -183,5 +173,4 @@ namespace NtupleProducer{
     }
     return stableDaughterIndices;
   }
-
 }

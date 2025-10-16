@@ -78,7 +78,7 @@ class GhostAssociator():
         # Note the use of cylindrical coordinates!
         if(self.vec_key not in obj.input_collection_arrays.keys()):
             # Read the necessary keys in.
-            f = h5.File(obj.h5_file,'r')
+            f = h5.File(obj.ntuple_file,'r')
 
             # Cylindrical coordinates four-momenta
             vecs = f[self.vec_key][:][:,self.indices] # only loads the data needed -- indexing already done here

@@ -441,10 +441,12 @@ class RootOutputBuffer:
         self.tree_name = tree_name if tree_name is not None else "hepdata4ml_tree"
         self.print_prefix = 'RootOutputBuffer:'
         self.buffers = {} # each buffer will be of length 1 w.r.t. number of events
+        self.buffer_is_vector = {}
         self.n_filled = 0 # keep track of what buffers have been filled
         self.is_scalar = {}
         self.f = None
         self.t = None
+        self.clone_tree = None
         self.init_status = False
 
         self.SetFilename(filename)
@@ -457,9 +459,18 @@ class RootOutputBuffer:
     def SetTreeName(self,tree_name:str):
         self.tree_name = tree_name
 
-    def _init_tree(self):
+    def SetCloneTree(self,tree:rt.TTree):
+        self.clone_tree = tree
+
+    def _init_tree(self,in_tree=None):
         self.f = rt.TFile(self.filename,'RECREATE')
-        self.t = rt.TTree(self.tree_name,self.tree_name)
+
+        if(in_tree is None and self.clone_tree is None):
+            self.t = rt.TTree(self.tree_name,self.tree_name)
+        elif(self.clone_tree is not None):
+            self.t = self.clone_tree.CloneTree(0) # clones the TTree structure, does *not* copy over any entries
+        else:
+            self.t = in_tree.CloneTree(0) # clones the TTree structure, does *not* copy over any entries
         self.init_status = True
         return
 
@@ -490,14 +501,19 @@ class RootOutputBuffer:
 
     def _init_scalar_branch(self,key,dtype):
         self.buffers[key] = np.zeros(1,dtype=dtype)
+        self.buffer_is_vector[key] = False
 
         #TODO: Support more types?
         if(dtype == np.dtype('float')):
             self.t.Branch(key,self.buffers[key],'{}/D'.format(key))
-        elif(dtype == np.dtype('int')): # also covers long
+        elif(dtype == np.dtype('i4')):
             self.t.Branch(key,self.buffers[key],'{}/I'.format(key))
         elif(dtype == np.dtype('uint')):
             self.t.Branch(key,self.buffers[key],'{}/i'.format(key))
+        elif(dtype == np.dtype('i8')): # also covers long
+            self.t.Branch(key,self.buffers[key],'{}/L'.format(key))
+        elif(dtype == np.dtype('ulong')): # also covers long
+            self.t.Branch(key,self.buffers[key],'{}/l'.format(key))
         elif(dtype == np.dtype('short')):
             self.t.Branch(key,self.buffers[key],'{}/S'.format(key))
         elif(dtype == np.dtype('ushort')):
@@ -514,7 +530,7 @@ class RootOutputBuffer:
             if(dtype == np.dtype(type_str)):
                 dtype_str = type_str
                 break
-        if(dtype == np.dtype('int32')): # special case not caught above
+        if(dtype == np.dtype('int32')): # special case not caught above TODO: Running into some issues when pushing back to vector<vector<int>> in this case?
             dtype_str = 'int'
 
         # For now, we will support 1D, 2D and 3D vectors
@@ -523,10 +539,11 @@ class RootOutputBuffer:
         elif(len(shape) == 2):
             self.buffers[key] = rt.std.vector[rt.std.vector[dtype_str]]()
         elif(len(shape) == 3):
-            self.buffers[key] = rt.std.vector[rt.std.vector[rt.std.vector[rt.std.vector[dtype_str]]]]()
+            self.buffers[key] = rt.std.vector[rt.std.vector[rt.std.vector[dtype_str]]]()
         else:
             self._print('Warning: vector branch of dimension {} not supported.'.format(len(shape)))
             return
+        self.buffer_is_vector[key] = True
 
         self.t.Branch(key,self.buffers[key])
         return
@@ -553,19 +570,54 @@ class RootOutputBuffer:
         # as the code that's leveraging this class is filling all the buffers
         # for a single event before moving on to the next one.
         # (which is a pretty sensible assumption) - Jan
-        if(self.n_filled < index):
+        event_index = index
+        if(isinstance(index,tuple)):
+            event_index = index[0]
+
+        if(self.n_filled < event_index):
             self.flush()
 
         if(is_scalar):
             self.buffers[key][0] = value # buffer is a 1D length-1 array
         else: # non-scalar -- this possibly gets more complex
-            self.buffers[key].assign(value) # TODO: Does this work as expected?
+
+            if(isinstance(index,tuple)): # slicing: gets a bit complex
+
+                if(len(index) > 2):
+                    self._print('Warning: Indexing beyond 2 dims not (yet) supported for RootOutputBuffer.set().')
+                    return
+
+                if isinstance(value, np.ndarray) and not value.flags['C_CONTIGUOUS']:
+                    value = np.ascontiguousarray(value)
+
+                # We need to determine if we're filling the "next" entry in this vector,
+                # or are overwriting an existing entry (unlikely!) or writing non-sequentially.
+                # I should emphasize that these latter cases are highly unlikely given how
+                # this class is expected to be used. - Jan
+                current_length = self.buffers[key].size()
+                if(index[1] == current_length):
+                    self.buffers[key].push_back(value)
+
+                elif(index[1] > current_length):
+                    for i in range(index[1] - current_length):
+                        self.buffers[key].push_back({}) # need to put some empty entries to pre-pad
+                else:
+                    self.buffers[key][index[1]] = value # reassign
+
+            else:
+                self.buffers[key].assign(value) # TODO: Does this work as expected?
         return
 
     def flush(self):
         self.t.Fill()
         self.n_filled += 1
-        # self._clear_buffers()
+        self._clear_buffers()
+
+    def _clear_buffers(self):
+        for key in self.buffers.keys():
+            if(self.buffer_is_vector[key]):
+                self.buffers[key].clear()
+
 
     def close(self,output_file:Optional[str]=None):
         self.t.Write()

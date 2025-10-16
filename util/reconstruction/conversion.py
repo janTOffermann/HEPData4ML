@@ -1,16 +1,11 @@
-import glob, itertools
-import numpy as np
+import os
 import ROOT as rt
 from util.reconstruction.setup import NtupleProducerSetup
-from util.buffer.input import UprootTreeLoader
-from util.buffer.output import OutputBuffer, RootOutputBuffer
 from util.qol_utils.progress_bar import printProgressBarColor
-from util.hepmc.hepmc import ExtractHepMCEvents, ExtractHepMCParticles, ParticleToProductionVertex, ParticleToEndVertex, ParticleToMomenta
-from typing import Union, Optional, List, Any, TYPE_CHECKING
+from typing import Optional, Any, TYPE_CHECKING
 from util.misc.timing import profile_method, profile_block
 import util.hdf5.hdf5 as h5util
 import util.root.utils as rootutil
-
 
 if(TYPE_CHECKING):
     import sys
@@ -163,14 +158,15 @@ class Processor:
         # Parser output_file
         if(output_file is None):
             output_file = 'events.hepdata4ml.{}'.format(self.output_extension)
+        output_file_no_extension = output_file
         output_file = '{}/{}'.format(self.outdir,output_file)
 
         # TODO: Run the process here
         self.processor.Process(hepmc_file, delphes_file, output_file) # <- does the whole n-tuple conversion (to ROOT format)
-        return
+        return output_file_no_extension
 
     @profile_method('Processor.PostProcess')
-    def PostProcess(self,hepmc_file:str, ntuple_file:str, prepend_output_directory=False):
+    def PostProcess(self,hepmc_file:str, ntuple_file:str, prepend_output_directory=True):
         if(self.post_processing is None):
             return
         for post_proc in self.post_processing:
@@ -188,7 +184,7 @@ class Processor:
     # i.e. we'll call them separate from the main Processor routine.
     ################################################################
 
-    def ConcatenateNtuples(self,input_files:list,output_file, format=None):
+    def ConcatenateNtuples(self,input_files:list,output_file, format=None, delete_inputs=False):
             """
             This is a utility function for concatenating output ntuples.
             """
@@ -199,12 +195,19 @@ class Processor:
             output_filepath = '/'.join((self.outdir,output_file))
             if(format.lower() == 'hdf5'):
                 compression_opts = 1 # TODO fetch from configuration?
-                h5util.ConcatenateH5(input_files,output_filepath,copts=compression_opts,delete_inputs=True,ignore_keys=['Event.Index'],verbose=False,silent_drop=True)
+                h5util.ConcatenateH5(input_files,output_filepath,copts=compression_opts,ignore_keys=['Event.Index'],verbose=False,silent_drop=True,delete_inputs=False)
             elif(format.lower() == 'root'):
-                rootutil.ConcatenateRootTreeFiles(input_files,output_filepath,self.tree_name,['Event.Index'])
+                rootutil.ConcatenateRootTreeFiles(input_files,output_filepath,self.tree_name,['Event.Index'],silent_drop=True,delete_inputs=False)
             else:
                 self._print('Error: ConcatenateNtuples() not implemented for format {}.'.format(self.output_format))
                 return
+
+            if(delete_inputs):
+                for infile in input_files:
+                    os.unlink(infile)
+            return
+
+
 
     def AddEventIndices(self,input_file,key='Event.Index',offset=0):
         key = 'Event.Index' # TODO: Make this member variable?

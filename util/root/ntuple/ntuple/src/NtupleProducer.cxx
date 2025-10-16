@@ -30,7 +30,6 @@ namespace NtupleProducer{
     _evt = new HepMC3::GenEvent();
   }
 
-
   Converter::~Converter(){
     if(_readerAscii != 0) delete _readerAscii;
     if(_readerRoot != 0) delete _readerRoot;
@@ -46,9 +45,7 @@ namespace NtupleProducer{
       _outputFile->Close(); // TODO: Is this needed?
       delete _outputFile;
     }
-
   }
-
 
   void Converter::SetInputFilesHepMC(vector<TString> files){
     _inputFilesHepMC = files;
@@ -130,27 +127,6 @@ namespace NtupleProducer{
 
     _CreateHepMC3BranchesSingle(_truthParticleBranchPrefix,_stableParticles, kFALSE);
 
-    // TString branchName;
-    // // Branches for the stable truth particles
-    // branchName = Form("%s.N", _truthParticleBranchPrefix.Data());
-    // _outputTree->Branch(branchName,&_stableParticles.N,Form("%s/I",branchName.Data()));
-
-    // branchName = Form("%s.Pmu", _truthParticleBranchPrefix.Data());
-    // _outputTree->Branch(branchName,&_stableParticles.momentum.pmu);
-
-    // branchName = Form("%s.Pmu_cyl", _truthParticleBranchPrefix.Data());
-    // _outputTree->Branch(branchName,&_stableParticles.momentum.pmu_cyl);
-
-    // branchName = Form("%s.PdgId", _truthParticleBranchPrefix.Data());
-    // _outputTree->Branch(branchName,&_stableParticles.pdgId);
-
-    // branchName = Form("%s.HepMC3Index", _truthParticleBranchPrefix.Data());
-    // _outputTree->Branch(branchName,&_stableParticles.indexHepMC);
-
-    // branchName = Form("%s.Production.Xmu", _truthParticleBranchPrefix.Data());
-    // _outputTree->Branch(branchName,&_stableParticles.xmu_prod);
-
-    // // TODO: Handling of truth particle selections
     for(auto it = _truthParticleSelectors.begin(); it != _truthParticleSelectors.end(); it++){
       _truthParticleStructs[it->first] = ParticleData();
       _CreateHepMC3BranchesSingle(it->first, _truthParticleStructs[it->first], kTRUE);
@@ -188,7 +164,6 @@ namespace NtupleProducer{
     }
 
   }
-
 
   Bool_t Converter::_CheckStringVector(vector<TString> v, TString target){
     auto it = std::find(v.begin(), v.end(), target);
@@ -357,7 +332,6 @@ namespace NtupleProducer{
     }
   }
 
-
   void Converter::_CreateDelphesBranch(TString inputBranchName){
 
     TString branchName;
@@ -381,7 +355,6 @@ namespace NtupleProducer{
      * Now we roughly mimic the logic of util/reconstruction/conversion.py .
      * We use our DelphesReaderData struct to read whichever branches are available.
      */
-
 
     // Create the DelphesReaderData object.
     _delphesData[inputBranchName] = std::make_unique<DelphesReaderData>();
@@ -409,7 +382,6 @@ namespace NtupleProducer{
 
     // 6) Handling position information (for non-track objects)
     _DelphesPosition(inputBranchName,attributes);
-
 
     return;
   }
@@ -487,8 +459,6 @@ namespace NtupleProducer{
     _delphesReader = new TTreeReader(_delphesTree);
     gErrorIgnoreLevel = oldIgnoreLevel;
 
-    //DEBUG
-    // _delphesTree->Print();
     return;
   }
 
@@ -744,9 +714,6 @@ namespace NtupleProducer{
       // Fetch the Delphes object data, place it in output buffers.
       _FillDelphesObjects();
 
-
-      //...
-
       // Write event to TTree
       _outputTree->Fill();
       _i++;
@@ -758,5 +725,4 @@ namespace NtupleProducer{
     delete _outputFile;
     _outputFile = 0;
   }
-
 }

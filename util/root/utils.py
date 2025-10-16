@@ -4,8 +4,8 @@ import ROOT as rt
 import numpy as np
 from typing import Optional, List, Set
 
-def ConcatenateRootTreeFiles(input_files: List[str], output_file: str, tree_name: str,
-    branches_to_drop: Optional[List[str]] = None):
+def ConcatenateRootTreeFiles(input_files:List[str], output_file:str, tree_name:str,
+    branches_to_drop:Optional[List[str]]=None, silent_drop:bool=True, delete_inputs:bool=False):
 
     if not input_files:
         raise ValueError("No input files provided")
@@ -38,9 +38,17 @@ def ConcatenateRootTreeFiles(input_files: List[str], output_file: str, tree_name
 
     # Disable all branches, then enable only the ones we want
     chain.SetBranchStatus("*", 0)
+    ignore_branches = []
     for branch in all_branches:
         if(branch in branches_to_keep):
             chain.SetBranchStatus(branch, 1)
+        else:
+            ignore_branches.append(branch)
+
+    if(not silent_drop):
+        print('\tExcluding the following branches from concatenation, these will be dropped:')
+        for k in ignore_branches:
+            print('\t\t{}'.format(k))
 
     # Use CloneTree to copy only active branches
     # out_tree = chain.CloneTree(-1, "fast")
@@ -50,6 +58,11 @@ def ConcatenateRootTreeFiles(input_files: List[str], output_file: str, tree_name
     out_tree.Write()
     out_file.Close()
 
+    # If requested, delete the input files
+    if(delete_inputs):
+        for f in input_files:
+            command = ['rm', f]
+            sub.check_call(f)
 
 def FilterBranches(all_branches: List[str], patterns_to_drop: Set[str]) -> List[str]:
     import fnmatch

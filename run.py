@@ -371,7 +371,7 @@ def main(args):
                 ntuple_files.append(ntuple_file_individual)
 
             # Now, concatenate the ntuple files together.
-            processor.ConcatenateNtuples(ntuple_files,ntuple_file,format='root') # will prepend outdir to the output_file argument (this is all a little messy)
+            processor.ConcatenateNtuples(ntuple_files,ntuple_file,format='root',delete_inputs=True) # will prepend outdir to the output_file argument (this is all a little messy)
 
             #Cleanup: Compress the HepMC files.
             if(compress_hepmc): CompressHepMC(hepmc_files,True,cwd=outdir)

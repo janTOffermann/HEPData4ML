@@ -10,5 +10,6 @@
 #pragma link C++ class NtupleProducer::BaseSelector+;
 #pragma link C++ class NtupleProducer::FirstSelector+;
 #pragma link C++ class NtupleProducer::MultiSelection+;
+#pragma link C++ class NtupleProducer::AlgoSelection+;
 
 #endif
