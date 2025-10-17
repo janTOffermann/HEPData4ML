@@ -238,7 +238,7 @@ class JohnsHopkinsTagger:
     See: https://arxiv.org/abs/0806.0848 [Phys.Rev.Lett. 101 (2008) 142001]
 
     """
-    def __init__(self,delta_p=0.1,delta_r=0.19,cos_theta_W_max=0.7,top_mass_range=(150.,200.),W_mass_range=(65.,95.), mode='filter',tag_name=None, n_w_constituents_max=100):
+    def __init__(self,delta_p=0.1,delta_r=0.19,cos_theta_W_max=0.7,top_mass_range=(150.,200.),W_mass_range=(65.,95.), mode='filter',tag_name=None):
         self.mode = mode
         assert self.mode in ['tag','filter']
         self.tag_name = tag_name
@@ -259,21 +259,14 @@ class JohnsHopkinsTagger:
 
         # Transient, per-jet variables
         self.tag_status = False
-        self.w_candidate = None
-        self.w_candidate_cyl = None
-        self.w_constituent = None
-        self.w_constituent_cyl = None
 
         # Event-level; one extra dim w.r.t. above
-        # TODO: Rework this? Might be confusing naming scheme
         self.tags = None
         self.w_candidates = None
         self.w_candidates_cyl = None
         self.n_constituents = None
         self.w_constituents = None
         self.w_constituents_cyl = None
-
-        self.n_w_constituents_max = n_w_constituents_max
 
         self.print_prefix = '\n\t\tJohnsHopkinsTagger'
         self.citations = {
@@ -323,7 +316,7 @@ class JohnsHopkinsTagger:
 
         self.tagger = rt.JHTagger.JohnnyTagger(self.delta_p,self.delta_r,self.cos_theta_W_max,*self.top_mass_range,*self.W_mass_range)
 
-    def _tag(self,vecs):
+    def _tag(self,obj, vecs,i:int):
         #NOTE: This usage of TagJet() is a bit awkward, but I've had some issues when trying to pass a fastjet.PseudoJet object.
         #      I think this has to do with some weirdness around the Fastjet Python interface, or Python/C++ interfaces in general.
         self.tagger.TagJet(
@@ -333,28 +326,27 @@ class JohnsHopkinsTagger:
             rt.std.vector('double')(vecs[:,3].flatten())
         )
         self.tag_status = self.tagger.GetStatus()
-        self.w_candidate = None
         if(self.tag_status):
             try:
-                w = self.tagger.GetWCandidate() # Fastjet::PseudoJet (C++ type, PyROOT seems to handle interface here!)
-                self.w_candidate     = np.array([w.e(),w.px(),w.py(),w.pz()  ]) # TODO: Can this array return be handled by the C++/ROOT class?
-                self.w_candidate_cyl = np.array([w.pt(),w.eta(),w.phi(),w.m()])
+                self.w_candidates[i] = np.array([self.tagger.GetWCandidateProperty(x) for x in ['E','px','py','pz']])
+                self.w_candidates_cyl[i] = np.array([self.tagger.GetWCandidateProperty(x) for x in ['pt','eta','phi','m']])
             except:
-                self.w_candidate     = np.full(4,np.nan)
-                self.w_candidate_cyl = np.full(4,np.nan)
+                self.w_candidates[i]     = np.full(4,np.nan)
+                self.w_candidates_cyl[i] = np.full(4,np.nan)
         return
 
-    def _getWConstituents(self):
+    def _getWConstituents(self, i:int):
         if(not self.tag_status):
-            print('BLAM')
-            return None
+            return
         pt = np.array(self.tagger.GetWCandidateConstituentsProperty("pt"))
         n = pt.shape[0]
         if(n == 0):
             return
         ordering = np.argsort(-pt)
-        self.w_constituent     = np.vstack([self.tagger.GetWCandidateConstituentsProperty(x) for x in ["E","px","py","pz"]]  ).T[ordering]
-        self.w_constituent_cyl = np.vstack([self.tagger.GetWCandidateConstituentsProperty(x) for x in ["pt","eta","phi","m"]]).T[ordering]
+        self.w_constituents[i]     = np.column_stack([self.tagger.GetWCandidateConstituentsProperty(x) for x in ["E","px","py","pz"]]  )[ordering]
+        self.w_constituents_cyl[i] = np.column_stack([self.tagger.GetWCandidateConstituentsProperty(x) for x in ["pt","eta","phi","m"]])[ordering]
+        self.n_constituents[i] = n
+        return
 
     def ModifyInitialization(self, obj : 'JetFinder'):
         #NOTE: Might want to move this to constructor, which will need to take obj as input.
@@ -376,21 +368,18 @@ class JohnsHopkinsTagger:
         # Fetch the jet constituents, just to be safe -- this makes sure that they are up-to-date.
         obj._fetchJetConstituents()
 
-        self.tags = {i:False for i in obj.jets_dict.keys()}
-        self.w_candidates = {i:np.zeros(4) for i in obj.jets_dict.keys()}
-        self.w_candidates_cyl = {i:np.zeros(4) for i in obj.jets_dict.keys()}
+        self.tags = {}
+        self.w_candidates = {i:[] for i in obj.jets_dict.keys()}
+        self.w_candidates_cyl = {i:[] for i in obj.jets_dict.keys()}
         self.n_constituents = {i:0 for i in obj.jets_dict.keys()}
-        self.w_constituents = {i:np.zeros((self.n_w_constituents_max,4)) for i in obj.jets_dict.keys()}
-        self.w_constituents_cyl = {i:np.zeros((self.n_w_constituents_max,4)) for i in obj.jets_dict.keys()}
+        self.w_constituents = {i:np.zeros((0,4)) for i in obj.jets_dict.keys()}
+        self.w_constituents_cyl = {i:np.zeros((0,4)) for i in obj.jets_dict.keys()}
 
         for key in obj.jets_dict.keys():
-            self._tag(obj.constituent_vectors[key]) # fills self.tag_status, self.w_candidate
+            self._tag(obj,obj.constituent_vectors[key],key) # fills self.tag_status, self.w_candidates[key], self.w_candidates_cyl[key]
             self.tags[key] = self.tag_status
             if(self.tag_status): # if not tagged, there is no W -- so we can safely skip filling
-                self._getWConstituents() # fills self.w_constituent, self.w_constituent_cyl
-                self.n_constituents[key] = len(self.w_constituent)
-                embed_array_inplace(self.w_constituent,self.w_constituents[key])
-                embed_array_inplace(self.w_constituent_cyl,self.w_constituents_cyl[key])
+                self._getWConstituents(key) # fills self.w_constituents[key], self.w_constituents_cyl[key], self.n_constituents[key]
 
         if(self.mode=='filter'):
             obj.jet_ordering = [key for key in obj.jet_ordering if self.tags[key]]
@@ -418,17 +407,17 @@ class JohnsHopkinsTagger:
         """
         self._createBranchNames(obj)
 
-        if(self.tag_name not in obj.buffer.keys()):
-            obj.buffer.create_array(self.tag_name,(obj.n_jets_max,),dtype=bool)
+        if(self.tag_name not in obj.output_buffer.keys()):
+            obj.output_buffer.create_array(self.tag_name,ndim=1,dtype=bool)
 
-        if(self.w_name not in obj.buffer.keys()):
-            obj.buffer.create_array(self.w_name,         (obj.n_jets_max,4),dtype=np.dtype('f8'))
-            obj.buffer.create_array(self.w_name + '_cyl',(obj.n_jets_max,4),dtype=np.dtype('f8'))
+        if(self.w_name not in obj.output_buffer.keys()):
+            obj.output_buffer.create_array(self.w_name,         ndim=2,dtype=np.dtype('f8'))
+            obj.output_buffer.create_array(self.w_name + '_cyl',ndim=2,dtype=np.dtype('f8'))
 
-        if(self.w_constituents_name not in obj.buffer.keys()):
-            obj.buffer.create_array(self.w_nconst_name, (obj.n_jets_max),dtype=np.dtype('i4'))
-            obj.buffer.create_array(self.w_constituents_name,          (obj.n_jets_max,self.n_w_constituents_max,4),dtype=np.dtype('f8'))
-            obj.buffer.create_array(self.w_constituents_name + '_cyl', (obj.n_jets_max,self.n_w_constituents_max,4),dtype=np.dtype('f8'))
+        if(self.w_constituents_name not in obj.output_buffer.keys()):
+            obj.output_buffer.create_array(self.w_nconst_name, ndim=1,dtype=np.dtype('i4'))
+            obj.output_buffer.create_array(self.w_constituents_name,          ndim=3,dtype=np.dtype('f8'))
+            obj.output_buffer.create_array(self.w_constituents_name + '_cyl', ndim=3,dtype=np.dtype('f8'))
         return
 
     def _createBranchNames(self,obj : 'JetFinder'):
@@ -447,7 +436,7 @@ class JohnsHopkinsTagger:
         Note that the pT sorting of obj is applied,
         which will have been filled by obj._ptSort().
         """
-        obj.buffer.set(self.tag_name,obj._i,[self.tags[i] for i in obj.jet_ordering])
+        obj.output_buffer.set(self.tag_name,obj._i,[self.tags[i] for i in obj.jet_ordering])
 
     def _addWToBuffer(self,obj : 'JetFinder'):
         """
@@ -455,12 +444,12 @@ class JohnsHopkinsTagger:
         Note that the pT sorting of obj is applied,
         which will have been filled by obj._ptSort().
         """
-        obj.buffer.set(self.w_name,obj._i,[self.w_candidates[i] for i in obj.jet_ordering])
-        obj.buffer.set(self.w_name + '_cyl',obj._i,[self.w_candidates_cyl[i] for i in obj.jet_ordering])
+        obj.output_buffer.set(self.w_name,obj._i,[self.w_candidates[i] for i in obj.jet_ordering])
+        obj.output_buffer.set(self.w_name + '_cyl',obj._i,[self.w_candidates_cyl[i] for i in obj.jet_ordering])
 
-        obj.buffer.set(self.w_nconst_name,obj._i,[self.n_constituents[i] for i in obj.jet_ordering])
-        obj.buffer.set(self.w_constituents_name,obj._i,[self.w_constituents[i] for i in obj.jet_ordering])
-        obj.buffer.set(self.w_constituents_name + '_cyl',obj._i,[self.w_constituents_cyl[i] for i in obj.jet_ordering])
+        obj.output_buffer.set(self.w_nconst_name,obj._i,[self.n_constituents[i] for i in obj.jet_ordering])
+        obj.output_buffer.set(self.w_constituents_name,obj._i,[self.w_constituents[i] for i in obj.jet_ordering])
+        obj.output_buffer.set(self.w_constituents_name + '_cyl',obj._i,[self.w_constituents_cyl[i] for i in obj.jet_ordering])
 
     def _print(self,val):
         print('{}: {}'.format(self.print_prefix,val))

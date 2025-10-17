@@ -80,6 +80,11 @@ namespace NtupleProducer{
     return result;
   }
 
+  AlgoSelection::AlgoSelection(BaseSelectorAlgorithm* algorithm, Int_t n)
+      : _N(n){
+      _algorithm = unique_ptr<BaseSelectorAlgorithm>(algorithm);
+  }
+
   vector<Int_t> AlgoSelection::operator()(HepMC3::GenEvent* evt) const {
     vector<Int_t> result = (*_algorithm)(evt);
     if(_N > 0 && result.size() > _N){ // truncate
@@ -112,7 +117,7 @@ namespace NtupleProducer{
     _selection = unique_ptr<BaseSelector>(selection);
   }
 
-  vector<Int_t> SelectDaughters::operator()(HepMC3::GenEvent* evt){
+  vector<Int_t> SelectDaughters::operator()(HepMC3::GenEvent* evt) const{
     _status = kTRUE;
     vector<Int_t> startingParticleIndices = (*_selection)(evt);
 
@@ -138,7 +143,7 @@ namespace NtupleProducer{
     _selection = unique_ptr<BaseSelector>(selection);
   }
 
-  vector<Int_t> SelectStableDaughters::_GetStableDaughters(HepMC3::GenEvent* evt, Int_t idx){
+  vector<Int_t> SelectStableDaughters::_GetStableDaughters(HepMC3::GenEvent* evt, Int_t idx) const{
     vector<Int_t> result = {};
     vector<Int_t> daughters = GetDaughtersSingle(evt, idx);
     for(Int_t j : daughters){
@@ -152,7 +157,7 @@ namespace NtupleProducer{
     return result;
   }
 
-  vector<Int_t> SelectStableDaughters::operator()(HepMC3::GenEvent* evt){
+  vector<Int_t> SelectStableDaughters::operator()(HepMC3::GenEvent* evt) const{
     _status = kTRUE;
     vector<Int_t> startingParticleIndices = (*_selection)(evt);
 

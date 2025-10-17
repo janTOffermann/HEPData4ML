@@ -1,4 +1,4 @@
-import sys,os,pathlib,re,shlex
+import sys,os,pathlib,re,shlex,glob
 import argparse as ap
 import subprocess as sub
 from contextlib import nullcontext
@@ -249,6 +249,7 @@ def main(args):
         #===============================
         # STEP 2: Pileup (optional)
         #===============================
+        pileup_handler = None
         if('pileup' in steps):
             timer.start_timestamp('pileup')
             pileup_handler = configurator.GetPileupHandler()
@@ -323,6 +324,10 @@ def main(args):
                 simulator.Process()
                 delphes_files = simulator.GetOutputFiles()
             timer.end_timestamp('simulation')
+        else: # try to pick up any available delphes files #TODO: Make this more robust
+            delphes_files = glob.glob('{}/*.delphes.root'.format(outdir))
+            delphes_files = [x.replace(outdir + '/','') for x in delphes_files]
+
 
         #=========================================================
         # STEP 4: HDF5 conversion + Reconstruction/Post-processing
@@ -339,7 +344,6 @@ def main(args):
             # Do reco and put everything into an n-tuple file.
             print('\nRunning reconstruction and producing final N-tuple output.\n')
             processor = Processor(configurator)
-            # processor.SetDelphesFiles(delphes_files) # TODO: Handle case of no delphes_files?
             processor.SetOutputDirectory(outdir)
             processor.SetMetadataHandler(metadata_handler)
 
@@ -358,8 +362,6 @@ def main(args):
                 ntuple_file_individual = hepmc_file.split('/')[-1].replace(hepmc_extension,processor.GetOutputExtension())
 
                 processor.SetProgressBarPrefix('\tProducing N-tuple for file {}/{}:'.format(i+1,len(hepmc_files)))
-
-                # TODO: Restructure so that the Delphes files are fed in here too? Can be given as `None` if not present.
                 processor.ProcessFull(hepmc_file,delphes_file, ntuple_file_individual,verbosity=ntuple_verbosity)
 
                 # Add information from the pileup handler (if any).

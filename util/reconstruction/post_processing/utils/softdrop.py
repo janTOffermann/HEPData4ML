@@ -358,10 +358,10 @@ class IteratedSoftdrop:
         self._createBranchNames(obj)
 
         if(self.zi_name not in obj.buffer.keys()):
-            obj.buffer.create_array(self.zi_name,(obj.n_jets_max,self.max_depth),dtype=np.dtype('f8'))
+            obj.buffer.create_array(self.zi_name,ndim=2,dtype=np.dtype('f8'))
 
         if(self.dRi_name not in obj.buffer.keys()):
-            obj.buffer.create_array(self.dRi_name,(obj.n_jets_max,self.max_depth),dtype=np.dtype('f8'))
+            obj.buffer.create_array(self.dRi_name,ndim=2,dtype=np.dtype('f8'))
         return
 
     def _createBranchNames(self,obj : 'JetFinder'):

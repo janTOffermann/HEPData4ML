@@ -52,9 +52,11 @@ namespace JHTagger{
       Double_t GetWMassMin(){return _W_mass_min;};
       Double_t GetWMassMax(){return _W_mass_max;};
       Bool_t GetStatus(){return _status;};
-      fastjet::PseudoJet* GetWCandidate(){return _vec;};
 
-      // Some getters specific to fetching information on the W candidate's constituents.
+      // Some getters specific to fetching information on the W candidate and its constituents.
+      fastjet::PseudoJet* GetWCandidate(){return _vec;}; // might not be useful with the PyROOT interface
+      Double_t GetWCandidateProperty(TString property="E");
+
       Int_t GetWCandidateNConstituents(){return _vec_constituents.size();};
       std::vector<Double_t> GetWCandidateConstituentsProperty(TString property="E");
 

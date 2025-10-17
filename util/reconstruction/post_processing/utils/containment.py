@@ -134,7 +134,7 @@ class ContainmentTagger:
         self._createBranchNames(obj)
 
         if(self.tag_name not in obj.output_buffer.keys()):
-            obj.output_buffer.create_array(self.tag_name,(obj.n_jets_max,),dtype=bool)
+            obj.output_buffer.create_array(self.tag_name,ndim=1,dtype=bool)
         return
 
     def _createBranchNames(self,obj : 'JetFinder'):

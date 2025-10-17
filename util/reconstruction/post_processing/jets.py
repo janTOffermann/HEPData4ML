@@ -1,14 +1,13 @@
 # The purpose of this code is to apply the Johns Hopkins top tagger (arXiv:0806.0848 [hep-ph])
 # to the jets in the dataset.
 import numpy as np
-import h5py as h5
 from typing import Any, Optional, List, Tuple, Annotated, Union, TYPE_CHECKING # experimenting with typing
 from numpy.typing import NDArray
 from util.fastjet.jetfinderbase import JetFinderBase
 from util.qol_utils.progress_bar import printProgressBarColor
 from util.buffer.input import RootTreeLoader
-from util.buffer.output import OutputBuffer, RootOutputBuffer
-from util.misc.timing import profile_method, profile_block
+from util.buffer.output import RootOutputBuffer
+from util.misc.timing import profile_method
 
 import util.reconstruction.post_processing.utils.ghost_association as ghost_assoc
 import util.reconstruction.post_processing.utils.softdrop as softdrop
@@ -39,6 +38,8 @@ class JetFinder(JetFinderBase):
         self.n_jets_max = n_jets_max # max number of jets to save per event (will be pt-ordered)
         self.n_constituents_max = 200 # max number of constituents to save per jet # TODO: Make configurable
 
+        #TODO: Consider removing the "single_jet" functionality; it might make code maintenance harder?
+        #      In principle one could do a pretty simple post-processing to whittle off the extra dimension if needed.
         self.single_jet = False # if true, self.n_jets_max = 1 & will remove the "number of jets" dimension (dim 1). Accessed by certain post-processors.
         if(self.n_jets_max == 1):
             self.single_jet = True # turn on if there's only 1 jet saved per event -- no real need for the extra dimension then
@@ -49,7 +50,6 @@ class JetFinder(JetFinderBase):
         self.input_buffer = None
 
         # Output buffer
-        self.output_buffer_size = 500
         self.output_buffer = RootOutputBuffer() # TODO: Make buffer size configurable. Larger sizes use more memory, but may be faster since we do fewer flushes and thus less I/O (depends on how good the flushing code is, shouldn't be open/closing files repeatedly!)
 
         self.input_collection_arrays = {}
@@ -280,37 +280,35 @@ class JetFinder(JetFinderBase):
 
         return
 
-    # def _fetch_rapidity(self):
-    #     """
-    #     Fetches the rapidity of the jet clustering inputs.
-    #     This can be explicitly passed on to FastJet, and should speed
-    #     up the clustering -- which we ought to do if we've already
-    #     spent time computing it.
+    def _fetch_rapidity(self):
+        """
+        Fetches the rapidity of the jet clustering inputs.
+        This can be explicitly passed on to FastJet, and should speed
+        up the clustering -- which we ought to do if we've already
+        spent time computing it.
 
-    #     Note: We use eta instead of rapidity and thus implicitly assume
-    #     the input 4-vecs to be massless (as they often are). However,
-    #     we try to fetch any existing "Rapidity"/"Rap"/"Y" branch first,
-    #     in case it exists.
-    #     """
+        Note: We may use eta instead of rapidity and thus implicitly assume
+        the input 4-vecs to be massless (as they often are). However,
+        we try to fetch any existing "Rapidity"/"Rap"/"Y" branch first,
+        in case it exists.
+        """
 
-    #     # For rapidity, fetch rapidity or pseudorapidity based on what is available.
-    #     full_keys = list(self.input_buffer.keys())
-    #     rapidity_keys = {}
-    #     for key in self.input_collection_names:
-    #         potential_keys = ['{}.{}'.format(key,x) for x in ['Rapidity','Rap','Y','Pmu_cyl']] # last is the fall-back
-    #         for key2 in potential_keys:
-    #             if(key2 in full_keys):
-    #                 rapidity_keys[key] = key2
-    #                 break
-    #     assert(len(rapidity_keys.keys()) == len(self.input_collection_names))
-    #     self.input_collection_arrays_rapidity = {}
+        # For rapidity, fetch rapidity or pseudorapidity based on what is available.
+        full_keys = list(self.input_buffer.keys()) # gives all available branch names in the input TTree
+        rapidity_keys = {}
+        for key in self.input_collection_names:
+            potential_keys = ['{}.{}'.format(key,x) for x in ['Rapidity','Rap','Y','Pmu_cyl']] # last is the fall-back
+            for key2 in potential_keys:
+                if(key2 in full_keys):
+                    rapidity_keys[key] = key2
+                    break
+        assert(len(rapidity_keys.keys()) == len(self.input_collection_names))
+        self.input_collection_arrays_rapidity = {}
 
-    #     for key,key2 in rapidity_keys.items():
-    #         if('Pmu_cyl' in key2):
-    #             self.input_collection_arrays_rapidity[key] = self.input_collection_arrays_cyl[key2][:,...,1] # TODO: A bit fragile with key handling?
-    #         else: # TODO: This may need fixing -- as of writing this, I don't think there are any such rapidity branches! -Jan
-    #             self.input_collection_arrays_rapidity[key] = f[key2][:]
-    #     return
+        # Now, ensure that the necessary collections are loaded
+        for key,key2 in rapidity_keys.items():
+            self.input_buffer.load_branch(key2) # e
+        return
 
     def _get_max_input_size(self):
         """
@@ -484,30 +482,28 @@ class JetFinder(JetFinderBase):
         self.output_buffer.SetFilename(self.output_file_tmp)
         self.output_buffer.SetCloneTree(self.input_buffer.GetTree()) # clone the input n-tuple TTree structure -- will be filled as we loop through and call TTree::Fill()
 
-        shape0 = (self.n_jets_max,)
-        shape1 = (self.n_jets_max,4)
-        shape2 = (self.n_jets_max,self.n_constituents_max)
-        shape3 = (self.n_jets_max,self.n_constituents_max,4)
+        dim0 = 1
+        dim1 = 2
+        dim2 = 3
 
         if(self.single_jet): # eliminate the "number of jets" dimension
-            shape0 = ()
-            shape1 = (4,)
-            shape2 = (self.n_constituents_max,)
-            shape3 = (self.n_constituents_max,4)
+            dim0 = 0
+            dim1 = 1
+            dim2 = 2
 
         self.output_buffer.create_array('{}.N'.format(self.jet_name),dtype=np.dtype('i4'))
-        self.output_buffer.create_array('{}.Pmu'.format(self.jet_name),shape=shape1,dtype=np.dtype('f8'))
-        self.output_buffer.create_array('{}.Pmu_cyl'.format(self.jet_name),shape=shape1,dtype=np.dtype('f8'))
+        self.output_buffer.create_array('{}.Pmu'.format(self.jet_name),ndim=dim1,dtype=np.dtype('f8'))
+        self.output_buffer.create_array('{}.Pmu_cyl'.format(self.jet_name),ndim=dim1,dtype=np.dtype('f8'))
         if(self.constituents_flag):
-            self.output_buffer.create_array('{}.Constituents.N'.format(self.jet_name),shape=shape0,dtype=np.dtype('i4'))
-            self.output_buffer.create_array('{}.Constituents.Pmu'.format(self.jet_name),shape=shape3,dtype=np.dtype('f8'))
-            self.output_buffer.create_array('{}.Constituents.Pmu_cyl'.format(self.jet_name),shape=shape3,dtype=np.dtype('f8'))
+            self.output_buffer.create_array('{}.Constituents.N'.format(self.jet_name),ndim=dim0,dtype=np.dtype('i4'))
+            self.output_buffer.create_array('{}.Constituents.Pmu'.format(self.jet_name),ndim=dim2,dtype=np.dtype('f8'))
+            self.output_buffer.create_array('{}.Constituents.Pmu_cyl'.format(self.jet_name),ndim=dim2,dtype=np.dtype('f8'))
 
             # Also create buffers corresponding to jet constituents' indices w.r.t. the collections they were pulled from.
             # Note that a jet may have used multiple collections -- so we'll keep track of the index of the collection that
             # a constituent came from, as well as its index *within* that collection.
-            self.output_buffer.create_array('{}.Constituents.Collection'.format(self.jet_name),shape=shape2,dtype=np.dtype('i4'))
-            self.output_buffer.create_array('{}.Constituents.Collection.Index'.format(self.jet_name),shape=shape2,dtype=np.dtype('i4'))
+            self.output_buffer.create_array('{}.Constituents.Collection'.format(self.jet_name),ndim=dim1,dtype=np.dtype('i4'))
+            self.output_buffer.create_array('{}.Constituents.Collection.Index'.format(self.jet_name),ndim=dim1,dtype=np.dtype('i4'))
 
         return
 
@@ -695,7 +691,6 @@ class TruthJetFinder(JetFinderBase):
 
     def __init__(self, jet_algorithm:str='anti_kt',radius:float=0.4, jet_name:str='AK04Jets', n_jets_max:Optional[int]=None,fastjet_dir:Optional[str]=None):
 
-        # TODO: Check this? (and maybe add to JetFinder?)
         super(TruthJetFinder,self).__init__(fastjet_dir)
 
         self.status = False
@@ -710,8 +705,6 @@ class TruthJetFinder(JetFinderBase):
         self.fastjet_init_flag = False
 
         self.print_prefix = '\n\tTruthJetFinder'
-        # self.setup = None
-        # self.tagger = None
 
         self.error = False
 

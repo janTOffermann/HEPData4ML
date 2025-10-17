@@ -75,26 +75,9 @@ class GhostAssociator():
         self.indices = np.atleast_1d(self.indices)
 
         # Fetch the 4-vector key, and make sure its data is loaded.
-        # Note the use of cylindrical coordinates!
-        if(self.vec_key_cyl not in obj.input_collection_arrays.keys()):
-
-            # Tell the JetFinder buffer to also read in this branch.
-            obj.input_buffer.read_branch(self.vec_key_cyl)
-
-            # Read the necessary keys in.
-            # f = h5.File(obj.ntuple_file,'r')
-
-            # # Cylindrical coordinates four-momenta
-            # vecs = f[self.vec_key][:][:,self.indices] # only loads the data needed -- indexing already done here
-
-            # obj.input_collection_arrays[self.vec_key] = vecs
-            # f.close()
-
-        # Now convert these to ghosts: send pT and m -> 0.
-        # These are in Cartesian (E,px,py,pz)
-        # ghost_vecs = np.array([self._makeGhosts(v) for v in obj.input_collection_arrays[self.vec_key]])
-
-        # obj.input_collection_arrays[self.ghost_key] = ghost_vecs
+        # (If it's already loaded by the JetFinderi input_buffer,
+        #  function won't do anything so no need to check).
+        obj.input_buffer.read_branch(self.vec_key_cyl)
 
     def ModifyInputs(self,obj : 'JetFinder'):
         """
@@ -102,7 +85,6 @@ class GhostAssociator():
         on the bottom of obj.input_vecs.
         """
 
-        # TODO: Make the ghost vectors here.
         ghost_input_vecs = np.array(obj.input_buffer[self.vec_key_cyl])[self.indices]
         ghost_vecs, ghost_vecs_cyl = self._makeGhosts(ghost_input_vecs)
         original_input_length = len(obj.input_vecs)
@@ -169,7 +151,7 @@ class GhostAssociator():
         if(self.tag_name is None):
             self.tag_name = '{}.{}.GhostAssociated'.format(obj.jet_name,self.key)
         if(self.tag_name not in obj.output_buffer.keys()):
-            obj.output_buffer.create_array(self.tag_name,(obj.n_jets_max,),dtype=bool)
+            obj.output_buffer.create_array(self.tag_name,ndim=1,dtype=bool)
             # obj.output_buffer[self.tag_name] = np.full((obj.nevents,obj.n_jets_max),False,dtype=bool)
         return
 

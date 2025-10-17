@@ -219,14 +219,6 @@ class Configurator:
     def GetDelphesCard(self):
         return self.config['simulation']['delphes_card']
 
-    def GetNPars(self):
-        # some fanciness for the number of delphes objects, since it can be a list
-        if(len(np.asarray(self.config['reconstruction']['n_delphes'])) == 1):
-            self.config['reconstruction']['n_delphes'] = np.full(len(self.config['simulation']['delphes_output']), np.asarray(self.config['reconstruction']['n_delphes'])[0],dtype=int)
-        return_dict = {}
-        for key in ['n_truth','n_stable','n_delphes']: return_dict[key] = self.config['reconstruction'][key]
-        return return_dict
-
     def GetSignalFlag(self):
         return self.config['reconstruction']['signal_flag']
 

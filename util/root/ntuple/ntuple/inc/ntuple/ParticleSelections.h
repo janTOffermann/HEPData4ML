@@ -97,7 +97,7 @@ namespace NtupleProducer{
       virtual vector<Int_t> operator()(HepMC3::GenEvent* evt) const = 0;
 
     protected:
-      Bool_t _status = kFALSE;
+      mutable Bool_t _status = kFALSE;
 
   };
 
@@ -113,7 +113,7 @@ namespace NtupleProducer{
       SelectDaughters(BaseSelector* selection);
       ~SelectDaughters(){};
 
-      vector<Int_t> operator()(HepMC3::GenEvent* evt);
+      vector<Int_t> operator()(HepMC3::GenEvent* evt) const;
 
     protected:
       unique_ptr<BaseSelector> _selection = 0;
@@ -131,19 +131,18 @@ namespace NtupleProducer{
       SelectStableDaughters(BaseSelector* selection);
       ~SelectStableDaughters(){};
 
-      vector<Int_t> operator()(HepMC3::GenEvent* evt);
+      vector<Int_t> operator()(HepMC3::GenEvent* evt) const;
 
     protected:
       unique_ptr<BaseSelector> _selection = 0;
-      vector<Int_t> _GetStableDaughters(HepMC3::GenEvent* evt, Int_t idx);
+      vector<Int_t> _GetStableDaughters(HepMC3::GenEvent* evt, Int_t idx) const;
   };
 
   // Selector using the algorithms.
   // TODO: Can the headers be rearranged so that this is grouped with other selectors?
   class AlgoSelection : public BaseSelector{
     public:
-      AlgoSelection(unique_ptr<BaseSelectorAlgorithm> algorithm, Int_t n=-1)
-      : _algorithm(std::move(algorithm)), _N(n){};
+      AlgoSelection(BaseSelectorAlgorithm* algorithm, Int_t n=-1);
       ~AlgoSelection(){};
 
       vector<Int_t> operator()(HepMC3::GenEvent* evt) const;

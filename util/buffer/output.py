@@ -477,7 +477,7 @@ class RootOutputBuffer:
     def GetTreeName(self):
         return self.tree_name
 
-    def create_array(self, key: str, shape: Tuple=(), dtype: np.dtype = np.float64):
+    def create_array(self, key:str, ndim:int=0, dtype:np.dtype = np.float64):
         """
         Explicitly create an array in the buffer with specified shape and dtype.
         Based on OutputBuffer.create_array()
@@ -492,10 +492,10 @@ class RootOutputBuffer:
         if(not self.init_status):
             self._init_tree()
 
-        if(shape==()): # scalar -- one per event
+        if(ndim==0): # scalar -- one per event
             self._init_scalar_branch(key,dtype)
         else:
-            self._init_vector_branch(key,shape, dtype)
+            self._init_vector_branch(key,ndim, dtype)
         # self.n_filled[key] = 0
         return
 
@@ -524,7 +524,7 @@ class RootOutputBuffer:
             self._print('Warning: dtype {} not recognized for branch {}.'.format(dtype,key))
         return
 
-    def _init_vector_branch(self,key,shape, dtype):
+    def _init_vector_branch(self,key,ndim, dtype):
         dtype_str = 'double'
         for type_str in ['int','uint','short','ushort','bool']:
             if(dtype == np.dtype(type_str)):
@@ -534,14 +534,14 @@ class RootOutputBuffer:
             dtype_str = 'int'
 
         # For now, we will support 1D, 2D and 3D vectors
-        if(len(shape) == 1):
+        if(ndim == 1):
             self.buffers[key] = rt.std.vector[dtype_str]()
-        elif(len(shape) == 2):
+        elif(ndim == 2):
             self.buffers[key] = rt.std.vector[rt.std.vector[dtype_str]]()
-        elif(len(shape) == 3):
+        elif(ndim == 3):
             self.buffers[key] = rt.std.vector[rt.std.vector[rt.std.vector[dtype_str]]]()
         else:
-            self._print('Warning: vector branch of dimension {} not supported.'.format(len(shape)))
+            self._print('Warning: vector branch of dimension {} not supported.'.format(ndim))
             return
         self.buffer_is_vector[key] = True
 

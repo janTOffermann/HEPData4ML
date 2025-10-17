@@ -99,10 +99,30 @@ namespace JHTagger{
     return TagJet(&jet);
   }
 
+  Double_t JohnnyTagger::GetWCandidateProperty(TString property){
+    property.ToLower();
+    if(property.EqualTo("e")) return _vec->E();
+    else if(property.EqualTo("px")) return _vec->px();
+    else if(property.EqualTo("py")) return _vec->py();
+    else if(property.EqualTo("pz")) return _vec->pz();
+
+    else if(property.EqualTo("pt")) return _vec->pt();
+    else if(property.EqualTo("eta")) return _vec->eta();
+    else if(property.EqualTo("phi")) return _vec->phi();
+    else if(property.EqualTo("m")) return _vec->m();
+    else if(property.EqualTo("y")) return _vec->rapidity();
+
+    else{
+        cout << Form("Error: Property \"%s\" passed to JohnnyTagger::GetWCandidateProperty not understood",property.Data()) << endl;
+    }
+    return -999.;
+  }
+
   std::vector<Double_t> JohnnyTagger::GetWCandidateConstituentsProperty(TString property){
+    property.ToLower();
     std::vector<Double_t> values = {};
     for(fastjet::PseudoJet* vec : _vec_constituents){
-      if(property.EqualTo("E")) values.push_back(vec->E());
+      if(property.EqualTo("e")) values.push_back(vec->E());
       else if(property.EqualTo("px")) values.push_back(vec->px());
       else if(property.EqualTo("py")) values.push_back(vec->py());
       else if(property.EqualTo("pz")) values.push_back(vec->pz());

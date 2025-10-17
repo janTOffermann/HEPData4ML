@@ -210,6 +210,8 @@ class RootTreeLoader:
             'Char_t': np.int8,
         }
 
+        self.print_prefix = '\n\tRootTreeLoader'
+
     def load(self):
         self.f = rt.TFile(self.filename,"READ")
         self.t = self.f.Get(self.treename)
@@ -257,17 +259,20 @@ class RootTreeLoader:
         self.t.SetBranchAddress(branch_name, self.buffer[branch_name])
         return
 
-    def read_branch(self,branch_name):
+    def read_branch(self,branch_name_pattern):
 
-        if(branch_name == '*'):
-            self._read_all_branches()
-        elif(branch_name not in self.buffer.keys()):
+        if(branch_name_pattern in self.buffer.keys()):
+            return
+
+        # Do a regex-based search (so we can pick up multiple branches)
+        matches = [s for s in self.keys if re.search(branch_name_pattern, s)]
+
+        if(len(matches)==0):
+            self._print('Cannot find branch pattern: {} .'.format(branch_name_pattern))
+            return
+
+        for branch_name in matches:
             self.create_buffer_for_branch(branch_name)
-        return
-
-    def _read_all_branches(self):
-        for branch in self.keys:
-            self.read_branch(branch)
         return
 
     def set_entry(self,i):
@@ -292,6 +297,9 @@ class RootTreeLoader:
     def GetFilename(self):
         return self.filename
 
+    def _print(self,val):
+        print('{}: {}'.format(self.print_prefix,val))
+        return
 
 
 ####################

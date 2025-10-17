@@ -1,4 +1,3 @@
-import h5py as h5
 import numpy as np
 import ROOT as rt
 from typing import TYPE_CHECKING
@@ -28,75 +27,66 @@ class TrackCountingBTagging:
         self.ntracks = ntracks
         self.use_3d = use_3d
 
-        # Transient, per-jet variable
-        self.tag_status = False
-
-        self.tags = None
-
         self.print_prefix = '\n\tTrackCountingBTagging'
         self.citations = {}
+
+        # Transient, per-jet variable
+        self.tag_status = False
+        self.tags = None
+
+        self.jet_vector = rt.Math.PxPyPzEVector()
+        self.track_vector = rt.Math.PxPyPzEVector()
 
     def GetCitations(self):
         return self.citations
 
-    def ModifyInitialization(self,obj):
+    def ModifyInitialization(self,obj:'JetFinder'):
         """
         This function will modify the initialization so that
         the required track inputs are loaded into memory.
         """
 
         # Fetch the 4-vector key, and make sure its data is loaded.
-        # Note the use of cylindrical coordinates!
-        if(self.track_key not in obj.input_collections):
-            # Read the necessary keys in.
-            f = h5.File(obj.h5_file,'r')
-            keys = [x for x in list(f.keys()) if self.track_key in x] # all keys related to the track
-
-            # drop a couple keys we won't need -- probably some very small memory saving
-            for keyword in ['charge','pdgid']:
-                keys = [x for x in keys if keyword not in x.lower()]
-
-            for key in keys:
-                obj.input_collection_arrays[key] = f[key][:]
-
-            f.close()
+        obj.input_buffer.read_branch("{}.*".format(self.track_key)) # will pick up extra branches we don't need (e.g. charge and pdgid) but that's OK
 
     def ModifyInputs(self,obj : 'JetFinder'):
         return
 
     def _tag(self,jet_vector,obj : 'JetFinder'):
 
-        jet = rt.Math.PxPyPzEVector(*np.roll(jet_vector,-1)) # np.roll to get from (e,px,py,pz) to (px,py,pz,e)
-        count = 0;
+        # NOTE: Using np.roll might slow things down compared to doing things the ugly/naive way. - Jan
+
+        self.jet_vector.SetCoordinates(*np.roll(jet_vector,-1)) # np.roll to get from (e,px,py,pz) to (px,py,pz,e)
+        count = 0
 
         # loop over the track collection
-        ntracks = obj.input_collection_arrays['{}.N'.format(self.track_key)][obj._i]
-
+        ntracks = obj.input_buffer['{}.N'.format(self.track_key)][0]
         for i in range(ntracks):
 
-            track_momentum = rt.Math.PxPyPzEVector(*np.roll(obj.input_collection_arrays['{}.Pmu'.format(self.track_key)][obj._i,i],-1)) # np.roll to get from (e,px,py,pz) to (px,py,pz,e)
+            track_momentum = obj.input_buffer['{}.Pmu'.format(self.track_key)][i]
+            self.track_vector.SetCoordinates(*np.roll(track_momentum,-1)) # np.roll to get from (e,px,py,pz) to (px,py,pz,e)
 
-            tpt = track_momentum.Pt()
+            tpt = self.track_vector.Pt()
             if(tpt < self.track_pt_min): continue
 
-            d0 = np.abs(obj.input_collection_arrays['{}.D0'.format(self.track_key)][obj._i,i])
+            d0 = obj.input_buffer['{}.D0'.format(self.track_key)][i]
             if(d0 > self.track_ip_max): continue
 
-            dr = rt.Math.VectorUtil.DeltaR(jet,track_momentum)
+            dr = rt.Math.VectorUtil.DeltaR(self.jet_vector,self.track_vector)
             if(dr > self.dr): continue
 
-            xd,yd,zd = obj.input_collection_arrays['{}.Xdi'.format(self.track_key)][obj._i,i]
-            dd0 = np.abs(obj.input_collection_arrays['{}.D0.Error'.format(self.track_key)][obj._i,i])
-            z0 = np.abs(obj.input_collection_arrays['{}.Z0'.format(self.track_key)][obj._i,i])
-            dz0 = np.abs(obj.input_collection_arrays['{}.Z0.Error'.format(self.track_key)][obj._i,i])
+            xd,yd,zd = obj.input_buffer['{}.Xdi'.format(self.track_key)][i]
+            dd0 = np.abs(obj.input_buffer['{}.D0.Error'.format(self.track_key)][i])
 
             # NOTE: This is all copied quite verbatim from Delphes, but can't I just check if sign > 0, since if not then sip will be negative and always less than self.sig_min? (assuming sig is positive)
             if(self.use_3d):
-                sign = np.sign(np.dot([track_momentum.Px(),track_momentum.Py(),track_momentum.Pz()],[xd,yd,zd]))
+                z0 = np.abs(obj.input_buffer['{}.Z0'.format(self.track_key)][i])
+                dz0 = np.abs(obj.input_buffer['{}.Z0.Error'.format(self.track_key)][i])
+                sign = np.sign(np.dot([self.track_vector.Px(),self.track_vector.Py(),self.track_vector.Pz()],[xd,yd,zd]))
                 # add transverse and longitudinal significances in quadrature
                 sip = sign * np.sqrt( np.square(d0/dd0) + np.power(z0/dz0) )
             else:
-                sign = np.sign(np.dot([track_momentum.Px(),track_momentum.Py()],[xd,yd]))
+                sign = np.sign(np.dot([self.track_vector.Px(),self.track_vector.Py()],[xd,yd]))
                 sip = sign * d0 / dd0
 
             if(sip > self.sig_min): count += 1
@@ -141,8 +131,8 @@ class TrackCountingBTagging:
         """
         self._createBranchNames(obj)
 
-        if(self.tag_name not in obj.buffer.keys()):
-            obj.buffer.create_array(self.tag_name,(obj.n_jets_max,),dtype=bool)
+        if(self.tag_name not in obj.output_buffer.keys()):
+            obj.output_buffer.create_array(self.tag_name,ndim=1,dtype=bool)
         return
 
     def _createBranchNames(self,obj : 'JetFinder'):
@@ -155,7 +145,7 @@ class TrackCountingBTagging:
         Note that the pT sorting of obj is applied,
         which will have been filled by obj._ptSort().
         """
-        obj.buffer.set(self.tag_name,obj._i,[self.tags[i] for i in obj.jet_ordering])
+        obj.output_buffer.set(self.tag_name,obj._i,[self.tags[i] for i in obj.jet_ordering])
 
     def _print(self,val):
         print('{}: {}'.format(self.print_prefix,val))

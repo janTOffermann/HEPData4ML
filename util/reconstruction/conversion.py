@@ -207,8 +207,6 @@ class Processor:
                     os.unlink(infile)
             return
 
-
-
     def AddEventIndices(self,input_file,key='Event.Index',offset=0):
         key = 'Event.Index' # TODO: Make this member variable?
         if(self.output_format.lower() == 'hdf5'):
