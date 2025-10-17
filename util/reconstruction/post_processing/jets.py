@@ -429,7 +429,7 @@ class JetFinder(JetFinderBase):
         It also writes some metadata, which will ultimately propagate
         to the output file.
         """
-        # Final flush of the buffer
+        # Final flush of the buffer.
         self.output_buffer.flush()
 
         # Now, handle the final output file.
@@ -534,10 +534,14 @@ class JetFinder(JetFinderBase):
             event_index = self._i
 
         if(len(self.jets_dict) == 0):
-            return #TODO: Check that this is OK?
+            if(self._i != self.nevents - 1):
+                self.output_buffer.flush() # should write an empty entry, unless we're on last event (Flush() will take care of that one always)
+            return
+        #     return #TODO: Check that this is OK?
+        njets = len(self.jet_vectors)
 
         # Fill jet information in the buffer.
-        self.output_buffer.set('{}.N'.format(self.jet_name),event_index,len(self.jet_vectors))
+        self.output_buffer.set('{}.N'.format(self.jet_name),event_index,njets)
 
         # TODO: Maybe later clean this up a bit? Have to deal with special case of "single_jet = True".
         if(self.single_jet):

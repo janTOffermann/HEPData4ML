@@ -171,8 +171,11 @@ namespace NtupleProducer{
   }
 
   void Converter::_DelphesMultiplicity(TString inputBranchName){
-    TString branchName = Form("%s.N", inputBranchName.Data());
-    _outputTree->Branch(branchName,&_delphesData[inputBranchName]->output.N,Form("%s/I",branchName.Data()));
+    if(!_delphesAddedN[inputBranchName]){
+      TString branchName = Form("%s.N", inputBranchName.Data());
+      _outputTree->Branch(branchName,&_delphesData[inputBranchName]->output.N,Form("%s/I",branchName.Data()));
+      _delphesAddedN[inputBranchName] = kTRUE;
+    }
     return;
   }
 
@@ -214,13 +217,6 @@ namespace NtupleProducer{
 
       // Connect it to the output tree branches.
       TString branchName;
-
-      if(!_delphesAddedN[branchName]){
-        branchName = Form("%s.N", inputBranchName.Data());
-        _outputTree->Branch(branchName,&_delphesData[inputBranchName]->output.N,Form("%s/I",branchName.Data()));
-        _delphesAddedN[branchName] = kTRUE;
-      }
-
 
       branchName = Form("%s.D0", inputBranchName.Data());
       _outputTree->Branch(branchName,&_delphesData[inputBranchName]->output.trackData.d0);
