@@ -26,7 +26,7 @@ class JetFinder(JetFinderBase):
     (arbitrary) set of inputs representing four-momenta of some objects.
     """
 
-    def __init__(self, input_collections:List[str]=['StableTruthParticles'], jet_algorithm:str='anti_kt',radius:float=0.4, jet_name:str='AK04Jets', n_jets_max:int=10,save_constituents:bool=True, fastjet_dir:Optional[str]=None,verbose:bool=False):
+    def __init__(self, input_collections:List[str]=['StableTruthParticles'], jet_algorithm:str='anti_kt',radius:float=0.4, jet_name:str='AK04Jets', n_jets_max:int=-1,save_constituents:bool=True, fastjet_dir:Optional[str]=None,verbose:bool=False):
 
         super(JetFinder,self).__init__(fastjet_dir)
         self.status = False

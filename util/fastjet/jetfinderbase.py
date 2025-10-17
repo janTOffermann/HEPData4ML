@@ -206,7 +206,7 @@ class JetFinderBase:
         # recompute these quantities.
         jet_pt = np.array([self.jet_vectors_cyl[i][0] for i in self.jet_ordering])
         is_sorted = np.all(jet_pt[:-1] >= jet_pt[1:])
-        needs_truncation = (self.n_jets_max is not None and truncate and len(jet_pt) > self.n_jets_max)
+        needs_truncation = (self.n_jets_max is not None and truncate and self.n_jets_max > 0 and len(jet_pt) > self.n_jets_max)
 
         # Early return if already sorted and no truncation needed
         if is_sorted and not needs_truncation:
@@ -219,7 +219,7 @@ class JetFinderBase:
             if (not is_sorted):
                 self.pt_sorting = np.argsort(-jet_pt)
 
-            if(needs_truncation):
+            if(needs_truncation): # TODO: Tests suggesting truncation not working correctly; we get the lowest-pt jets?
                 self.pt_sorting = self.pt_sorting[:self.n_jets_max]
 
             if(len(self.pt_sorting) == 1):

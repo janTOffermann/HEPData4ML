@@ -581,14 +581,18 @@ class RootOutputBuffer:
             self.buffers[key][0] = value # buffer is a 1D length-1 array
         else: # non-scalar -- this possibly gets more complex
 
+            if isinstance(value, np.ndarray) and not value.flags['C_CONTIGUOUS']:
+                value = np.ascontiguousarray(value)
+
+
             if(isinstance(index,tuple)): # slicing: gets a bit complex
 
                 if(len(index) > 2):
                     self._print('Warning: Indexing beyond 2 dims not (yet) supported for RootOutputBuffer.set().')
                     return
 
-                if isinstance(value, np.ndarray) and not value.flags['C_CONTIGUOUS']:
-                    value = np.ascontiguousarray(value)
+                # if isinstance(value, np.ndarray) and not value.flags['C_CONTIGUOUS']:
+                #     value = np.ascontiguousarray(value)
 
                 # We need to determine if we're filling the "next" entry in this vector,
                 # or are overwriting an existing entry (unlikely!) or writing non-sequentially.

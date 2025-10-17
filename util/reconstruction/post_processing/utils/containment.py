@@ -1,6 +1,5 @@
 import numpy as np
 import ROOT as rt
-import h5py as h5
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING: # Only imported during type checking -- avoids circular imports we'd otherwise get, since jets imports this file
@@ -22,17 +21,19 @@ class ContainmentTagger:
         assert self.mode in ['tag','filter']
         self.tag_name = tag_name
 
-        # Transient, per-jet variables
-        self.tag_status = False
-
         self.SetRadius(delta_r)
 
         self.use_rapidity = use_rapidity
 
         self.tags = None
 
-        self.print_prefix = '\n\t\tContainmentTagger'
+        self.print_prefix = '\n\tContainmentTagger'
         self.citations = {}
+
+        # Transient, per-jet variables
+        self.tag_status = False
+        self.vec1 = rt.Math.PtEtaPhiMVector()
+        self.vec2 = rt.Math.PtEtaPhiMVector()
 
     def GetCitations(self):
         return self.citations
@@ -41,20 +42,22 @@ class ContainmentTagger:
         self.radius2 = np.square(dr)
 
     def _compute_distance2(self,v1,v2):
-        vec1 = rt.Math.PtEtaPhiMVector(*v1)
-        vec2 = rt.Math.PtEtaPhiMVector(*v2)
+        self.vec1.SetCoordinates(*v1)
+        self.vec2.SetCoordinates(*v2)
 
         if(self.use_rapidity):
-            dphi = rt.Math.VectorUtil.DeltaPhi(vec1,vec2)
-            dy = vec2.Rapidity() - vec1.Rapidity()
+            dphi = rt.Math.VectorUtil.DeltaPhi(self.vec1,self.vec2)
+            dy = self.vec2.Rapidity() - self.vec1.Rapidity()
             return np.square(dphi) + np.square(dy)
         else:
-            return rt.Math.VectorUtil.DeltaR2(vec1,vec2)
+            return rt.Math.VectorUtil.DeltaR2(self.vec1,self.vec2)
 
     def _tag(self,obj : 'JetFinder', key:int):
         status = True
 
-        vecs = obj.input_collection_arrays[self.vec_key][obj._i] # reminder: using cylindrical
+        # Fetch the vectors from the input buffer; we don't assume that they
+        # are necessarily in obj.input_collection_arrays (they likely are not).
+        vecs = np.array(obj.input_buffer[self.vec_key])[self.indices] # reminder: using cylindrical
         jet_vec = obj.jet_vectors_cyl[key]
 
         # Compute distances. Deal with cases of "vecs" being multiple vectors, or a single one.
@@ -86,23 +89,8 @@ class ContainmentTagger:
         # Fetch the 4-vector key, and make sure its data is loaded.
         # Note the use of cylindrical coordinates!
         if(self.vec_key not in obj.input_collection_arrays.keys()):
-            # Read the necessary keys in.
-            f = h5.File(obj.ntuple_file,'r')
-
-            # Cylindrical coordinates four-momenta
-            if(self.indices is not None):
-
-                data = f[self.vec_key][:]
-                if(data.ndim == 2):
-                    self._print('Warning: indices != None, but branch {} has ndim = {}. Setting indices -> None.'.format(self.vec_key,data.ndim))
-                    self.indices = None
-                else:
-                    vecs = f[self.vec_key][:][:,self.indices] # only loads the data needed -- indexing already done here
-            if(self.indices is None):
-                vecs = f[self.vec_key][:]
-
-            obj.input_collection_arrays[self.vec_key] = vecs # NOTE: This won't affect jet clustering, as we don't modify obj.input_collections
-            f.close()
+            obj.input_buffer.read_branch(self.vec_key)
+        return
 
     def ModifyInputs(self,obj : 'JetFinder'):
         return
@@ -111,8 +99,6 @@ class ContainmentTagger:
         """
         This function will tag jets, and fill the corresponding branches.
         """
-        import fastjet as fj # NOTE: In practice, fastjet will have been initialized already by JetFinder. Can similarly do this in Softdrop
-
         # Fetch the jet constituents, just to be safe -- this makes sure that they are up-to-date.
         obj._fetchJetConstituents()
 
@@ -147,8 +133,8 @@ class ContainmentTagger:
         """
         self._createBranchNames(obj)
 
-        if(self.tag_name not in obj.buffer.keys()):
-            obj.buffer.create_array(self.tag_name,(obj.n_jets_max,),dtype=bool)
+        if(self.tag_name not in obj.output_buffer.keys()):
+            obj.output_buffer.create_array(self.tag_name,(obj.n_jets_max,),dtype=bool)
         return
 
     def _createBranchNames(self,obj : 'JetFinder'):
@@ -161,7 +147,7 @@ class ContainmentTagger:
         Note that the pT sorting of obj is applied,
         which will have been filled by obj._ptSort().
         """
-        obj.buffer.set(self.tag_name,obj._i,[self.tags[i] for i in obj.jet_ordering])
+        obj.output_buffer.set(self.tag_name,obj._i,[self.tags[i] for i in obj.jet_ordering])
 
     def _print(self,val):
         print('{}: {}'.format(self.print_prefix,val))

@@ -22,7 +22,7 @@ class GhostAssociator():
     def __init__(self,key:str,indices,mode:str='filter',tag_name:Optional[str]=None):
 
         self.key = key
-        self.vec_key = '{}.Pmu_cyl'.format(key)
+        self.vec_key_cyl = '{}.Pmu_cyl'.format(key)
         self.ghost_key = '{}.Ghost.Pmu'.format(key)
         self.indices = indices
         self.mode = mode
@@ -57,11 +57,13 @@ class GhostAssociator():
 
 
     def _makeGhosts(self,vecs:Union[list,np.ndarray], a:float=1.0e-10):
+        """Make the ghosts, in both Cartesian and cylindrical."""
+        result = (np.zeros(vecs.shape),np.zeros(vecs.shape))
 
-        result = np.zeros(vecs.shape)
         for i,vec in enumerate(vecs):
             v = rt.Math.PtEtaPhiMVector(a, vec[1], vec[2], a)
-            result[i] = np.array([v.E(),v.Px(),v.Py(),v.Pz()])
+            result[0][i] = np.array([v.E(),v.Px(),v.Py(),v.Pz()])
+            result[1][i] = np.array([v.Pt(), v.Eta(), v.Phi(), v.M()])
         return result
 
     def ModifyInitialization(self,obj:'JetFinder'):
@@ -70,42 +72,43 @@ class GhostAssociator():
         the ghost vectors are generated and loaded into memory.
         """
 
-        obj.single_jet = True
-
         self.indices = np.atleast_1d(self.indices)
 
         # Fetch the 4-vector key, and make sure its data is loaded.
         # Note the use of cylindrical coordinates!
-        if(self.vec_key not in obj.input_collection_arrays.keys()):
+        if(self.vec_key_cyl not in obj.input_collection_arrays.keys()):
+
+            # Tell the JetFinder buffer to also read in this branch.
+            obj.input_buffer.read_branch(self.vec_key_cyl)
+
             # Read the necessary keys in.
-            f = h5.File(obj.ntuple_file,'r')
+            # f = h5.File(obj.ntuple_file,'r')
 
-            # Cylindrical coordinates four-momenta
-            vecs = f[self.vec_key][:][:,self.indices] # only loads the data needed -- indexing already done here
+            # # Cylindrical coordinates four-momenta
+            # vecs = f[self.vec_key][:][:,self.indices] # only loads the data needed -- indexing already done here
 
-            obj.input_collection_arrays[self.vec_key] = vecs
-            f.close()
+            # obj.input_collection_arrays[self.vec_key] = vecs
+            # f.close()
 
         # Now convert these to ghosts: send pT and m -> 0.
         # These are in Cartesian (E,px,py,pz)
-        ghost_vecs = np.array([self._makeGhosts(v) for v in obj.input_collection_arrays[self.vec_key]])
+        # ghost_vecs = np.array([self._makeGhosts(v) for v in obj.input_collection_arrays[self.vec_key]])
 
-        obj.input_collection_arrays[self.ghost_key] = ghost_vecs
-
-        # if(self.mode=='tag'):
-        #     self._initializeBuffer(obj)
+        # obj.input_collection_arrays[self.ghost_key] = ghost_vecs
 
     def ModifyInputs(self,obj : 'JetFinder'):
         """
         Puts the ghost vectors corresponding with `key`
         on the bottom of obj.input_vecs.
         """
-        # Putting the ghosts on the bottom to avoid causing issues with fasjet.Pseudojet.user_index().
-        ghost_vecs = obj.input_collection_arrays[self.ghost_key][obj._i] # ith event
 
+        # TODO: Make the ghost vectors here.
+        ghost_input_vecs = np.array(obj.input_buffer[self.vec_key_cyl])[self.indices]
+        ghost_vecs, ghost_vecs_cyl = self._makeGhosts(ghost_input_vecs)
         original_input_length = len(obj.input_vecs)
 
-        obj.input_vecs = np.vstack([obj.input_vecs,ghost_vecs])
+        obj.input_vecs    = np.vstack([obj.input_vecs,ghost_vecs])
+        obj.input_vecs_cyl = np.vstack([obj.input_vecs_cyl,ghost_vecs_cyl]) # Needed for internal consistency throughout
 
         for i in range(len(obj.input_vecs)):
             ghost_dict = {'GhostAssociation:Ghost':(i >= original_input_length)}
@@ -165,17 +168,17 @@ class GhostAssociator():
         #      and it's not clear that it would be worthwhile.
         if(self.tag_name is None):
             self.tag_name = '{}.{}.GhostAssociated'.format(obj.jet_name,self.key)
-        if(self.tag_name not in obj.buffer.keys()):
-            obj.buffer.create_array(self.tag_name,(obj.n_jets_max,),dtype=bool)
-            # obj.buffer[self.tag_name] = np.full((obj.nevents,obj.n_jets_max),False,dtype=bool)
+        if(self.tag_name not in obj.output_buffer.keys()):
+            obj.output_buffer.create_array(self.tag_name,(obj.n_jets_max,),dtype=bool)
+            # obj.output_buffer[self.tag_name] = np.full((obj.nevents,obj.n_jets_max),False,dtype=bool)
         return
 
     def _addFlagToBuffer(self,obj : 'JetFinder'):
         """
         Adds the ghost association tags to the buffer, for writing.
         """
-        obj.buffer.set(self.tag_name,obj._i,[self.tags[i] for i in obj.jet_ordering])
-        # embed_array_inplace([self.tags[i] for i in obj.jet_ordering],obj.buffer[self.tag_name][obj._i])
+        obj.output_buffer.set(self.tag_name,obj._i,[self.tags[i] for i in obj.jet_ordering])
+        # embed_array_inplace([self.tags[i] for i in obj.jet_ordering],obj.output_buffer[self.tag_name][obj._i])
 
     def ModifyConstituents(self, obj : 'JetFinder'):
         return
