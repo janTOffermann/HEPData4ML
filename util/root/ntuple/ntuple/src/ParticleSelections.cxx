@@ -108,7 +108,11 @@ namespace NtupleProducer{
     vector<HepMC3::GenParticlePtr> children = vertex->particles_out();
     vector<Int_t> indices = {};
     for(auto const p : children){
-      indices.push_back(p->id());
+      // GenParticle.id() gives the HepMC3 index, which is *not* the index
+      // of the particle w.r.t. particles(). It is, in fact, always 1 more,
+      // because the particles are 1-indexed in the event listing.
+      // So it should be safe to use id() - 1.
+      indices.push_back(p->id() - 1);
     }
     return indices;
   }
