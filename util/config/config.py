@@ -231,9 +231,12 @@ class Configurator:
         except:
             return None
 
-    def GetEventFilter(self):
+    def GetEventFilters(self):
         try:
-            return self.config['generation']['event_filter']
+            filters = self.config['generation']['event_filter']
+            if(not isinstance(filters,list)):
+                filters = [filters]
+            return filters
         except:
             return None
 

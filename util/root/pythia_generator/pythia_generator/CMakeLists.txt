@@ -5,9 +5,11 @@ ROOT_STANDARD_LIBRARY_PACKAGE(PythiaGenerator
   HEADERS
     pythia_generator/PythiaGenerator.h
     pythia_generator/PythiaToHepMC3.h
+    pythia_generator/EventFilter.h
   SOURCES
     src/PythiaGenerator.cxx
     src/PythiaToHepMC3.cxx
+    src/EventFilter.cxx
   LINKDEF
     PythiaGenerator_LinkDef.h
   DEPENDENCIES

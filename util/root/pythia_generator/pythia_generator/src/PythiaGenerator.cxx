@@ -1,5 +1,6 @@
 #include <pythia_generator/PythiaGenerator.h>
 #include <pythia_generator/PythiaToHepMC3.h>
+#include <pythia_generator/EventFilter.h>
 
 //standard library includes
 #include <algorithm> // std::transform
@@ -29,6 +30,7 @@ namespace PythiaGenerator{
     else delete _pythia;
     delete _converter;
     for (auto entry : _events) delete entry;
+    for (auto filter : _eventFilters) delete filter;
   }
 
   void Generator::createGenerator(Bool_t parallel){
@@ -60,6 +62,15 @@ namespace PythiaGenerator{
     else _pythiaParallel->init();
     _initialized = kTRUE;
     return;
+  }
+
+  void Generator::addEventFilter(EventFilter* eventFilter){
+    _eventFilters.push_back(eventFilter);
+  };
+
+  Int_t Generator::GetNEventsInBuffer(){
+    if(_hepmcMode) return (Int_t)_events.size();
+    return _pid.size();
   }
 
   void Generator::writeHepMC3File(TString filename){
@@ -304,13 +315,26 @@ namespace PythiaGenerator{
 
     // Generate the events using PythiaParallel
     _pythiaParallel->run(
-      nevents, 
+      nevents,
       [&](Pythia8::Pythia* pythiaPtr) {
-        // In array mode, we fill the arrays with the various particle/event attributes.
-      if(_arrayMode) _FillArrays(pythiaPtr);
 
-      // in HepMC3 mode, we will fill a vector of HepMC3 events, which we can later flush to a file.
-      if(_hepmcMode) _FillHepMC3Event(pythiaPtr);
+      // TODO: Put event filter here.
+      Bool_t passedFilter = kTRUE;
+
+      for(auto filter : _eventFilters){
+        if(!(*filter)(pythiaPtr)){
+          passedFilter = kFALSE;
+          break;
+        }
+      }
+
+      if(passedFilter){
+        // In array mode, we fill the arrays with the various particle/event attributes.
+        if(_arrayMode) _FillArrays(pythiaPtr);
+
+        // in HepMC3 mode, we will fill a vector of HepMC3 events, which we can later flush to a file.
+        if(_hepmcMode) _FillHepMC3Event(pythiaPtr);
+      }
     });
 
     // In array mode, we take the opportunity to compute the number of particles per event.

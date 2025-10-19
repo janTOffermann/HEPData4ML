@@ -6,5 +6,6 @@
 
 #pragma link C++ namespace PythiaGenerator;
 #pragma link C++ class PythiaGenerator::Generator+;
+#pragma link C++ class PythiaGenerator::ParticleFilter+;
 
 #endif

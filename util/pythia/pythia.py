@@ -463,6 +463,12 @@ class PythiaWrapper(BasicWrapper):
             self.pythia.setHepMC3RootWriter(False)
             self.pythia.setHepMC3AsciiWriter(True)
 
+    def AddEventFilter(self,filter):
+        self.pythia.addEventFilter(filter)
+
+    def GetNEventsInBuffer(self):
+        return self.pythia.GetNEventsInBuffer()
+
     # First, we have a ton of methods for accessing the data
     # produced in "array" mode, whereby the wrapper will fill
     # awkward arrays with information from the Pythia8 event record.

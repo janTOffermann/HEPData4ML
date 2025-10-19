@@ -30,6 +30,7 @@ using namespace std;
 namespace PythiaGenerator{
 
   class Pythia8ToHepMC3;
+  class EventFilter;
 
   class Generator{
     public:
@@ -50,6 +51,11 @@ namespace PythiaGenerator{
       void generateParallel(Int_t nEvents = 1, Bool_t refresh=kTRUE);
 
       void writeHepMC3File(TString filename);
+
+      void addEventFilter(EventFilter* eventFilter);
+
+      // Getter to determine how many events are in the buffer
+      Int_t GetNEventsInBuffer();
 
       /*
        * Below are a ton of getters for fetching particle/event data
@@ -270,6 +276,8 @@ namespace PythiaGenerator{
       // because of how we have to forward-declare
       // non-ROOT classes for this ROOT library.
       vector<HepMC3::GenEvent*> _events = {};
+
+      vector<EventFilter*> _eventFilters = {};
 
     // Methods
     vector<vector<Double_t>> getComponentArray(vector<vector<vector<Double_t>>> inputArray, Int_t index);
