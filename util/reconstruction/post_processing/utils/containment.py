@@ -27,7 +27,8 @@ class ContainmentTagger:
 
         self.tags = None
 
-        self.print_prefix = '\n\tContainmentTagger'
+        self.name = 'ContainmentTagger'
+        self.print_prefix = '\n\t{}'.format(self.name)
         self.citations = {}
 
         # Transient, per-jet variables

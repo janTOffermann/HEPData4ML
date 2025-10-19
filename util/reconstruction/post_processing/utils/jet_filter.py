@@ -12,7 +12,8 @@ class PtFilter:
 
     def __init__(self,pt_min):
         self.pt_min = pt_min
-        self.print_prefix = '\n\t\tPtFilter'
+        self.name = 'PtFilter'
+        self.print_prefix = '\n\t{}'.format(self.name)
         self.citations = {}
 
     def GetCitations(self):
@@ -62,7 +63,8 @@ class EtaFilter:
 
     def __init__(self,eta_max):
         self.eta_max = eta_max
-        self.print_prefix = '\n\t\tEtaFilter'
+        self.name = 'EtaFilter'
+        self.print_prefix = '\n\t{}'.format(self.name)
         self.citations = {}
 
     def GetCitations(self):
@@ -108,7 +110,8 @@ class Leading:
     """
 
     def __init__(self):
-        self.print_prefix = '\n\t\tLeading'
+        self.name = 'Leading'
+        self.print_prefix = '\n\t{}'.format(self.name)
         self.citations = {}
 
     def GetCitations(self):

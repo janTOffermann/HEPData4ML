@@ -268,7 +268,8 @@ class JohnsHopkinsTagger:
         self.w_constituents = None
         self.w_constituents_cyl = None
 
-        self.print_prefix = '\n\t\tJohnsHopkinsTagger'
+        self.name = 'JohnsHopkinsTagger'
+        self.print_prefix = '\n\t{}'.format(self.name)
         self.citations = {
             "JohnsHopkinsTopTagger":
             """
@@ -286,6 +287,7 @@ class JohnsHopkinsTagger:
 }
             """
         }
+
     def GetCitations(self):
         return self.citations
 

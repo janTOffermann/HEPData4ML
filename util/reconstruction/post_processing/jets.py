@@ -68,6 +68,7 @@ class JetFinder(JetFinderBase):
 
         self._i = 0
         self.processors = [] # supposedly this is an example of an "observer pattern"
+        self.processors_dict = {}
 
         self.metadata_handler = None
 

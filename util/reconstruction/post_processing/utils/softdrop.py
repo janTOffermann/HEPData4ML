@@ -28,7 +28,8 @@ class Softdrop:
 
         self.cluster_sequences = []
 
-        self.print_prefix = '\n\t\tSoftdrop'
+        self.name = 'Softdrop'
+        self.print_prefix = '\n\t{}'.format(self.name)
         self.citations = {
             "SoftDrop":
             """
@@ -202,7 +203,8 @@ class IteratedSoftdrop:
 
         self.cluster_sequences = []
 
-        self.print_prefix = '\n\t\tIterated Softdrop'
+        self.name = 'IteratedSoftdrop'
+        self.print_prefix = '\n\t{}'.format(self.name)
         self.citations = {
             "IteratedSoftDrop":
             """

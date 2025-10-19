@@ -27,8 +27,9 @@ class TrackCountingBTagging:
         self.ntracks = ntracks
         self.use_3d = use_3d
 
-        self.print_prefix = '\n\tTrackCountingBTagging'
-        self.citations = {}
+        self.name = 'TrackCountingBTagging'
+        self.print_prefix = '\n\t{}'.format(self.name)
+        self.citations = {} # TODO: Add Delphes citation?
 
         # Transient, per-jet variable
         self.tag_status = False

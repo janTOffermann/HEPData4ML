@@ -30,7 +30,8 @@ class GhostAssociator():
 
         self.tag_name=tag_name
         self.tags = None
-        self.print_prefix = '\n\t\tGhostAssociator'
+        self.name = 'GhostAssociator'
+        self.print_prefix = '\n\t{}'.format(self.name)
 
         self.citations = {
             "GhostAssociation":
