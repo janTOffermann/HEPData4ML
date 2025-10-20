@@ -349,6 +349,14 @@ class JetFinder(JetFinderBase):
 
         return
 
+    def _set_inputs(self):
+
+        # We want to vstack the input_collection_arrays, but have to consider the edge
+        # case where one of them is empty, in which case it'll be "{}". This will cause
+        # dimensionality issues with vstack if we do things naively.
+        self.SetInputs(np.vstack([self.input_collection_arrays[key] for key in self.input_collection_names_Pmu if len(self.input_collection_arrays[key]) > 0])) # NOTE: Using self.input_collections_array.keys() can be dangerous, due to modifications/additions to keys by things like GhostAssociation(). Those should not touch self.input_collections, for this reason.
+        self.SetInputsCylindrical(np.vstack([self.input_collection_arrays_cyl[key] for key in self.input_collection_names_Pmu_cyl if len(self.input_collection_arrays_cyl[key]) > 0]))
+
     @profile_method('JetFinder.Process')
     def Process(self):
         self.Initialize()
@@ -367,8 +375,8 @@ class JetFinder(JetFinderBase):
             self._load_data() # load this event, fill
 
             # Gather the different input collections together, into one array of four-momenta.
-            self.SetInputs(np.vstack([self.input_collection_arrays[key] for key in self.input_collection_names_Pmu])) # NOTE: Using self.input_collections_array.keys() can be dangerous, due to modifications/additions to keys by things like GhostAssociation(). Those should not touch self.input_collections, for this reason.
-            self.SetInputsCylindrical(np.vstack([self.input_collection_arrays_cyl[key] for key in self.input_collection_names_Pmu_cyl]))
+            self._set_inputs()
+
             # self.SetRapidity(np.concatenate([self.input_collection_arrays_rapidity[key] for key in self.input_collection_names],axis=0)) # TODO: Fix this
 
             # Optional modification of inputs. May be harnessed by some special configurations.
