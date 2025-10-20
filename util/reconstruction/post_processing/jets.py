@@ -341,6 +341,12 @@ class JetFinder(JetFinderBase):
 
         for key in self.input_collection_names_Pmu_cyl: # NOTE: Using self.input_collections_array.keys() can be dangerous, due to modifications/additions to keys by things like GhostAssociation(). Those should not touch self.input_collections, for this reason.
             self.input_collection_arrays_cyl[key] = self.input_buffer[key]
+
+        # print('Loaded event {}'.format(event_index))
+        # key = self.input_collection_names_Pmu_cyl[0]
+        # print('\tPrinting buffer for {}'.format(key))
+        # print(self.input_collection_arrays_cyl[key])
+
         return
 
     @profile_method('JetFinder.Process')
@@ -535,14 +541,18 @@ class JetFinder(JetFinderBase):
             event_index = self._i
 
         if(len(self.jets_dict) == 0):
-            if(self._i != self.nevents - 1):
-                self.output_buffer.flush() # should write an empty entry, unless we're on last event (Flush() will take care of that one always)
+            self.output_buffer.flush() # should write an empty entry
             return
-        #     return #TODO: Check that this is OK?
         njets = len(self.jet_vectors)
 
         # Fill jet information in the buffer.
         self.output_buffer.set('{}.N'.format(self.jet_name),event_index,njets)
+
+        # TODO: This needs fixing. The above will trigger a flush once we reach event 1,
+        #       and this might be messing up the input buffer since the output_buffer calls
+        #       clone_tree.SetEntry()
+        self._load_data()
+
 
         # TODO: Maybe later clean this up a bit? Have to deal with special case of "single_jet = True".
         if(self.single_jet):
@@ -556,12 +566,13 @@ class JetFinder(JetFinderBase):
 
         # Fill the jet constituent information.
         if(self.constituents_flag):
+
+             # Figure out the collections and indices of the constituents
+            self._computeConstituentIndices()
+
             if(self.single_jet):
                 idx = self.jet_ordering[0]
                 self.output_buffer.set('{}.Constituents.N'.format(self.jet_name),event_index,len(self.constituent_vectors[idx]))
-
-                # Figure out the collections and indices of the constituents
-                self._computeConstituentIndices()
 
                 self.output_buffer.set('{}.Constituents.Pmu'.format(self.jet_name),event_index,self.constituent_vectors[idx])
                 self.output_buffer.set('{}.Constituents.Pmu_cyl'.format(self.jet_name),event_index,self.constituent_vectors_cyl[idx])
@@ -570,9 +581,6 @@ class JetFinder(JetFinderBase):
 
             else:
                 self.output_buffer.set('{}.Constituents.N'.format(self.jet_name),event_index,[len(self.constituent_vectors[i]) for i in self.jet_ordering])
-
-                # Figure out the collections and indices of the constituents
-                self._computeConstituentIndices()
 
                 # Now we loop, as we're embedding what is really jagged information.
                 for i,j in enumerate(self.jet_ordering):
@@ -685,7 +693,6 @@ class JetFinder(JetFinderBase):
     def Leading(self):
         self.processors.append(jet_filter.Leading())
         return self
-
 
 class TruthJetFinder(JetFinderBase):
     """

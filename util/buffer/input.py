@@ -196,6 +196,7 @@ class RootTreeLoader:
         self.f = None
         self.t = None
         self.keys = []
+        self._i = -1
 
         self.buffer = {} # buffer for reading the TTree branches
 
@@ -276,7 +277,8 @@ class RootTreeLoader:
         return
 
     def set_entry(self,i):
-        self.t.GetEntry(i)
+        self._i = i
+        self.t.GetEntry(self._i)
         return
 
     def close(self):

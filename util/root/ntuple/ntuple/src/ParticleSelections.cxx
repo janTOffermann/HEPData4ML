@@ -40,7 +40,7 @@ namespace NtupleProducer{
     // Build the predicate based on selection criteria -- fancy!
     auto matches = [this](const shared_ptr<HepMC3::GenParticle>& p) {
       if (p->pid() != _pdgId) return false;
-      if (_status != -1 && p->status() != _status) return false;
+      if (_status != 0 && p->status() != _status) return false;
       return true;
     };
 

@@ -169,13 +169,15 @@ class Processor:
     def PostProcess(self,hepmc_file:str, ntuple_file:str, prepend_output_directory=True):
         if(self.post_processing is None):
             return
+
+        if(prepend_output_directory): # TODO: Clean this up? A little inconsistent
+            ntuple_file = '{}/{}'.format(self.outdir,ntuple_file)
+            hepmc_file = '{}/{}'.format(self.outdir,hepmc_file)
+
         for post_proc in self.post_processing:
             if(post_proc is None): continue
             post_proc.SetConfigurator(self.configurator)
             post_proc.SetMetadataHandler(self.metadata_handler)
-            if(prepend_output_directory): # TODO: Clean this up? A little inconsistent
-                ntuple_file = '{}/{}'.format(self.outdir,ntuple_file)
-                hepmc_file = '{}/{}'.format(self.outdir,hepmc_file)
             post_proc(hepmc_file,ntuple_file,ntuple_file)
         return
 

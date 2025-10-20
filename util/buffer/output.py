@@ -470,7 +470,8 @@ class RootOutputBuffer:
         elif(self.clone_tree is not None):
             self.t = self.clone_tree.CloneTree(0) # clones the TTree structure, does *not* copy over any entries
         else:
-            self.t = in_tree.CloneTree(0) # clones the TTree structure, does *not* copy over any entries
+            self.clone_tree = in_tree
+            self.t = self.clone_tree.CloneTree(0) # clones the TTree structure, does *not* copy over any entries
         self.init_status = True
         return
 
@@ -584,15 +585,11 @@ class RootOutputBuffer:
             if isinstance(value, np.ndarray) and not value.flags['C_CONTIGUOUS']:
                 value = np.ascontiguousarray(value)
 
-
             if(isinstance(index,tuple)): # slicing: gets a bit complex
 
                 if(len(index) > 2):
                     self._print('Warning: Indexing beyond 2 dims not (yet) supported for RootOutputBuffer.set().')
                     return
-
-                # if isinstance(value, np.ndarray) and not value.flags['C_CONTIGUOUS']:
-                #     value = np.ascontiguousarray(value)
 
                 # We need to determine if we're filling the "next" entry in this vector,
                 # or are overwriting an existing entry (unlikely!) or writing non-sequentially.
@@ -613,7 +610,14 @@ class RootOutputBuffer:
         return
 
     def flush(self):
+
+        if(self.clone_tree is not None):
+            saved_entry = self.clone_tree.GetReadEntry()
+            self.clone_tree.GetEntry(self.n_filled)
         self.t.Fill()
+        if(saved_entry >= 0 and saved_entry != self.n_filled):
+            self.clone_tree.GetEntry(saved_entry)
+
         self.n_filled += 1
         self._clear_buffers()
 

@@ -1,5 +1,7 @@
 import json, itertools
 import ROOT as rt
+import uproot as ur
+import awkward as ak
 import numpy as np
 import re,pathlib
 import h5py as h5
@@ -23,6 +25,8 @@ class EventDisplay:
         self.data = None # dictionary where data from an event is loaded
         self.metadata = None
         self.object_names = []
+
+        self.mode = 'root'
 
         # expect to have multiple jet collections, thus have multiple colors to cycle through
         self.jet_colors = [rt.kYellow, rt.kRed, rt.kBlue-7, rt.kSpring, rt.kOrange+1, rt.kMagenta]
@@ -65,14 +69,62 @@ class EventDisplay:
         self.object_names = sorted(list(set([key.split('.')[0] for key in self.data.keys()])))
 
 
-    def LoadData(self,event_index):
-        assert self.input_file is not None
-        assert pathlib.Path(self.input_file).exists()
-
+    def _load_hdf5(self,event_index):
         f = h5.File(self.input_file,'r')
         self.data = {key: f[key][event_index] for key in f.keys()}
         self.metadata = {key:f.attrs[key] for key in f.attrs.keys()}
         f.close()
+
+    def _load_root(self,event_index):
+        # TODO: Make this more organized
+        tree_name = 'hepdata4ml_tree'
+        with ur.open(self.input_file) as f:
+            tree = f[tree_name]
+            # Read single event for all branches
+            self.data = {}
+            for branch_name in tree.keys():
+                array = tree[branch_name].array()
+                # Convert awkward array to numpy where possible, keep jagged structure
+                self.data[branch_name] = array[event_index]
+        self.metadata = {}
+
+        f_root = rt.TFile.Open(self.input_file, 'READ')
+        tree_root = f_root.Get(tree_name)  # Same tree name
+        if tree_root.GetUserInfo():
+            user_info = tree_root.GetUserInfo()
+            n_metadata = user_info.GetEntries()
+
+            for i in range(n_metadata):
+                metadata_list = user_info.At(i)
+                key = metadata_list.GetName()
+
+                # Extract values from the nested TList
+                values = []
+                for j in range(metadata_list.GetEntries()):
+                    obj = metadata_list.At(j)
+
+                    # Handle different object types
+                    if hasattr(obj, 'GetVal'):  # TParameter types
+                        values.append(obj.GetVal())
+                    elif hasattr(obj, 'GetTitle'):  # TNamed types
+                        values.append(obj.GetTitle())
+                    else:
+                        values.append(str(obj))
+
+                self.metadata[key] = values
+
+        f_root.Close()
+
+    def LoadData(self,event_index):
+        assert self.input_file is not None
+        assert pathlib.Path(self.input_file).exists()
+
+
+        if(self.mode == 'root'):
+            self._load_root(event_index)
+
+        else:
+            self._load_hdf5(event_index)
 
         self.FindObjectNames()
 
@@ -82,7 +134,7 @@ class EventDisplay:
         self.LoadLeptonData()
         self.LoadPhotonData()
         self.LoadJetData()
-        self.LoadMETData()
+        # self.LoadMETData() # TODO: Fix this upstream
         self.LoadGenParticleData()
         self.LoadJetConstituentData()
 
@@ -99,7 +151,7 @@ class EventDisplay:
                     self.data['{}.Xdi'.format(object_name)][:nobj,0],
                     self.data['{}.Xdi'.format(object_name)][:nobj,1],
                     self.data['{}.Xdi'.format(object_name)][:nobj,2],
-                    self.data['{}.PdgId'.format(object_name)][:nobj]
+                    np.array(self.data['{}.PdgId'.format(object_name)][:nobj])
                 )
 
     def LoadCaloData(self):
@@ -161,26 +213,26 @@ class EventDisplay:
 
                 color = self.jet_colors[jet_counter % len(self.jet_colors)]
 
-                if(nobj != 1):
-                    self.display.GetEventDisplay().AddJetData_EPxPyPz(
-                        object_name,
-                        self.data['{}.Pmu'.format(object_name)][:nobj,0],
-                        self.data['{}.Pmu'.format(object_name)][:nobj,1],
-                        self.data['{}.Pmu'.format(object_name)][:nobj,2],
-                        self.data['{}.Pmu'.format(object_name)][:nobj,3],
-                        radius,
-                        color
-                    )
-                else:
-                    self.display.GetEventDisplay().AddJetData_EPxPyPz(
-                        object_name,
-                        np.atleast_1d(self.data['{}.Pmu'.format(object_name)][0]),
-                        np.atleast_1d(self.data['{}.Pmu'.format(object_name)][1]),
-                        np.atleast_1d(self.data['{}.Pmu'.format(object_name)][2]),
-                        np.atleast_1d(self.data['{}.Pmu'.format(object_name)][3]),
-                        radius,
-                        color
-                    )
+                # if(nobj != 1):
+                self.display.GetEventDisplay().AddJetData_EPxPyPz(
+                    object_name,
+                    self.data['{}.Pmu'.format(object_name)][:nobj,0],
+                    self.data['{}.Pmu'.format(object_name)][:nobj,1],
+                    self.data['{}.Pmu'.format(object_name)][:nobj,2],
+                    self.data['{}.Pmu'.format(object_name)][:nobj,3],
+                    radius,
+                    color
+                )
+                # else:
+                #     self.display.GetEventDisplay().AddJetData_EPxPyPz(
+                #         object_name,
+                #         np.atleast_1d(self.data['{}.Pmu'.format(object_name)][0]),
+                #         np.atleast_1d(self.data['{}.Pmu'.format(object_name)][1]),
+                #         np.atleast_1d(self.data['{}.Pmu'.format(object_name)][2]),
+                #         np.atleast_1d(self.data['{}.Pmu'.format(object_name)][3]),
+                #         radius,
+                #         color
+                #     )
                 jet_counter += 1
 
     def LoadPhotonData(self):
@@ -242,8 +294,8 @@ class EventDisplay:
                     decay_xmu[:nobj,1],
                     decay_xmu[:nobj,2],
                     decay_xmu[:nobj,3],
-                    stable[:nobj],
-                    self.data['{}.PdgId'.format(object_name)][:nobj]
+                    np.array(stable[:nobj]),
+                    np.array(self.data['{}.PdgId'.format(object_name)][:nobj])
                 )
 
     def LoadVertexData(self):
@@ -272,63 +324,65 @@ class EventDisplay:
                 color = self.jet_colors[jet_counter % len(self.jet_colors)]
 
                 # map the constituents
-                if(nobj != 1):
-                    constituent_collections = self.data['{}.Constituents.Collection'.format(object_name)][:nobj]
-                    constituent_collection_indices = self.data['{}.Constituents.Collection.Index'.format(object_name)][:nobj]
-                    # go from constituent_collections to collection names
-                    constituent_collection_names = [
-                        [jet_name_dict[object_name][x] for x in y]
-                        for y in constituent_collections
-                    ]
-                else:
-                    constituent_collections = self.data['{}.Constituents.Collection'.format(object_name)]
-                    constituent_collection_indices = self.data['{}.Constituents.Collection.Index'.format(object_name)]
-                    constituent_collection_names = [jet_name_dict[object_name][x] for x in constituent_collections]
+                # if(nobj != 1):
+                constituent_collections = self.data['{}.Constituents.Collection'.format(object_name)][:nobj]
+                constituent_collection_indices = self.data['{}.Constituents.Collection.Index'.format(object_name)][:nobj]
+
+                # go from constituent_collections to collection names
+                constituent_collection_names = [
+                    [jet_name_dict[object_name][x] for x in y]
+                    for y in constituent_collections
+                ]
+                # else:
+                #     constituent_collections = self.data['{}.Constituents.Collection'.format(object_name)]
+                #     constituent_collection_indices = self.data['{}.Constituents.Collection.Index'.format(object_name)]
+                #     constituent_collection_names = [jet_name_dict[object_name][x] for x in constituent_collections]
 
                 # Now we construct eta and phi edges, and energy deposits, which will
                 # go into a Lego-style calorimeter display.
                 # The caveat is that things like EFlowTrack don't have eta/phi edges!
 
-                if(nobj != 1):
-                    for i in range(nobj):
-                        names = constituent_collection_names[i]
-                        mask = ['{}.Edges.Eta'.format(name) in self.data.keys() for name in names]
-                        names = list(itertools.compress(names,mask))
-                        tower_indices = list(itertools.compress(constituent_collection_indices[i],mask))
-
-                        eta_edges_i = np.array([self.data['{}.Edges.Eta'.format(name)][x] for name,x in zip(names,tower_indices)])
-                        phi_edges_i = np.array([self.data['{}.Edges.Phi'.format(name)][x] for name,x in zip(names,tower_indices)])
-                        eem_i = np.array([self.data['{}.E.EM'.format(name)][x] for name,x in zip(names,tower_indices)])
-                        ehad_i = np.array([self.data['{}.E.Hadronic'.format(name)][x] for name,x in zip(names,tower_indices)])
-
-                        # Add these with some new function
-                        self.display.GetEventDisplay().AddJetConstituentCaloData(
-                            object_name,
-                            eta_edges_i[:nobj,0],
-                            eta_edges_i[:nobj,1],
-                            phi_edges_i[:nobj,0],
-                            phi_edges_i[:nobj,1],
-                            eem_i[:nobj],
-                            ehad_i[:nobj]
-                        )
-                else:
-                    names = constituent_collection_names
+                # if(nobj != 1):
+                for i in range(nobj):
+                    names = constituent_collection_names[i]
                     mask = ['{}.Edges.Eta'.format(name) in self.data.keys() for name in names]
+
                     names = list(itertools.compress(names,mask))
-                    tower_indices = list(itertools.compress(constituent_collection_indices,mask))
+                    tower_indices = list(itertools.compress(constituent_collection_indices[i],mask))
 
                     eta_edges_i = np.array([self.data['{}.Edges.Eta'.format(name)][x] for name,x in zip(names,tower_indices)])
                     phi_edges_i = np.array([self.data['{}.Edges.Phi'.format(name)][x] for name,x in zip(names,tower_indices)])
                     eem_i = np.array([self.data['{}.E.EM'.format(name)][x] for name,x in zip(names,tower_indices)])
                     ehad_i = np.array([self.data['{}.E.Hadronic'.format(name)][x] for name,x in zip(names,tower_indices)])
 
-                    # TODO: Check this?
+                    # Add these with some new function
                     self.display.GetEventDisplay().AddJetConstituentCaloData(
                         object_name,
-                        eta_edges_i[0],
-                        eta_edges_i[1],
-                        phi_edges_i[0],
-                        phi_edges_i[1],
-                        eem_i,
-                        ehad_i
+                        eta_edges_i[:nobj,0],
+                        eta_edges_i[:nobj,1],
+                        phi_edges_i[:nobj,0],
+                        phi_edges_i[:nobj,1],
+                        eem_i[:nobj],
+                        ehad_i[:nobj]
                     )
+                # else:
+                #     names = constituent_collection_names
+                #     mask = ['{}.Edges.Eta'.format(name) in self.data.keys() for name in names]
+                #     names = list(itertools.compress(names,mask))
+                #     tower_indices = list(itertools.compress(constituent_collection_indices,mask))
+
+                #     eta_edges_i = np.array([self.data['{}.Edges.Eta'.format(name)][x] for name,x in zip(names,tower_indices)])
+                #     phi_edges_i = np.array([self.data['{}.Edges.Phi'.format(name)][x] for name,x in zip(names,tower_indices)])
+                #     eem_i = np.array([self.data['{}.E.EM'.format(name)][x] for name,x in zip(names,tower_indices)])
+                #     ehad_i = np.array([self.data['{}.E.Hadronic'.format(name)][x] for name,x in zip(names,tower_indices)])
+
+                #     # TODO: Check this?
+                #     self.display.GetEventDisplay().AddJetConstituentCaloData(
+                #         object_name,
+                #         eta_edges_i[0],
+                #         eta_edges_i[1],
+                #         phi_edges_i[0],
+                #         phi_edges_i[1],
+                #         eem_i,
+                #         ehad_i
+                #     )

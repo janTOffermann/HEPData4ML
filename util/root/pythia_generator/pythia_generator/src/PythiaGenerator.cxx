@@ -58,6 +58,7 @@ namespace PythiaGenerator{
   }
 
   void Generator::init(){
+    if(_initialized) return;
     if(!_parallel) _pythia->init();
     else _pythiaParallel->init();
     _initialized = kTRUE;
@@ -318,24 +319,25 @@ namespace PythiaGenerator{
       nevents,
       [&](Pythia8::Pythia* pythiaPtr) {
 
-      // TODO: Put event filter here.
-      Bool_t passedFilter = kTRUE;
+        // TODO: Put event filter here.
+        Bool_t passedFilter = kTRUE;
 
-      for(auto filter : _eventFilters){
-        if(!(*filter)(pythiaPtr)){
-          passedFilter = kFALSE;
-          break;
+        for(auto filter : _eventFilters){
+          if(!(*filter)(pythiaPtr)){
+            passedFilter = kFALSE;
+            break;
+          }
+        }
+
+        if(passedFilter){
+          // In array mode, we fill the arrays with the various particle/event attributes.
+          if(_arrayMode) _FillArrays(pythiaPtr);
+
+          // in HepMC3 mode, we will fill a vector of HepMC3 events, which we can later flush to a file.
+          if(_hepmcMode) _FillHepMC3Event(pythiaPtr);
         }
       }
-
-      if(passedFilter){
-        // In array mode, we fill the arrays with the various particle/event attributes.
-        if(_arrayMode) _FillArrays(pythiaPtr);
-
-        // in HepMC3 mode, we will fill a vector of HepMC3 events, which we can later flush to a file.
-        if(_hepmcMode) _FillHepMC3Event(pythiaPtr);
-      }
-    });
+    );
 
     // In array mode, we take the opportunity to compute the number of particles per event.
     if(_arrayMode) _nParticlesPerEvent = get2VectorCounts(_status);
