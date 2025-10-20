@@ -1,0 +1,17 @@
+! Upsilon -> g g g
+
+Bottomonium:all = off
+Bottomonium:gg2bbbar(3S1)[3S1(1)]g = on,off,off
+Bottomonium:gg2bbbar(3S1)[3S1(8)]g = on,off,off
+Bottomonium:qg2bbbar(3S1)[3S1(8)]q = on,off,off
+Bottomonium:qqbar2bbbar(3S1)[3S1(8)]g = on,off,off
+
+553:onMode = off
+553:onIfMatch = 21 21 21
+
+TimeShower:QEDshowerByQ = on
+SpaceShower:QEDshowerByQ = on
+
+Beams:idA = 2212
+Beams:idB = 2212
+Beams:eCM = 13600.
