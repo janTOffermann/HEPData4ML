@@ -7,7 +7,7 @@ from util.fastjet.jetfinderbase import JetFinderBase
 from util.qol_utils.progress_bar import printProgressBarColor
 from util.buffer.input import RootTreeLoader
 from util.buffer.output import RootOutputBuffer
-from util.misc.timing import profile_method
+from util.misc.timing import profile_method, profile_block
 
 import util.reconstruction.post_processing.utils.ghost_association as ghost_assoc
 import util.reconstruction.post_processing.utils.softdrop as softdrop
@@ -54,7 +54,7 @@ class JetFinder(JetFinderBase):
 
         self.input_collection_arrays = {}
         self.input_collection_arrays_cyl = {}
-        self.input_collection_arrays_rapidity = None
+        self.input_collection_arrays_rapidity = {}
         self.constituent_indices_dict = None
 
         self.SetVerbosity(verbose)
@@ -121,12 +121,13 @@ class JetFinder(JetFinderBase):
         """
         if(type(collections) != list):
             collections = [collections]
-        collections_pmu = ['{}.Pmu'.format(collection) for collection in collections]
-        collections_pmu_cyl = ['{}.Pmu_cyl'.format(collection) for collection in collections]
 
         self.input_collection_names = collections
-        self.input_collection_names_Pmu = collections_pmu
-        self.input_collection_names_Pmu_cyl = collections_pmu_cyl
+        self.input_collection_names_Pmu = {collection: '{}.Pmu'.format(collection) for collection in collections}
+        self.input_collection_names_Pmu_cyl = {collection: '{}.Pmu_cyl'.format(collection) for collection in collections}
+
+
+        #NOTE: the keys for rapidity branches will be set later on
 
     def SetNConstituentsMax(self,n:int):
         self.n_constituents_max = n
@@ -251,7 +252,7 @@ class JetFinder(JetFinderBase):
         self._fetch_inputs()
 
         # Also fetch rapidity & phi, for potentially speeding up some FastJet computations.
-        # self._fetch_rapidity() # TODO: Fix this
+        self._fetch_rapidity() # TODO: Fix this
 
         # Get maximum size of jet inputs.
         n_max = self._get_max_input_size()
@@ -272,9 +273,9 @@ class JetFinder(JetFinderBase):
 
         self.input_buffer = RootTreeLoader(self.ntuple_file,'hepdata4ml_tree') #TODO: Dynamic tree name?
         self.input_buffer.load()
-        for key in self.input_collection_names_Pmu:
+        for collection_name,key in self.input_collection_names_Pmu.items():
             self.input_buffer.read_branch(key)
-        for key in self.input_collection_names_Pmu_cyl:
+        for collection_name,key in self.input_collection_names_Pmu_cyl.items():
             self.input_buffer.read_branch(key)
 
         self.nevents = self.input_buffer.t.GetEntries()
@@ -295,20 +296,22 @@ class JetFinder(JetFinderBase):
         """
 
         # For rapidity, fetch rapidity or pseudorapidity based on what is available.
-        full_keys = list(self.input_buffer.keys()) # gives all available branch names in the input TTree
-        rapidity_keys = {}
+        # Thus we will store keys in "self.input_collection_names_rapidity", where the actual rapidity keys
+        # are mapped to contents of self.input_collection_names.
+        # Note that self.input_collection_names_Pmu(_cyl) etc are built from self.input_collection_names.
+        full_keys = list(self.input_buffer.keys) # gives all available branch names in the input TTree
+        self.input_collection_names_rapidity = {}
         for key in self.input_collection_names:
             potential_keys = ['{}.{}'.format(key,x) for x in ['Rapidity','Rap','Y','Pmu_cyl']] # last is the fall-back
             for key2 in potential_keys:
                 if(key2 in full_keys):
-                    rapidity_keys[key] = key2
+                    self.input_collection_names_rapidity[key] = key2
                     break
-        assert(len(rapidity_keys.keys()) == len(self.input_collection_names))
-        self.input_collection_arrays_rapidity = {}
+        assert(len(self.input_collection_names_rapidity.keys()) == len(self.input_collection_names))
 
         # Now, ensure that the necessary collections are loaded
-        for key,key2 in rapidity_keys.items():
-            self.input_buffer.load_branch(key2) # e
+        for key,key2 in self.input_collection_names_rapidity.items():
+            self.input_buffer.read_branch(key2)
         return
 
     def _get_max_input_size(self):
@@ -336,11 +339,20 @@ class JetFinder(JetFinderBase):
         self.input_buffer.set_entry(event_index)
 
         #TODO: Likely have to fix some things with the ghost associator
-        for key in self.input_collection_names_Pmu: # NOTE: Using self.input_collections_array.keys() can be dangerous, due to modifications/additions to keys by things like GhostAssociation(). Those should not touch self.input_collections, for this reason.
-            self.input_collection_arrays[key] = self.input_buffer[key]
+        for collection_name,key in self.input_collection_names_Pmu.items(): # NOTE: Using self.input_collections_array.keys() can be dangerous, due to modifications/additions to keys by things like GhostAssociation(). Those should not touch self.input_collections, for this reason.
+            self.input_collection_arrays[collection_name] = self.input_buffer[key]
 
-        for key in self.input_collection_names_Pmu_cyl: # NOTE: Using self.input_collections_array.keys() can be dangerous, due to modifications/additions to keys by things like GhostAssociation(). Those should not touch self.input_collections, for this reason.
-            self.input_collection_arrays_cyl[key] = self.input_buffer[key]
+        for collection_name,key in self.input_collection_names_Pmu_cyl.items(): # NOTE: Using self.input_collections_array.keys() can be dangerous, due to modifications/additions to keys by things like GhostAssociation(). Those should not touch self.input_collections, for this reason.
+            self.input_collection_arrays_cyl[collection_name] = self.input_buffer[key]
+
+        # Also take care of rapidity. Here, we have to keep in mind the case where we've pointed
+        # the rapidity collection at a cylindrical Pmu key (Pmu_cyl), in which case we're
+        # linked to a branch carrying not the rapidity but the whole four-momentum; in that
+        # case we need to peel off the eta component (it'll be pseudorapidity in this case).
+        #
+        # We'll actually *handle* this complication in _set_inputs(), however.
+        for collection_name,key in self.input_collection_names_rapidity.items():
+            self.input_collection_arrays_rapidity[collection_name] = self.input_buffer[key]
 
         # print('Loaded event {}'.format(event_index))
         # key = self.input_collection_names_Pmu_cyl[0]
@@ -354,8 +366,31 @@ class JetFinder(JetFinderBase):
         # We want to vstack the input_collection_arrays, but have to consider the edge
         # case where one of them is empty, in which case it'll be "{}". This will cause
         # dimensionality issues with vstack if we do things naively.
-        self.SetInputs(np.vstack([self.input_collection_arrays[key] for key in self.input_collection_names_Pmu if len(self.input_collection_arrays[key]) > 0])) # NOTE: Using self.input_collections_array.keys() can be dangerous, due to modifications/additions to keys by things like GhostAssociation(). Those should not touch self.input_collections, for this reason.
-        self.SetInputsCylindrical(np.vstack([self.input_collection_arrays_cyl[key] for key in self.input_collection_names_Pmu_cyl if len(self.input_collection_arrays_cyl[key]) > 0]))
+        self.SetInputs(np.vstack([self.input_collection_arrays[cname] for cname in self.input_collection_names_Pmu.keys() if len(self.input_collection_arrays[cname]) > 0])) # NOTE: Using self.input_collections_array.keys() can be dangerous, due to modifications/additions to keys by things like GhostAssociation(). Those should not touch self.input_collections, for this reason.
+        self.SetInputsCylindrical(np.vstack([self.input_collection_arrays_cyl[cname] for cname in self.input_collection_names_Pmu_cyl.keys() if len(self.input_collection_arrays_cyl[cname]) > 0]))
+
+        # For rapidity, there is the complication that we might be reading a "Pmu_cyl" branch, in case
+        # we really just want its pseudorapidity component: slicing like [:,1] but these are cppyy.gbl.std.vector,
+        # not numpy arrays, so we have to do it correctly.
+
+        # Collect views/slices without intermediate conversions
+        with profile_block('rapidity setting'):
+            rapidity_views = []
+            for cname in self.input_collection_names_rapidity.keys():
+                coll = self.input_collection_arrays_rapidity[cname]
+                rapidity = np.asarray(coll)  # asarray is faster if already numpy-compatible
+                rapidity_views.append(rapidity[:, 1] if rapidity.ndim > 1 else rapidity)
+            self.SetRapidity(np.concatenate(rapidity_views, axis=0))
+
+        # rapidity_arrays = []
+        # for cname in self.input_collection_names_rapidity.keys():
+        #     if(len(self.input_collection_arrays_rapidity[cname]) == 0):
+        #         continue
+        #     rapidity = np.array(self.input_collection_arrays_rapidity[cname]) # convert cppyy.gbl.std.vector to np.ndarray
+        #     if(rapidity.ndim > 1):
+        #         rapidity = rapidity[:,1]
+        #     rapidity_arrays.append(rapidity)
+        # self.SetRapidity(np.concatenate(rapidity_arrays,axis=0))
 
     @profile_method('JetFinder.Process')
     def Process(self):
@@ -376,8 +411,6 @@ class JetFinder(JetFinderBase):
 
             # Gather the different input collections together, into one array of four-momenta.
             self._set_inputs()
-
-            # self.SetRapidity(np.concatenate([self.input_collection_arrays_rapidity[key] for key in self.input_collection_names],axis=0)) # TODO: Fix this
 
             # Optional modification of inputs. May be harnessed by some special configurations.
             self._modifyInputs()
@@ -525,7 +558,7 @@ class JetFinder(JetFinderBase):
     @profile_method('JetFinder._computeConstituentIndices')
     def _computeConstituentIndices(self):
         # Precompute collection boundaries once
-        n_per_collection = [len(self.input_collection_arrays[key]) for key in self.input_collection_names_Pmu]
+        n_per_collection = [len(self.input_collection_arrays[cname]) for cname in self.input_collection_names_Pmu.keys()]
         cumulative_lengths = np.cumsum([0] + n_per_collection)
 
         self.constituent_indices_dict = {}

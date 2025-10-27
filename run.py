@@ -249,6 +249,11 @@ def main(args):
         #===============================
         # STEP 2: Pileup (optional)
         #===============================
+        # In this step, we produce pileup HepMC/ROOT "sidecar" files
+        # (or just fetch existing ones). Note that producing these from scratch
+        # is a relatively slow process (specifically, combining HepMC3 events is slow).
+        # Thus it is preferrable to produce these in a dedicated run, and then later
+        # simply use a pileup_handler that fetches these pre-mixed events.
         pileup_handler = None
         if('pileup' in steps):
             timer.start_timestamp('pileup')
@@ -280,6 +285,7 @@ def main(args):
                 elif(args['rng'] is not None): # Case 2: The Pythia RNG seed was specified at command line -- in practice we may want to then use this for pileup too (e.g. HTCondor usage).
                     pileup_handler.SetRNGSeed(pythia_rng)
 
+                # TODO: Rework the Process() step, should switch to producing sidecar files.
                 pileup_handler.Process(hepmc_files) # will overwrite the hepmc_files
 
                 # TODO: Now we fetch some information from the pileup handler, that will propagate into the final dataset:
