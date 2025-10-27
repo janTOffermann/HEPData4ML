@@ -84,8 +84,11 @@ int main(int argc, char *argv[])
 {
   char appName[] = "DelphesHepMC3";
   stringstream message;
+  TString configFile = "";
+  TString outputFile = "";
   TString inputFile = "";
-  TFile *outputFile = 0;
+  TString inputFilePileup = "";
+  TFile *outputTFile = 0;
   TStopwatch readStopWatch, procStopWatch;
   ExRootTreeWriter *treeWriter = 0;
   ExRootTreeBranch *branchEvent = 0, *branchWeight = 0;
@@ -94,33 +97,50 @@ int main(int argc, char *argv[])
   DelphesFactory *factory = 0;
   TObjArray *stableParticleOutputArray = 0, *allParticleOutputArray = 0, *partonOutputArray = 0;
   DelphesHepMC3ROOTReader *reader = 0;
-  Int_t i, maxEvents, skipEvents;
+  Int_t maxEvents, skipEvents;
   Long64_t eventCounter;
 
   Int_t rngDefaultSeed = -1;
   Bool_t foundDefaultSeed = kFALSE;
 
-  if(argc < 3)
-  {
-    cout << " Usage: " << appName << " config_file"
-         << " output_file"
-         << " [input_file(s)]" << endl;
+  if(argc < 4){
+    cout << " Usage: " << appName
+      << " config_file"
+      << " output_file"
+      << " input_file"
+      << " [pileup_file]"
+      << " [rng_seed]"
+    << endl;
     cout << " config_file - configuration file in Tcl format," << endl;
     cout << " output_file - output file in ROOT format," << endl;
-    cout << " input_file(s) - input file(s) in HepMC format," << endl;
-    cout << " with no input_file, or when input_file is -, read standard input." << endl;
+    cout << " input_file - input file in HepMC/ROOT format," << endl;
+    cout << " pileup_file - input pileup file in HepMC/ROOT format [optional]," << endl;
+    cout << " rng_seed - Integer to seed the random number generator [optional]." << endl;
     return 1;
   }
-  if (argc > 3)
-  {
-    if (isInteger(argv[argc - 1]))
-    {
-      rngDefaultSeed = std::atoi(argv[argc - 1]);
+
+  if(argc == 4){
+    if(isInteger(argv[argc-1])){ // config_file, output_file, input_file, rng_seed
+      rngDefaultSeed = std::atoi(argv[argc-1]);
       foundDefaultSeed = kTRUE;
       cout << "** Using random seed default: " << rngDefaultSeed << " (can still be overwritten by settings in detector card!)" << endl;;
     }
+    else{ // config_file, output_file, input_file, pileup_file
+      inputFilePileup = argv[argc-1];
+    }
   }
-  Int_t fileArgLimit = foundDefaultSeed ? argc - 1 : argc;
+
+  else{ // argc >= 5
+      inputFilePileup = argv[argc - 2];
+      rngDefaultSeed = std::atoi(argv[argc-1]);
+      foundDefaultSeed = kTRUE;
+      cout << "** Using random seed default: " << rngDefaultSeed << " (can still be overwritten by settings in detector card!)" << endl;;
+  }
+
+  // Set the non-optional arguments
+  configFile = argv[1];
+  outputFile = argv[2];
+  inputFile = argv[3];
 
   signal(SIGINT, SignalHandler);
 
@@ -132,21 +152,21 @@ int main(int argc, char *argv[])
 
   try
   {
-    outputFile = TFile::Open(argv[2], "CREATE");
+    outputTFile = TFile::Open(outputFile, "CREATE");
 
-    if(outputFile == NULL)
+    if(outputTFile == NULL)
     {
-      message << "can't create output file " << argv[2];
+      message << "can't create output file " << outputFile;
       throw runtime_error(message.str());
     }
 
-    treeWriter = new ExRootTreeWriter(outputFile, "Delphes");
+    treeWriter = new ExRootTreeWriter(outputTFile, "Delphes");
 
     branchEvent = treeWriter->NewBranch("Event", HepMCEvent::Class());
     branchWeight = treeWriter->NewBranch("Weight", Weight::Class());
 
     confReader = new ExRootConfReader;
-    confReader->ReadFile(argv[1]);
+    confReader->ReadFile(configFile.Data());
 
     maxEvents = confReader->GetInt("::MaxEvents", 0);
     skipEvents = confReader->GetInt("::SkipEvents", 0);
@@ -175,71 +195,64 @@ int main(int argc, char *argv[])
 
     modularDelphes->InitTask();
 
-    i = 3;
-    do
+    // Also check if there's a pileup file.
+
+    cout << "** Reading " << inputFile << endl;
+
+    if(inputFile == NULL)
     {
-      if(interrupted) break;
+      message << "can't open " << argv[3];
+      throw runtime_error(message.str());
+    }
 
-      cout << "** Reading " << argv[i] << endl;
-      inputFile = argv[i];
+    reader->SetInputFile(inputFile);
 
-      if(inputFile == NULL)
+    // Loop over all objects
+    eventCounter = 0;
+    treeWriter->Clear();
+    modularDelphes->Clear();
+    reader->Clear();
+    readStopWatch.Start();
+    while((maxEvents <= 0 || eventCounter - skipEvents < maxEvents) && reader->ReadEvent() && !interrupted)
+    {
+
+      if(reader->EventReady()) // making this redundant
       {
-        message << "can't open " << argv[i];
-        throw runtime_error(message.str());
-      }
+        ++eventCounter;
 
-      reader->SetInputFile(inputFile);
+        readStopWatch.Stop();
 
-      // Loop over all objects
-      eventCounter = 0;
-      treeWriter->Clear();
-      modularDelphes->Clear();
-      reader->Clear();
-      readStopWatch.Start();
-      while((maxEvents <= 0 || eventCounter - skipEvents < maxEvents) && reader->ReadEvent() && !interrupted)
-      {
-
-        if(reader->EventReady()) // making this redundant
+        if(eventCounter > skipEvents)
         {
-          ++eventCounter;
 
-          readStopWatch.Stop();
+          // Analyze() calls FinalizeParticles(), which must be called before modularDelphes::ProcessTask()
+          reader->Analyze(factory, allParticleOutputArray, stableParticleOutputArray, partonOutputArray); // TODO
 
-          if(eventCounter > skipEvents)
-          {
+          procStopWatch.Start();
+          modularDelphes->ProcessTask();
+          procStopWatch.Stop();
 
-            // Analyze() calls FinalizeParticles(), which must be called before modularDelphes::ProcessTask()
-            reader->Analyze(factory, allParticleOutputArray, stableParticleOutputArray, partonOutputArray); // TODO
+          reader->AnalyzeEvent(branchEvent, eventCounter, &readStopWatch, &procStopWatch);
+          reader->AnalyzeWeight(branchWeight);
 
-            procStopWatch.Start();
-            modularDelphes->ProcessTask();
-            procStopWatch.Stop();
+          treeWriter->Fill();
 
-            reader->AnalyzeEvent(branchEvent, eventCounter, &readStopWatch, &procStopWatch);
-            reader->AnalyzeWeight(branchWeight);
-
-            treeWriter->Fill();
-
-            treeWriter->Clear();
-          }
-
-          modularDelphes->Clear();
-          reader->Clear();
-
-          readStopWatch.Start();
+          treeWriter->Clear();
         }
-        // progressBar.Update(ftello(inputFile), eventCounter);
+
+        modularDelphes->Clear();
+        reader->Clear();
+
+        readStopWatch.Start();
       }
+      // progressBar.Update(ftello(inputFile), eventCounter);
+    }
 
-      // fseek(inputFile, 0L, SEEK_END);
-      // progressBar.Update(ftello(inputFile), eventCounter, kTRUE);
-      // progressBar.Finish();
+    // fseek(inputFile, 0L, SEEK_END);
+    // progressBar.Update(ftello(inputFile), eventCounter, kTRUE);
+    // progressBar.Finish();
 
-      // if(inputFile != stdin) fclose(inputFile);
-
-      ++i;
-    } while(i < fileArgLimit);
+    // if(inputFile != stdin) fclose(inputFile);
 
     modularDelphes->FinishTask();
     treeWriter->Write();
@@ -250,14 +263,14 @@ int main(int argc, char *argv[])
     delete modularDelphes;
     delete confReader;
     delete treeWriter;
-    delete outputFile;
+    delete outputTFile;
 
     return 0;
   }
   catch(runtime_error &e)
   {
     if(treeWriter) delete treeWriter;
-    if(outputFile) delete outputFile;
+    if(outputTFile) delete outputTFile;
     cerr << "** ERROR: " << e.what() << endl;
     return 1;
   }
