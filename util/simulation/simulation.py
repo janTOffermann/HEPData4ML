@@ -14,6 +14,7 @@ class DetectorSimulator:
     def __init__(self):
         self.input_files = []
         self.output_files = []
+        self.pileup_input_files = None
 
         # for metadata
         self.metadata_handler = None
@@ -24,6 +25,9 @@ class DetectorSimulator:
 
     def SetInputs(self,files:list):
         self.input_files = files
+
+    def SetPileupInputs(self,files:list):
+        self.pileup_input_files = files
 
     def SetOutputDirectory(self,directory:str):
         self.outdir = directory
@@ -156,6 +160,11 @@ class DelphesSimulator(DetectorSimulator):
                 hep_file_no_extension = hep_file_no_extension.replace('.{}'.format(ext),'')
             delphes_file = hep_file_no_extension + '.delphes.root'
 
+            try:
+                pileup_file = self.pileup_input_files[i]
+            except:
+                pileup_file = None
+
             if(self.mode=='root'):
                 print('Running DelphesHepMC3ROOT: {} -> {}.'.format(hep_file,delphes_file))
             else:
@@ -165,6 +174,7 @@ class DelphesSimulator(DetectorSimulator):
                 print('\tDelphes card: {}'.format(self.delphes_card))
             delphes_file = self.delphes_wrapper.HepMC3ToDelphes(
                 hepmc_file=hep_file,
+                pileup_file=pileup_file,
                 output_file=delphes_file,
                 cwd=self.outdir,
                 delphes_card=self.delphes_card,

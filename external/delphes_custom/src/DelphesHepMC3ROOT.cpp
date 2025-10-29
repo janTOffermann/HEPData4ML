@@ -206,6 +206,7 @@ int main(int argc, char *argv[])
     }
 
     reader->SetInputFile(inputFile);
+    reader->SetInputPileupFile(inputFilePileup);
 
     // Loop over all objects
     eventCounter = 0;

@@ -5,6 +5,6 @@
 #pragma link off all functions;
 
 #pragma link C++ namespace Pileup;
-#pragma link C++ class Pileup::PileupOverlay+;
+#pragma link C++ class Pileup::PileupMixer+;
 
 #endif

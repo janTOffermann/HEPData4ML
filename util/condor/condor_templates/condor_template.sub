@@ -16,6 +16,8 @@ error                   = job.err
 output                  = job.out
 $REQUIREMENTS
 RequestCpus             = $N_CPU
+request_memory          = $MEM
+
 $ADDITIONS
 queue job_arguments from arguments.txt
 

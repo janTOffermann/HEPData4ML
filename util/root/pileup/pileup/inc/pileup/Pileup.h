@@ -44,15 +44,16 @@ namespace Pileup{
       TRandom* fRandom;
   };
 
-  class PileupOverlay{
+  class PileupMixer{
     public:
-      PileupOverlay();
-      ~PileupOverlay();
+      PileupMixer();
+      ~PileupMixer();
 
       void AddPileupFile(TString filename){_pileupFilenames.push_back(filename);};
       void ClearPileupFiles(){_pileupFilenames.clear();};
 
       void operator()(TString inputFile, TString outputFile);
+      void operator()(ULong_t nEvents, TString outputFile);
 
       // Setters
       void SetPileupFiles(vector<TString> filenames){_pileupFilenames = filenames;};
@@ -89,10 +90,12 @@ namespace Pileup{
       void _FetchEventSingleFile(const TString& filename, const vector<ULong_t>& localIndices, vector<HepMC3::GenEvent*> &events);
       vector<HepMC3::GenEvent*> _FetchEvents();
       map<TString, vector<ULong_t>> _GetLocalIndices();
-      void _CombineEventsWithPileup(vector<HepMC3::GenEvent*> &events);
-      void _AddPileup(HepMC3::GenEvent* evt, const vector<HepMC3::GenEvent*>& pileup, const vector<vector<Double_t>>& pileupDisplacements, const vector<Double_t>& pileupPhiRotations);
       void _AddPileupSingle(HepMC3::GenEvent* evt, HepMC3::GenEvent* pileup_evt, const vector<Double_t>& pileupDisplacement, const Double_t& phiRotation);
-      void _AddPileupSingleB(HepMC3::GenEvent* evt, HepMC3::GenEvent* pileup_evt, const vector<Double_t>& pileupDisplacement, const Double_t& phiRotation);
+      void _AddPileupSingleStableOnly(HepMC3::GenEvent* evt, HepMC3::GenEvent* pileup_evt, const vector<Double_t>& pileupDisplacement, const Double_t& phiRotation);
+
+      // TODO: Finish adaption towards sidecar approach
+      vector<HepMC3::GenEvent*> _CreatePileupEvents(Int_t nEvents);
+      HepMC3::GenEvent* _CreatePileupEvent(const vector<HepMC3::GenEvent*>& pileup, const vector<vector<Double_t>>& pileupDisplacements, const vector<Double_t>& pileupPhiRotations);
 
       void _Flush(vector<HepMC3::GenEvent*> events);
 
@@ -100,7 +103,6 @@ namespace Pileup{
       vector<Double_t> _generateDisplacement();
       vector<Double_t> _rotateVectorPhi(HepMC3::FourVector* vector, const ROOT::Math::RotationZ& rotation);
       vector<Double_t> _rotateAndTranslateVector(HepMC3::FourVector* v, const vector<Double_t>& displacementCoordinates, const ROOT::Math::RotationZ& rotation);
-
 
       Bool_t _initialized = kFALSE; // when initialized, will actually count number of pileup events available
       Int_t _batchSize = 10;
@@ -135,6 +137,10 @@ namespace Pileup{
       //  RNG stuff
       TRandomMixMax17* _rng = 0;
       TRandomAdapter* _rngAdapter = 0;
+
+      // Warning printout stuff
+      Int_t _nWarning = 0;
+      Int_t _nWarningMax = 5;
     };
 }
 

@@ -17,6 +17,7 @@ def main(args):
     parser.add_argument('-N',                '--Njobs',           type=int, help='Number of jobs per config.',default=1)
     parser.add_argument('-sq',               '--shortqueue',      type=int, help='Whether or not to use the condor short queue (for UChicago Analysis Facility).',default=0)
     parser.add_argument('-ncpu',             '--n_cpu',           type=int, help='Number of (logical) CPU cores per job.',default=1)
+    parser.add_argument('-mem',             '--memory',           type=str, help='Amount of memory per job to request.',default='1GB')
     parser.add_argument('-nblas',            '--n_openblas',      type=int, help='Sets the $OPENBLAS_NUM_THREADS variable (used for numpy multithreading). Advanced usage.',default=16)
     parser.add_argument('-event_idx_offset', '--event_idx_offset',type=int, help='Initial offset for event_idx. Advanced usage.',default=0)
     parser.add_argument('-batch_name',       '--batch_name',      type=str, help='Name for the condor batch. If left empty, unused.',default=None)
@@ -41,6 +42,7 @@ def main(args):
     njobs = args['Njobs']
     short_queue = args['shortqueue'] > 0
     ncpu = args['n_cpu']
+    memory = args['memory']
     nblas = args['n_openblas']
     event_idx_offset_initial = args['event_idx_offset']
     batch_name = args['batch_name']
@@ -185,6 +187,7 @@ def main(args):
         condor_submit_lines[i] = condor_submit_lines[i].replace("$OUTDIR",outdir)
         condor_submit_lines[i] = condor_submit_lines[i].replace("$N_THREAD",str(nblas))
         condor_submit_lines[i] = condor_submit_lines[i].replace("$N_CPU",str(ncpu))
+        condor_submit_lines[i] = condor_submit_lines[i].replace("$MEM",str(memory))
         condor_submit_lines[i] = condor_submit_lines[i].replace('$ADDITIONS',short_queue_line + '\n')
         condor_submit_lines[i] = condor_submit_lines[i].replace("$PAYLOAD_MODE",str(payload_mode))
         condor_submit_lines[i] = condor_submit_lines[i].replace("$PAYLOAD_STRING",payload_string)

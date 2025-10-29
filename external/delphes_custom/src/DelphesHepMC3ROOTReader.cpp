@@ -81,6 +81,7 @@ void DelphesHepMC3ROOTReader::SetInputFile(TString inputFile){
 //---------------------------------------------------------------------------
 
 void DelphesHepMC3ROOTReader::SetInputPileupFile(TString inputPileupFile){
+  cout << "Setting inputPileupFile to |" << inputPileupFile << "|" << endl;
   if(inputPileupFile.EqualTo("")){
     fHasPileupFile = kFALSE;
     return;
@@ -140,10 +141,15 @@ void DelphesHepMC3ROOTReader::Analyze(DelphesFactory *factory,
   for(auto particle: particles) AnalyzeParticle(factory,particle); // this "loads" the particles into the factory
 
   // If we have read in a pileup event, we also add that in.
-  // NOTE: Currently this effectively mixes things together; would be nice to somehow separate "main" and "pileup" truth particles.
   if(fHasPileupFile){
+    cout << "Calling AnalyzeParticle on fEventPileup.particles()." << endl;
     std::vector<std::shared_ptr<HepMC3::GenParticle>> pileupParticles = fEventPileup.particles();
-    for(auto particle: pileupParticles) AnalyzeParticle(factory,particle, kTRUE);
+    Int_t counter = 0;
+    for(auto particle: pileupParticles){
+      cout << Form("\tAnalyze pileup [%i]",counter) << endl;
+      AnalyzeParticle(factory,particle, kTRUE);
+      counter++;
+    }
   }
 
   // capturing weights -- TODO: This might need some work, admittedly I don't fully understand this in the old code. -Jan
@@ -287,7 +293,10 @@ void DelphesHepMC3ROOTReader::AnalyzeParticle(DelphesFactory *factory, std::shar
   );
 
   candidate->D1 = particle->id();
-  if(isPileup) candidate->IsPU = 1;
+  if(isPileup){
+    cout << "IsPU = 1" << endl;
+    candidate->IsPU = 1;
+  }
 
   auto prod_vtx = particle->production_vertex();
   Int_t prod_vertex_id = prod_vtx ? prod_vtx->id() : 0;

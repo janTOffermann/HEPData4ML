@@ -87,7 +87,7 @@ def main(args):
         assert(False)
 
     pythia_rng = args['rng']
-    pileup_files = args['pileupFiles']
+    pileup_input_files = args['pileupFiles']
 
     # Arguments to be used by HTCondor jobs.
     # TODO: Maybe find another way to handle these? A wrapper script for condor?
@@ -255,6 +255,7 @@ def main(args):
         # Thus it is preferrable to produce these in a dedicated run, and then later
         # simply use a pileup_handler that fetches these pre-mixed events.
         pileup_handler = None
+        pileup_files = None
         if('pileup' in steps):
             timer.start_timestamp('pileup')
             pileup_handler = configurator.GetPileupHandler()
@@ -266,8 +267,8 @@ def main(args):
                 pileup_handler.SetConfigurator(configurator)
                 pileup_handler.SetHTCondorInfo(is_condor_job,condor_job_number,n_condor_jobs)
 
-                if(pileup_files is not None): # overriding config file
-                    pileup_handler.SetPileupFiles(pileup_files)
+                if(pileup_input_files is not None): # overriding config file
+                    pileup_handler.SetPileupFiles(pileup_input_files)
 
                 # TODO: Maybe rework this code, it's a bit ugly to have to check attributes like this? -Jan
                 if(hasattr(pileup_handler,'SetGenerator')):
@@ -285,8 +286,11 @@ def main(args):
                 elif(args['rng'] is not None): # Case 2: The Pythia RNG seed was specified at command line -- in practice we may want to then use this for pileup too (e.g. HTCondor usage).
                     pileup_handler.SetRNGSeed(pythia_rng)
 
-                # TODO: Rework the Process() step, should switch to producing sidecar files.
-                pileup_handler.Process(hepmc_files) # will overwrite the hepmc_files
+                # for file in hepmc_files:
+                #     pileup_handler(file)
+
+                # # TODO: Rework the Process() step, should switch to producing sidecar files.
+                pileup_files = pileup_handler.Process(hepmc_files) # will overwrite the hepmc_files
 
                 # TODO: Now we fetch some information from the pileup handler, that will propagate into the final dataset:
                 # info on the number of interactions per bunch crossing, the actual indices of pileup events used,
@@ -327,6 +331,8 @@ def main(args):
             if(simulator is not None):
                 simulator.SetMetadataHandler(metadata_handler)
                 simulator.SetInputs(hepmc_files)
+                if(pileup_files is not None):
+                    simulator.SetPileupInputs(pileup_files)
                 simulator.Process()
                 delphes_files = simulator.GetOutputFiles()
             timer.end_timestamp('simulation')
@@ -370,10 +376,10 @@ def main(args):
                 processor.SetProgressBarPrefix('\tProducing N-tuple for file {}/{}:'.format(i+1,len(hepmc_files)))
                 processor.ProcessFull(hepmc_file,delphes_file, ntuple_file_individual,verbosity=ntuple_verbosity)
 
-                # Add information from the pileup handler (if any).
-                # TODO: This may need a little reworking? The handling of filenames might be a little fragile.
-                if(pileup_handler is not None):
-                    pileup_handler.AddPileupInfoToH5(ntuple_file_individual,cwd=outdir,file_key=hepmc_file)
+                # # Add information from the pileup handler (if any).
+                # # TODO: This may need a little reworking? The handling of filenames might be a little fragile.
+                # if(pileup_handler is not None):
+                #     pileup_handler.AddPileupInfoToH5(ntuple_file_individual,cwd=outdir,file_key=hepmc_file)
 
                 ntuple_file_individual = '/'.join((outdir,ntuple_file_individual))
                 ntuple_files.append(ntuple_file_individual)

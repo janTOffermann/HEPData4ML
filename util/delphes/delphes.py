@@ -29,7 +29,7 @@ class DelphesWrapper:
     def GetExecutable(self)->str:
         return self.executable
 
-    def HepMC3ToDelphes(self,hepmc_file:str, output_file:str=None, delphes_card:str=None, logfile:str=None, cwd:str=None, force:bool=False, default_rng_seed:int=None):
+    def HepMC3ToDelphes(self,hepmc_file:str, pileup_file:str=None, output_file:str=None, delphes_card:str=None, logfile:str=None, cwd:str=None, force:bool=False, default_rng_seed:int=None):
         """
         This function runs the Delphes executable,
         to convert HepMC3(ROOT) files to DELPHES ROOT files.
@@ -55,8 +55,10 @@ class DelphesWrapper:
             return output_file
 
         delphes_ex = self.executable['hepmc']
+        mode ='ascii'
         if(hepmc_file.split('.')[-1].lower() == 'root'):
             delphes_ex = self.executable['root']
+            mode='root'
 
         # default card
         if(delphes_card is None): delphes_card = glob.glob('{}/**/{}'.format(self.delphes_dir,self.default_card),recursive=True)[0]
@@ -66,17 +68,24 @@ class DelphesWrapper:
         except: pass
 
         command = [delphes_ex, delphes_card, output_file, hepmc_file]
+
+        if(pileup_file is not None):
+            if(mode=='root'):
+                command.append(pileup_file)
+            else:
+                print('\t\tDelphes was passed pileup file: {}'.format(pileup_file))
+                print('\t\tbut {} doesn\'t support pileup input.'.format(self.executable['ascii']))
+                print('\t\t(instead use {}, with HepMC3/ROOT format.)'.format(self.executable['root']))
+
         if(default_rng_seed is not None):
             command.append(str(default_rng_seed))
 
         if(logfile is not None):
             with open(logfile,'a') as f:
-                sub.check_call(command,
-                            shell=False, stdout=f, stderr=f)
+                sub.check_call(command, stdout=f, stderr=f)
 
         else:
-            sub.check_call(command,
-                        shell=False, stdout=sub.DEVNULL, stderr=sub.DEVNULL)
+            sub.check_call(command, stdout=sub.DEVNULL, stderr=sub.DEVNULL)
 
         if(cwd is not None): return output_file_nodir
         return output_file # return the name (esp. useful if none was provided)

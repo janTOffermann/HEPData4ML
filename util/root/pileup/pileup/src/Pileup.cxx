@@ -19,42 +19,42 @@ using namespace std;
 
 namespace Pileup{
 
-  PileupOverlay::PileupOverlay(){
+  PileupMixer::PileupMixer(){
     _InitRNG();
   }
 
-  PileupOverlay::~PileupOverlay(){
+  PileupMixer::~PileupMixer(){
     if(_muDistribution) delete _muDistribution;
     delete _rng;
     delete _rngAdapter;
   }
 
-  void PileupOverlay::Initialize(){
+  void PileupMixer::Initialize(){
     _InitializeIndexMap();
   }
 
-  void PileupOverlay::_InitRNG(){
+  void PileupMixer::_InitRNG(){
     if(_rng) delete _rng;
     _rng = new TRandomMixMax17(_rngSeed);
     _rngAdapter = new TRandomAdapter(_rng);
   }
 
-  void PileupOverlay::SetRNGSeed(Int_t rngSeed){
+  void PileupMixer::SetRNGSeed(Int_t rngSeed){
     _rngSeed = rngSeed;
     _InitRNG();
   }
 
-  void PileupOverlay::SetHTCondorInfo(Bool_t flag, Int_t jobNumber, Int_t nJobs){
+  void PileupMixer::SetHTCondorInfo(Bool_t flag, Int_t jobNumber, Int_t nJobs){
     _condorFlag = flag;
     _jobNumber = jobNumber;
     _nJobs = nJobs;
   }
 
-  void PileupOverlay::SetBeamSpotSigma(Double_t dt, Double_t dx, Double_t dy, Double_t dz){
+  void PileupMixer::SetBeamSpotSigma(Double_t dt, Double_t dx, Double_t dy, Double_t dz){
     _beamSpotSigma = {dt, dx, dy, dz};
   }
 
-  void PileupOverlay::_InitializeIndexMap(){
+  void PileupMixer::_InitializeIndexMap(){
     _indexingMap = {};
     _nPileupEvents = 0;
 
@@ -86,12 +86,12 @@ namespace Pileup{
     return;
   }
 
-  void PileupOverlay::_ResetMask(){
+  void PileupMixer::_ResetMask(){
     _pileupEventIndicesMask = vector<Bool_t>(_nPileupEvents, kTRUE);
     return;
   }
 
-  void PileupOverlay::InitMuDistribution(Double_t muAvg, Double_t muSigma){
+  void PileupMixer::InitMuDistribution(Double_t muAvg, Double_t muSigma){
     if(_muDistribution) delete _muDistribution;
 
     _muAvg = muAvg;
@@ -109,7 +109,7 @@ namespace Pileup{
     return;
   }
 
-  void PileupOverlay::InitMuDistribution(TH1D* muDistributionHistogram){
+  void PileupMixer::InitMuDistribution(TH1D* muDistributionHistogram){
     _muDistribution = new TH1D(*muDistributionHistogram);
     _muDistribution->SetName("PileupOverlay_mu");
     _muDistribution->SetTitle("");
@@ -119,7 +119,7 @@ namespace Pileup{
     return;
   }
 
-  Int_t PileupOverlay::_SampleMuDistribution(){
+  Int_t PileupMixer::_SampleMuDistribution(){
     if(!_muInitialized){
       return 0;
     }
@@ -128,7 +128,7 @@ namespace Pileup{
     return result;
   }
 
-  void PileupOverlay::_PickEventIndices(Int_t nEvents){
+  void PileupMixer::_PickEventIndices(Int_t nEvents){
 
     // Do "reservoir sampling"
     _selectedGlobalPileupIndices.clear();
@@ -149,7 +149,10 @@ namespace Pileup{
     }
 
     if(_selectedGlobalPileupIndices.size() != nEvents){
-      cout << "Warning: Running out of pileup, will recycle." << endl;
+      if(_nWarning < _nWarningMax){
+        cout << "Warning: Running out of pileup, will recycle (resetting event mask)." << endl;
+        _nWarning++;
+      }
       _ResetMask();
       _PickEventIndices(nEvents);
     }
@@ -159,11 +162,11 @@ namespace Pileup{
     if(!_allowReuse) _UpdateMask();
   }
 
-  void PileupOverlay::_UpdateMask(){
+  void PileupMixer::_UpdateMask(){
     for(ULong_t idx : _selectedGlobalPileupIndices) _pileupEventIndicesMask[idx] = kFALSE;
   }
 
-  void PileupOverlay::_FetchEventSingleFile(const TString& filename, const vector<ULong_t>& localIndices, vector<HepMC3::GenEvent*> &events){
+  void PileupMixer::_FetchEventSingleFile(const TString& filename, const vector<ULong_t>& localIndices, vector<HepMC3::GenEvent*> &events){
     HepMC3::ReaderRootTree reader(filename.Data()); // Note the use of HepMC3/ROOT format! Can optionally pass tree name but it is standard
 
     for(ULong_t idx : localIndices){
@@ -178,7 +181,7 @@ namespace Pileup{
     return;
   }
 
-  map<TString, vector<ULong_t>> PileupOverlay::_GetLocalIndices(){
+  map<TString, vector<ULong_t>> PileupMixer::_GetLocalIndices(){
     map<TString, vector<ULong_t>> localIndexMapping = {};
     for(ULong_t globalIdx : _selectedGlobalPileupIndices){
       for (const auto& entry : _indexingMap){
@@ -194,7 +197,7 @@ namespace Pileup{
     return localIndexMapping;
   }
 
-  vector<HepMC3::GenEvent*> PileupOverlay::_FetchEvents(){
+  vector<HepMC3::GenEvent*> PileupMixer::_FetchEvents(){
     // Convert from the globalIndices to filenames and localIndices
     map<TString, vector<ULong_t>> indexMap = _GetLocalIndices(); // the global indices are sorted, so local index lists will be too
     vector<HepMC3::GenEvent*> evts = {};
@@ -204,98 +207,8 @@ namespace Pileup{
     return evts;
   }
 
-  void PileupOverlay::_CombineEventsWithPileup(vector<HepMC3::GenEvent*> &events){
-    // This function takes in a vector of input events, and
-    // adds pileup to all of them. Batching things this way
-    // may be more efficient than going event-by-event, since
-    // it (may) reduce the total amount of I/O (incl. lookup
-    // in the pileup files), at the cost of increased memory usage.
 
-    Size_t nEvents = events.size();
-
-    // Sample mu for each input event, and keep track of how many
-    // pileup events in total we're going to need to fetch.
-    vector<Int_t> muValues = {};
-    Int_t nPileupInBatch = 0;
-    for(Size_t i = 0; i < nEvents; i++){
-      Int_t mu = _SampleMuDistribution();
-      muValues.push_back(mu);
-      nPileupInBatch += mu;
-    }
-
-    // Edge case: nPileupInBatch > _nPileupEvents
-    if(nPileupInBatch > _nPileupEvents){
-      cout << "Error: Requesting more pileup events than are in the input pileup files." << endl;
-      return;
-    }
-
-    // Fetch all the pileup indices we need at once.
-    // The indices are sorted sequentially, which may help
-    // with the file I/O (more likely to pick up multiple
-    // events within a single basket/batch of the TTrees).
-    _PickEventIndices(nPileupInBatch);
-
-    // Now fetch pileup events.
-    cout << "Fetching a batch of pilep events..." <<endl;
-    vector<HepMC3::GenEvent*> pileupEvents = _FetchEvents();
-    cout << "\tDone." << endl;
-    // Shuffle the pileup event vector.
-    // (Without the shuffle, events are listed in blocks corresponding
-    //  with the list of input files -- that maybe aren't random).
-    shuffle(pileupEvents.begin(),pileupEvents.end(), *_rngAdapter);
-
-    // Now loop thru the input events, and combine each with a set of pileup events,
-    // using the mu values in muValues. The input events are modified in-place.
-    Int_t muSum = 0;
-    for(Size_t i = 0; i < nEvents; i++){
-      Int_t mu = muValues.at(i);
-
-      vector<HepMC3::GenEvent*> pileupEventsSingle;
-      pileupEventsSingle.assign(pileupEvents.begin() + muSum, pileupEvents.begin() + muSum + mu);
-
-      // Here, we'll generate displacements (based on beamspot) for the main event
-      // as well as the pileup events, plus random phi rotations for the pileup events.
-      vector<Double_t> mainDisplacement = _generateDisplacement();
-      vector<vector<Double_t>> pileupDisplacements = {};
-      for(Size_t i = 0; i < mu; i++) pileupDisplacements.push_back(_generateDisplacement());
-
-      vector<Double_t> pileupPhiRotations(mu);
-      generate(pileupPhiRotations.begin(),pileupPhiRotations.end(), [this](){return _rng->Uniform(2. * TMath::Pi());});
-
-      // displace the main event
-      vector<HepMC3::GenVertexPtr> evtVertices = events.at(i)->vertices();
-      for(HepMC3::GenVertexPtr vtx : evtVertices){
-        const HepMC3::FourVector& oldPosition = vtx->position();
-        HepMC3::FourVector new_position(
-          oldPosition.x() + mainDisplacement[1],
-          oldPosition.y() + mainDisplacement[2],
-          oldPosition.z() + mainDisplacement[3],
-          oldPosition.t() + mainDisplacement[0]
-        );
-        vtx->set_position(new_position);
-      }
-
-      cout << Form("Adding pileup to event %i/%i",(Int_t)i + 1, (Int_t)nEvents) << endl;
-      _AddPileup(
-        events.at(i),
-        pileupEventsSingle,
-        pileupDisplacements,
-        pileupPhiRotations
-      );
-      muSum += mu;
-    }
-  }
-
-  void PileupOverlay::_AddPileup(HepMC3::GenEvent* evt, const vector<HepMC3::GenEvent*>& pileup, const vector<vector<Double_t>>& pileupDisplacements, const vector<Double_t>& pileupPhiRotations){
-    // Loop over pileup events.
-    for(Size_t i = 0; i < pileup.size(); i++){
-      // cout << Form("\tAdding pileup %i/%i to the event", (Int_t)i + 1, (Int_t)pileup.size()) << endl;
-      _AddPileupSingleB(evt, pileup[i], pileupDisplacements[i], pileupPhiRotations[i]);
-    }
-    return;
-  }
-
-  vector<Double_t> PileupOverlay::_generateDisplacement(){
+  vector<Double_t> PileupMixer::_generateDisplacement(){
     return {
       _rng->Gaus(0.,_beamSpotSigma[0]),
       _rng->Gaus(0.,_beamSpotSigma[1]),
@@ -304,88 +217,9 @@ namespace Pileup{
     };
   }
 
-  void PileupOverlay::_AddPileupSingle(HepMC3::GenEvent* evt, HepMC3::GenEvent* pileup_evt, const vector<Double_t>& pileupDisplacement, const Double_t& phiRotation){
-    // Create mapping from old vertex pointers to new vertex shared pointers
-    unordered_map<HepMC3::ConstGenVertexPtr, HepMC3::GenVertexPtr> vertex_map;
+  void PileupMixer::_AddPileupSingle(HepMC3::GenEvent* evt, HepMC3::GenEvent* pileup_evt, const vector<Double_t>& pileupDisplacement, const Double_t& phiRotation){
+    // TODO: This has to be thoroughly tested!
 
-    // Get all vertices from pileup event
-    vector<HepMC3::GenVertexPtr> vertices_list = pileup_evt->vertices();
-    vertex_map.reserve(vertices_list.size());
-
-    ROOT::Math::RotationZ rotation(phiRotation);
-
-    // Copy the pileup vertices, adding displacements to them.
-    for (const auto& vertex : vertices_list) {
-      HepMC3::FourVector old_position = vertex->position();
-
-      // Apply rotation
-      vector<Double_t> new_position_coords = _rotateVectorPhi(&old_position,rotation);
-
-      // Apply displacement
-      for(Size_t i = 0; i < 4; i++){
-        new_position_coords[i] += pileupDisplacement[i];
-      }
-
-      // Note the (x, y, z, t) order for constructor
-      HepMC3::FourVector new_position(new_position_coords[1], new_position_coords[2],
-                              new_position_coords[3], new_position_coords[0]);
-
-      auto new_vertex = make_shared<HepMC3::GenVertex>(new_position);
-      new_vertex->set_status(vertex->status());
-
-      // Store mapping
-      vertex_map[vertex] = new_vertex;
-    }
-
-    // Copy particles from pileup event, and add them to the vertices (also from pileup event).
-    for (const auto& particle : pileup_evt->particles()) {
-
-      // Filter stable particles if requested.
-      if(_stableOnly && particle->status() != 1) continue;
-
-      // Get old momentum
-      HepMC3::FourVector old_momentum = particle->momentum();
-
-      // Apply rotation
-      vector<Double_t> new_momentum_coords = _rotateVectorPhi(&old_momentum,rotation);
-
-      // Create new particle. Note the (px, py, pz, e) order for constructor
-      HepMC3::FourVector new_momentum(new_momentum_coords[1], new_momentum_coords[2],
-                              new_momentum_coords[3], new_momentum_coords[0]);
-
-      auto new_particle = make_shared<HepMC3::GenParticle>(new_momentum,particle->pid(),particle->status());
-      new_particle->set_generated_mass(particle->generated_mass());
-
-      // Set production vertex if it exists
-      if (particle->production_vertex()) {
-        auto it = vertex_map.find(particle->production_vertex());
-        if(it != vertex_map.end()) it->second->add_particle_out(new_particle);
-        // If not found, it's expected (e.g., beam particles) - no action needed
-      }
-
-      // Set end vertex if it exists
-      if (particle->end_vertex()) {
-        auto it = vertex_map.find(particle->end_vertex());
-        if(it != vertex_map.end()) {
-          it->second->add_particle_in(new_particle);
-        }
-        else{
-          cout << "Warning: Could not find end vertex for particle " << particle->pid() << endl;
-        }
-      }
-    }
-
-    // Add all the (new) pileup vertices to the target event.
-    // They have particles attached to them.
-    for (const auto& pair : vertex_map) {
-      evt->add_vertex(pair.second);
-    }
-    return;
-  }
-
-
-
-  void PileupOverlay::_AddPileupSingleB(HepMC3::GenEvent* evt, HepMC3::GenEvent* pileup_evt, const vector<Double_t>& pileupDisplacement, const Double_t& phiRotation){
     // Will overlay pileup events onto the main event "evt" using GenEvent::add_tree().
     // NOTE: I previously tried a different approach, where I fetch all the vertices
     //       from the pileup events, add incoming/outgoing particles, and then add
@@ -440,33 +274,46 @@ namespace Pileup{
       particle->set_momentum(rotatedMomentum);
 
     }
-
+    cout << "\t_AddPileupSingle: Calling_add_tree" << endl;
     evt->add_tree(pileupParticles);
+    cout << Form("\t\tevt->particles().size() = %i",(Int_t)evt->particles().size()) << endl;
 
     return;
   }
 
+  void PileupMixer::_AddPileupSingleStableOnly(HepMC3::GenEvent* evt, HepMC3::GenEvent* pileup_evt, const vector<Double_t>& pileupDisplacement, const Double_t& phiRotation){
+    // TODO: This has to be thoroughly tested!
 
+    // Will overlay pileup events onto the main event "evt" using GenEvent::add_tree().
+    // Will only take stable pileup particles, and will attach them to a single vertex.
+    // As long as they're prompt, this should be OK! We typically don't care about the
+    // whole history of the pileup events.
+    // Fetch the pileup particles.
 
+    vector<HepMC3::GenParticlePtr> pileupParticles = pileup_evt->particles();
 
+    HepMC3::FourVector vtxPosition(pileupDisplacement[1],pileupDisplacement[2],pileupDisplacement[3],pileupDisplacement[0]);
+    HepMC3::GenVertexPtr vtx = make_shared<HepMC3::GenVertex>(vtxPosition);
+    ROOT::Math::RotationZ rotation(phiRotation);
 
+    for(auto particle : pileupParticles){
+      // Deal with particle momentum -- rotation only.
+      if(particle->status() != 1) continue;
+      HepMC3::GenParticlePtr p = make_shared<HepMC3::GenParticle>(particle->momentum(), particle->pid(),1);
+      HepMC3::FourVector oldMomentum = p->momentum();
+      vector<Double_t> rotatedMomentumCoords = _rotateVectorPhi(&oldMomentum,rotation); // TODO: CHECK
+      HepMC3::FourVector rotatedMomentum(rotatedMomentumCoords[1],rotatedMomentumCoords[2],rotatedMomentumCoords[3],rotatedMomentumCoords[0]);
+      p->set_momentum(rotatedMomentum);
+      vtx->add_particle_out(p);
+    }
 
+    // cout << "\t_AddPileupSingleStableOnly: Calling add_vertex" << endl;
+    evt->add_vertex(vtx);
+    // cout << Form("\t\tevt->particles().size() = %i",(Int_t)evt->particles().size()) << endl;
+    return;
+  }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  vector<Double_t> PileupOverlay::_rotateVectorPhi(HepMC3::FourVector* vector, const ROOT::Math::RotationZ& rotation){
+  vector<Double_t> PileupMixer::_rotateVectorPhi(HepMC3::FourVector* vector, const ROOT::Math::RotationZ& rotation){
     if(!_allowPhiRotations) return {vector->t(), vector->x(), vector->y(), vector->z()};
 
     ROOT::Math::XYZVector spatial(vector->x(), vector->y(), vector->z());
@@ -475,7 +322,7 @@ namespace Pileup{
     return {vector->t(), rotatedVec.X(), rotatedVec.Y(), rotatedVec.Z()};
   }
 
-  vector<Double_t> PileupOverlay::_rotateAndTranslateVector(HepMC3::FourVector* v, const vector<Double_t>& displacementCoordinates, const ROOT::Math::RotationZ& rotation){
+  vector<Double_t> PileupMixer::_rotateAndTranslateVector(HepMC3::FourVector* v, const vector<Double_t>& displacementCoordinates, const ROOT::Math::RotationZ& rotation){
     // rotation first, then translation
     vector<Double_t> rotatedCoords = _rotateVectorPhi(v,rotation);
     return {
@@ -486,9 +333,105 @@ namespace Pileup{
     };
   }
 
+vector<HepMC3::GenEvent*> PileupMixer::_CreatePileupEvents(Int_t nEvents){
+    // This function takes in a number for the total number
+    // of combined pileup events to produce, and makes them.
+    // Batching things in this way -- not just making a single
+    // combined event, but a bunch of them -- may be
+    // more efficient than going event-by-event, since it
+    // (may) reduce the total amount of I/O (incl. lookup
+    // in the pileup files), at the cost of increased memory usage.
 
+    // Sample mu for each input event, and keep track of how many
+    // pileup events in total we're going to need to fetch.
 
-  void PileupOverlay::operator()(TString inputFile, TString outputFile){
+    vector<HepMC3::GenEvent*> events = {};
+
+    vector<Int_t> muValues = {};
+    Int_t nPileupInBatch = 0;
+    Int_t nEventsLocal = -1;
+    for(Int_t i = 0; i < nEvents; i++){
+      Int_t mu = _SampleMuDistribution();
+      nPileupInBatch += mu;
+      if(nPileupInBatch > _nPileupEvents){
+        nPileupInBatch -= mu;
+
+        nEventsLocal = i;
+        break;
+      }
+
+      muValues.push_back(mu);
+    }
+
+    if(nEventsLocal == 0){
+      cout << "Error: Not enough pileup events in input to produce a single event!" << endl;
+      return {};
+    }
+    else if(nEventsLocal > 0){
+      events = _CreatePileupEvents(nEvents - nEventsLocal);
+      nEvents = nEventsLocal;
+    }
+
+    _PickEventIndices(nPileupInBatch);
+
+    // Now fetch pileup events.
+    cout << "Fetching a batch of pilep events..." <<endl;
+    vector<HepMC3::GenEvent*> pileupEvents = _FetchEvents();
+    cout << "\tDone." << endl;
+    // Shuffle the pileup event vector.
+    // (Without the shuffle, events are listed in blocks corresponding
+    //  with the list of input files -- that maybe aren't random).
+    shuffle(pileupEvents.begin(),pileupEvents.end(), *_rngAdapter);
+
+    // Now loop thru the input events, and combine each with a set of pileup events,
+    // using the mu values in muValues. The input events are modified in-place.
+    Int_t muSum = 0;
+    for(Int_t i = 0; i < nEvents; i++){
+      Int_t mu = muValues.at(i);
+
+      vector<HepMC3::GenEvent*> pileupEventsSingle;
+      pileupEventsSingle.assign(pileupEvents.begin() + muSum, pileupEvents.begin() + muSum + mu);
+
+      // Here, we'll generate displacements (based on beamspot) for the main event
+      // as well as the pileup events, plus random phi rotations for the pileup events.
+      vector<Double_t> mainDisplacement = _generateDisplacement();
+      vector<vector<Double_t>> pileupDisplacements = {};
+      for(Size_t i = 0; i < mu; i++) pileupDisplacements.push_back(_generateDisplacement());
+
+      vector<Double_t> pileupPhiRotations(mu);
+      generate(pileupPhiRotations.begin(),pileupPhiRotations.end(), [this](){return _rng->Uniform(2. * TMath::Pi());});
+
+      HepMC3::GenEvent* evt = _CreatePileupEvent(
+        pileupEventsSingle,
+        pileupDisplacements,
+        pileupPhiRotations
+      );
+      evt->set_event_number(i);
+      events.push_back(evt);
+      muSum += mu;
+    }
+    return events;
+  }
+
+  HepMC3::GenEvent* PileupMixer::_CreatePileupEvent(const vector<HepMC3::GenEvent*>& pileup, const vector<vector<Double_t>>& pileupDisplacements, const vector<Double_t>& pileupPhiRotations){
+
+    // Create empty GenEvent
+    HepMC3::GenEvent* evt = new HepMC3::GenEvent(); // defaults to GeV & mm units
+
+    // cout << Form("_CreatePileupEvent: Created empty event, evt->particles().size() = %i",(Int_t)evt->particles().size()) << endl;
+
+    // Loop over pileup events.
+    for(Size_t i = 0; i < pileup.size(); i++){
+      // cout << Form("\tAdding pileup %i/%i to the event", (Int_t)i + 1, (Int_t)pileup.size()) << endl;
+      if(_stableOnly) _AddPileupSingleStableOnly(evt, pileup[i], pileupDisplacements[i], pileupPhiRotations[i]);
+      else _AddPileupSingle(evt, pileup[i], pileupDisplacements[i], pileupPhiRotations[i]);
+    }
+    // cout << Form("_CreatePileupEvent: Reached the end of function, evt->particles().size() = %i\n",(Int_t)evt->particles().size()) << endl;
+
+    return evt;
+  }
+
+  void PileupMixer::operator()(ULong_t nEvents, TString outputFile){
 
     // Make sure we have a mu distribution of some kind initialized.
     if(!_muInitialized){
@@ -499,53 +442,44 @@ namespace Pileup{
     // Make sure we've indexed the pileup files.
     if(!_indexingMapInitialized) _InitializeIndexMap();
 
-    // Open the input file.
-    HepMC3::ReaderRootTree reader(inputFile.Data());
-    Bool_t status = !reader.failed();
-
     // Prepare the writer.
     if(_writer) delete _writer;
-    _writer = new HepMC3::WriterRootTree(outputFile.Data(),reader.run_info()); // TODO: Is it OK to just fetch the old run info?
-
-    vector<HepMC3::GenEvent*> eventBuffer = {};
+    _writer = new HepMC3::WriterRootTree(outputFile.Data());
 
     ULong_t counter = 0;
-    while(status){
+    while(counter < nEvents){
 
-      if((Int_t)eventBuffer.size() == _batchSize){
-        // add in the pileup
-        _CombineEventsWithPileup(eventBuffer);
+      ULong_t batchSize = _batchSize;
+      if(nEvents - counter < _batchSize) batchSize = nEvents - counter;
 
-        // flush the buffer
-        _Flush(eventBuffer);
+      // Create a batch of pileup events.
+      vector<HepMC3::GenEvent*> eventBuffer = _CreatePileupEvents(batchSize);
 
-        for(auto entry: eventBuffer) delete entry;
-        eventBuffer.clear();
-      }
-
-      HepMC3::GenEvent* evt = new HepMC3::GenEvent();
-      status = reader.read_event(*evt);
-      if(!status){
-        break;
-      }
-      eventBuffer.push_back(evt);
-      counter++;
+      // flush the buffer.
+      _Flush(eventBuffer);
+      for(auto entry: eventBuffer) delete entry;
+      counter += batchSize;
     }
-
-    // One more flush for any stragglers
-    _CombineEventsWithPileup(eventBuffer);
-    _Flush(eventBuffer);
-    reader.close();
     _writer->close();
     delete _writer; // safe to destroy it here
 
   }
 
-  void PileupOverlay::_Flush(vector<HepMC3::GenEvent*> events){
+  void PileupMixer::_Flush(vector<HepMC3::GenEvent*> events){
     for(HepMC3::GenEvent* evt : events){
       _writer->write_event(*evt);
     }
     return;
   }
 
+  void PileupMixer::operator()(TString inputFile, TString outputFile){
+
+    // Determine the number of events in the input file.
+    TFile* f = new TFile(inputFile,"READ");
+    TTree* t = (TTree*)f->Get("hepmc3_tree");
+    ULong_t nEvents = t->GetEntries();
+    f->Close();
+
+    return this->operator()(nEvents,outputFile);
+  }
 }
