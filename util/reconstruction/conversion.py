@@ -137,21 +137,30 @@ class Processor:
     def SetOutputDirectory(self,outdir:str):
         self.outdir = outdir
 
-    def ProcessFull(self, hepmc_file:str, delphes_file:str, output_file:Optional[str]=None, verbosity:int=0):
+    def ProcessFull(self, hepmc_file:str, pileup_file:Optional[str], delphes_file:str, output_file:Optional[str]=None, verbosity:int=0):
 
-        output_file = self.Process(hepmc_file,delphes_file, output_file,verbosity)
+        output_file = self.Process(hepmc_file,pileup_file, delphes_file, output_file,verbosity)
         self.PostProcess(hepmc_file,output_file)
         return output_file
 
     @profile_method('Processor.Process')
-    def Process(self, hepmc_file:str, delphes_file:Optional[str], output_file:Optional[str]=None, verbosity:int=0):
+    def Process(self, hepmc_file:str, pileup_file:Optional[str], delphes_file:Optional[str], output_file:Optional[str]=None, verbosity:int=0):
 
-        # Parse hepmc_files
-        hepmc_file = '{}/{}'.format(self.outdir,hepmc_file)
+        # Parse hepmc_file
+        if(self.outdir not in hepmc_file):
+            hepmc_file = '{}/{}'.format(self.outdir,hepmc_file)
 
-        # Parse delphes_files
+        # Parse pileup_file
+        if(pileup_file is not None):
+            if(self.outdir not in pileup_file):
+                pileup_file = '{}/{}'.format(self.outdir,pileup_file)
+        else:
+            pileup_file = ""
+
+        # Parse delphes_file
         if(delphes_file is not None):
-            delphes_file = '{}/{}'.format(self.outdir,delphes_file)
+            if(self.outdir not in delphes_file):
+                delphes_file = '{}/{}'.format(self.outdir,delphes_file)
         else:
             delphes_file = ""
 
@@ -162,7 +171,15 @@ class Processor:
         output_file = '{}/{}'.format(self.outdir,output_file)
 
         # TODO: Run the process here
-        self.processor.Process(hepmc_file, delphes_file, output_file) # <- does the whole n-tuple conversion (to ROOT format)
+        print()
+        print('Calling self.processor.Process:')
+        print('\t',hepmc_file)
+        print('\t',pileup_file)
+        print('\t',delphes_file)
+        print('\t',output_file)
+        print()
+
+        self.processor.Process(hepmc_file, pileup_file, delphes_file, output_file) # <- does the whole n-tuple conversion (to ROOT format)
         return output_file_no_extension
 
     @profile_method('Processor.PostProcess')

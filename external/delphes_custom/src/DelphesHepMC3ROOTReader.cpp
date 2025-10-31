@@ -43,7 +43,7 @@
 
 using namespace std;
 
-static const int kBufferSize = 16384;
+static const Int_t kBufferSize = 16384;
 
 //---------------------------------------------------------------------------
 
@@ -51,7 +51,7 @@ DelphesHepMC3ROOTReader::DelphesHepMC3ROOTReader() :
   fInputFile(0), fBuffer(0), fPDG(0),
   fVertexCounter(-2), fParticleCounter(-1)
 {
-  fBuffer = new char[kBufferSize];
+  fBuffer = new Char_t[kBufferSize];
 
   fPDG = TDatabasePDG::Instance();
 }
@@ -81,7 +81,6 @@ void DelphesHepMC3ROOTReader::SetInputFile(TString inputFile){
 //---------------------------------------------------------------------------
 
 void DelphesHepMC3ROOTReader::SetInputPileupFile(TString inputPileupFile){
-  cout << "Setting inputPileupFile to |" << inputPileupFile << "|" << endl;
   if(inputPileupFile.EqualTo("")){
     fHasPileupFile = kFALSE;
     return;
@@ -109,7 +108,7 @@ void DelphesHepMC3ROOTReader::Clear(){
 
 //---------------------------------------------------------------------------
 
-bool DelphesHepMC3ROOTReader::EventReady(){
+Bool_t DelphesHepMC3ROOTReader::EventReady(){
   return kTRUE;
   //return (fVertexCounter == -1) && (fParticleCounter == 0);
 }
@@ -142,14 +141,8 @@ void DelphesHepMC3ROOTReader::Analyze(DelphesFactory *factory,
 
   // If we have read in a pileup event, we also add that in.
   if(fHasPileupFile){
-    cout << "Calling AnalyzeParticle on fEventPileup.particles()." << endl;
     std::vector<std::shared_ptr<HepMC3::GenParticle>> pileupParticles = fEventPileup.particles();
-    Int_t counter = 0;
-    for(auto particle: pileupParticles){
-      cout << Form("\tAnalyze pileup [%i]",counter) << endl;
-      AnalyzeParticle(factory,particle, kTRUE);
-      counter++;
-    }
+    for(auto particle: pileupParticles) AnalyzeParticle(factory,particle, kTRUE);
   }
 
   // capturing weights -- TODO: This might need some work, admittedly I don't fully understand this in the old code. -Jan
@@ -216,10 +209,9 @@ void DelphesHepMC3ROOTReader::AnalyzeEvent(ExRootTreeBranch *branch, long long /
 void DelphesHepMC3ROOTReader::AnalyzeWeight(ExRootTreeBranch *branch)
 {
   Weight *element;
-  vector<double>::const_iterator itWeights;
+  vector<Double_t>::const_iterator itWeights;
 
-  for(itWeights = fWeights.begin(); itWeights != fWeights.end(); ++itWeights)
-  {
+  for(itWeights = fWeights.begin(); itWeights != fWeights.end(); ++itWeights){
     element = static_cast<Weight *>(branch->NewEntry());
 
     element->Weight = *itWeights;
@@ -228,17 +220,16 @@ void DelphesHepMC3ROOTReader::AnalyzeWeight(ExRootTreeBranch *branch)
 
 //---------------------------------------------------------------------------
 
-void DelphesHepMC3ROOTReader::AnalyzeVertex(DelphesFactory *factory, int code, Candidate *candidate)
+void DelphesHepMC3ROOTReader::AnalyzeVertex(DelphesFactory *factory, Int_t code, Candidate *candidate)
 {
-  int index;
+  Int_t index;
   TLorentzVector *position;
   TObjArray *array;
-  vector<int>::iterator itParticle;
-  map<int, int>::iterator itVertexMap;
+  vector<Int_t>::iterator itParticle;
+  map<Int_t, Int_t>::iterator itVertexMap;
 
   itVertexMap = fOutVertexMap.find(code);
-  if(itVertexMap == fOutVertexMap.end())
-  {
+  if(itVertexMap == fOutVertexMap.end()){
     --fVertexCounter;
 
     index = fVertices.size();
@@ -250,22 +241,18 @@ void DelphesHepMC3ROOTReader::AnalyzeVertex(DelphesFactory *factory, int code, C
     position->SetXYZT(0.0, 0.0, 0.0, 0.0);
     fVertices.push_back(make_pair(position, array));
   }
-  else
-  {
+  else{
     index = itVertexMap->second;
     position = fVertices[index].first;
     array = fVertices[index].second;
   }
 
-  if(candidate)
-  {
+  if(candidate){
     array->Add(candidate);
   }
-  else
-  {
+  else{
     position->SetXYZT(fX, fY, fZ, fT);
-    for(itParticle = fParticles.begin(); itParticle != fParticles.end(); ++itParticle)
-    {
+    for(itParticle = fParticles.begin(); itParticle != fParticles.end(); ++itParticle){
       fInVertexMap[*itParticle] = index;
     }
   }
@@ -273,8 +260,7 @@ void DelphesHepMC3ROOTReader::AnalyzeVertex(DelphesFactory *factory, int code, C
 
 //---------------------------------------------------------------------------
 
-void DelphesHepMC3ROOTReader::AnalyzeParticle(DelphesFactory *factory, std::shared_ptr<HepMC3::GenParticle> particle, Bool_t isPileup)
-{
+void DelphesHepMC3ROOTReader::AnalyzeParticle(DelphesFactory *factory, std::shared_ptr<HepMC3::GenParticle> particle, Bool_t isPileup){
   Candidate *candidate;
 
   candidate = factory->NewCandidate();
@@ -293,10 +279,7 @@ void DelphesHepMC3ROOTReader::AnalyzeParticle(DelphesFactory *factory, std::shar
   );
 
   candidate->D1 = particle->id();
-  if(isPileup){
-    cout << "IsPU = 1" << endl;
-    candidate->IsPU = 1;
-  }
+  if(isPileup) candidate->IsPU = 1;
 
   auto prod_vtx = particle->production_vertex();
   Int_t prod_vertex_id = prod_vtx ? prod_vtx->id() : 0;
@@ -316,128 +299,106 @@ void DelphesHepMC3ROOTReader::FinalizeParticles(TObjArray *allParticleOutputArra
   Candidate *candidate;
   Candidate *candidateDaughter;
   TParticlePDG *pdgParticle;
-  int pdgCode;
-  map<int, int >::iterator itVertexMap;
-  map<int, pair<int, int> >::iterator itMotherMap;
-  map<int, pair<int, int> >::iterator itDaughterMap;
+  Int_t pdgCode;
+  map<Int_t, Int_t >::iterator itVertexMap;
+  map<Int_t, pair<Int_t, Int_t> >::iterator itMotherMap;
+  map<Int_t, pair<Int_t, Int_t> >::iterator itDaughterMap;
   size_t i;
-  int j, code, counter;
+  Int_t j, code, counter;
 
   counter = 0;
-  for(i = 0; i < fVertices.size(); ++i)
-  {
+  for(i = 0; i < fVertices.size(); ++i){
     position = fVertices[i].first;
     array = fVertices[i].second;
 
-    for(j = 0; j < array->GetEntriesFast(); ++j)
-    {
+    for(j = 0; j < array->GetEntriesFast(); ++j){
       candidate = static_cast<Candidate *>(array->At(j));
 
       candidate->Position = *position;
-      if(fPositionCoefficient != 1.0)
-      {
+      if(fPositionCoefficient != 1.0){
         candidate->Position *= fPositionCoefficient;
       }
 
-      if(fMomentumCoefficient != 1.0)
-      {
+      if(fMomentumCoefficient != 1.0){
         candidate->Momentum *= fMomentumCoefficient;
       }
 
       candidate->M1 = i;
 
       itDaughterMap = fDaughterMap.find(i);
-      if(itDaughterMap == fDaughterMap.end())
-      {
+      if(itDaughterMap == fDaughterMap.end()){
         fDaughterMap[i] = make_pair(counter, counter);
       }
-      else
-      {
+      else{
         itDaughterMap->second.second = counter;
       }
 
       code = candidate->D1;
 
       itVertexMap = fInVertexMap.find(code);
-      if(itVertexMap == fInVertexMap.end())
-      {
+      if(itVertexMap == fInVertexMap.end()){
         candidate->D1 = -1;
       }
-      else
-      {
+      else{
         code = itVertexMap->second;
 
         candidate->D1 = code;
 
         itMotherMap = fMotherMap.find(code);
-        if(itMotherMap == fMotherMap.end())
-        {
+        if(itMotherMap == fMotherMap.end()){
           fMotherMap[code] = make_pair(counter, -1);
         }
-        else
-        {
+        else{
           itMotherMap->second.second = counter;
         }
       }
 
       allParticleOutputArray->Add(candidate);
-      // cout << "Added candidate. " << candidate->Momentum.E() << " " << candidate->Momentum.Px() << endl;
-
       ++counter;
 
       pdgParticle = fPDG->GetParticle(candidate->PID);
 
-      candidate->Charge = pdgParticle ? int(pdgParticle->Charge() / 3.0) : -999;
+      candidate->Charge = pdgParticle ? Int_t(pdgParticle->Charge() / 3.0) : -999;
 
       if(!pdgParticle) continue;
 
       pdgCode = TMath::Abs(candidate->PID);
 
-      if(candidate->Status == 1)
-      {
+      if(candidate->Status == 1){
         stableParticleOutputArray->Add(candidate);
-        // cout << "\tAdded to stableParticleOutputArray" << endl;
       }
-      else if(pdgCode <= 5 || pdgCode == 21 || pdgCode == 15)
-      {
+      else if(pdgCode <= 5 || pdgCode == 21 || pdgCode == 15){
         partonOutputArray->Add(candidate);
       }
     }
   }
 
-  for(j = 0; j < allParticleOutputArray->GetEntriesFast(); ++j)
-  {
+  for(j = 0; j < allParticleOutputArray->GetEntriesFast(); ++j){
     candidate = static_cast<Candidate *>(allParticleOutputArray->At(j));
 
     itMotherMap = fMotherMap.find(candidate->M1);
-    if(itMotherMap == fMotherMap.end())
-    {
+    if(itMotherMap == fMotherMap.end()){
       candidate->M1 = -1;
       candidate->M2 = -1;
     }
-    else
-    {
+    else{
       candidate->M1 = itMotherMap->second.first;
       candidate->M2 = itMotherMap->second.second;
     }
 
-    if(candidate->D1 < 0)
-    {
+    if(candidate->D1 < 0){
       candidate->D1 = -1;
       candidate->D2 = -1;
     }
-    else
-    {
+    else{
       itDaughterMap = fDaughterMap.find(candidate->D1);
-      if(itDaughterMap == fDaughterMap.end())
-      {
+      if(itDaughterMap == fDaughterMap.end()){
         candidate->D1 = -1;
         candidate->D2 = -1;
         const TLorentzVector &decayPosition = candidate->Position;
         candidate->DecayPosition.SetXYZT(decayPosition.X(), decayPosition.Y(), decayPosition.Z(), decayPosition.T());// decay position
       }
-      else
-      {
+      else{
         candidate->D1 = itDaughterMap->second.first;
         candidate->D2 = itDaughterMap->second.second;
         candidateDaughter = static_cast<Candidate *>(allParticleOutputArray->At(candidate->D1));

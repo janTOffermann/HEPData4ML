@@ -16,7 +16,6 @@
 #include <tuple> // std::tuple
 #include <random> // std::mt19937, std::random_device
 
-
 // forward declarations for HepMC3
 namespace HepMC3{
   class GenEvent;
@@ -65,16 +64,15 @@ namespace Pileup{
       void SetUsePhiRotations(Bool_t flag){_allowPhiRotations = flag;};
 
       void SetBeamSpotSigma(Double_t dt=0.16, Double_t dx=0.01, Double_t dy=0.01, Double_t dz=35.);
-
       void SetBatchSize(Int_t batchSize){_batchSize = batchSize;};
 
-      // Getters
       Int_t GetRNGSeed(){return _rngSeed;};
       Int_t GetBatchSize(){return _batchSize;};
 
       // Various ways to initialize the mu distribution
       void InitMuDistribution(Double_t muAvg = 33.7, Double_t muSigma = 11.5);
       void InitMuDistribution(TH1D* muDistributionHistogram);
+      TH1D* GetMuDistribution(){return _muDistribution;};
 
       void Initialize();
 
@@ -93,7 +91,6 @@ namespace Pileup{
       void _AddPileupSingle(HepMC3::GenEvent* evt, HepMC3::GenEvent* pileup_evt, const vector<Double_t>& pileupDisplacement, const Double_t& phiRotation);
       void _AddPileupSingleStableOnly(HepMC3::GenEvent* evt, HepMC3::GenEvent* pileup_evt, const vector<Double_t>& pileupDisplacement, const Double_t& phiRotation);
 
-      // TODO: Finish adaption towards sidecar approach
       vector<HepMC3::GenEvent*> _CreatePileupEvents(Int_t nEvents);
       HepMC3::GenEvent* _CreatePileupEvent(const vector<HepMC3::GenEvent*>& pileup, const vector<vector<Double_t>>& pileupDisplacements, const vector<Double_t>& pileupPhiRotations);
 

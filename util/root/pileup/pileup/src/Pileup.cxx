@@ -82,7 +82,6 @@ namespace Pileup{
 
     // This is also the place where we'll initialize the index mask.
     _ResetMask();
-
     return;
   }
 
@@ -101,6 +100,7 @@ namespace Pileup{
     Int_t nBins = (Int_t)(_muAvg + 4. * _muSigma);
     TString name = "PileupOverlay_mu";
     _muDistribution = new TH1D(name,";#mu#Relative Count",nBins,0.,(Double_t)nBins);
+    _muDistribution->SetDirectory(0);
     for(Int_t i = 0; i < nBins; i++){
       Double_t binCenter = _muDistribution->GetBinCenter(i+1);
       _muDistribution->SetBinContent(i+1, TMath::Gaus(binCenter,_muAvg,_muSigma));
@@ -111,6 +111,7 @@ namespace Pileup{
 
   void PileupMixer::InitMuDistribution(TH1D* muDistributionHistogram){
     _muDistribution = new TH1D(*muDistributionHistogram);
+    _muDistribution->SetDirectory(0);
     _muDistribution->SetName("PileupOverlay_mu");
     _muDistribution->SetTitle("");
     _muDistribution->GetXaxis()->SetTitle(";#mu");
@@ -129,7 +130,6 @@ namespace Pileup{
   }
 
   void PileupMixer::_PickEventIndices(Int_t nEvents){
-
     // Do "reservoir sampling"
     _selectedGlobalPileupIndices.clear();
     _selectedGlobalPileupIndices.reserve(nEvents);
@@ -207,7 +207,6 @@ namespace Pileup{
     return evts;
   }
 
-
   vector<Double_t> PileupMixer::_generateDisplacement(){
     return {
       _rng->Gaus(0.,_beamSpotSigma[0]),
@@ -233,7 +232,6 @@ namespace Pileup{
     // 2) The attached vertices' positions (translation + rotation)
     // The tricky part is handling the vertices, we don't want to
     // accidentally adjust the same vertex twice.
-
     ROOT::Math::RotationZ rotation(phiRotation);
     vector<Int_t> accessedIDs = {};
 
@@ -274,9 +272,7 @@ namespace Pileup{
       particle->set_momentum(rotatedMomentum);
 
     }
-    cout << "\t_AddPileupSingle: Calling_add_tree" << endl;
     evt->add_tree(pileupParticles);
-    cout << Form("\t\tevt->particles().size() = %i",(Int_t)evt->particles().size()) << endl;
 
     return;
   }
@@ -289,7 +285,6 @@ namespace Pileup{
     // As long as they're prompt, this should be OK! We typically don't care about the
     // whole history of the pileup events.
     // Fetch the pileup particles.
-
     vector<HepMC3::GenParticlePtr> pileupParticles = pileup_evt->particles();
 
     HepMC3::FourVector vtxPosition(pileupDisplacement[1],pileupDisplacement[2],pileupDisplacement[3],pileupDisplacement[0]);
@@ -359,7 +354,6 @@ vector<HepMC3::GenEvent*> PileupMixer::_CreatePileupEvents(Int_t nEvents){
         nEventsLocal = i;
         break;
       }
-
       muValues.push_back(mu);
     }
 
@@ -375,9 +369,7 @@ vector<HepMC3::GenEvent*> PileupMixer::_CreatePileupEvents(Int_t nEvents){
     _PickEventIndices(nPileupInBatch);
 
     // Now fetch pileup events.
-    cout << "Fetching a batch of pilep events..." <<endl;
     vector<HepMC3::GenEvent*> pileupEvents = _FetchEvents();
-    cout << "\tDone." << endl;
     // Shuffle the pileup event vector.
     // (Without the shuffle, events are listed in blocks corresponding
     //  with the list of input files -- that maybe aren't random).
@@ -414,10 +406,8 @@ vector<HepMC3::GenEvent*> PileupMixer::_CreatePileupEvents(Int_t nEvents){
   }
 
   HepMC3::GenEvent* PileupMixer::_CreatePileupEvent(const vector<HepMC3::GenEvent*>& pileup, const vector<vector<Double_t>>& pileupDisplacements, const vector<Double_t>& pileupPhiRotations){
-
     // Create empty GenEvent
     HepMC3::GenEvent* evt = new HepMC3::GenEvent(); // defaults to GeV & mm units
-
     // cout << Form("_CreatePileupEvent: Created empty event, evt->particles().size() = %i",(Int_t)evt->particles().size()) << endl;
 
     // Loop over pileup events.

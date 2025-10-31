@@ -219,6 +219,7 @@ namespace NtupleProducer{
       void AddTruthParticleSelector(TString selectionName, BaseSelector* selector);
 
       void Process(TString inputFileHepMC, TString inputFileDetector, TString outputFile);
+      void Process(TString inputFileHepMC, TString inputFilePileupHepMC, TString inputFileDetector, TString outputFile);
       // ----
       void SetStableTruthParticleName(TString name){_truthParticleBranchPrefix = name;};
       void SetDelphesDefaultMass(TString branchName, Double_t mass){_delphesMassDefault[branchName] = mass;};
@@ -233,13 +234,21 @@ namespace NtupleProducer{
       Bool_t _ReadHepMCEvent();
       Bool_t _failedHepMC();
 
+      // same funcs as above, but dealing with pileup
+      // NOTE: There's probably a nice way to refactor these things?
+      void _OpenPileupHepMC3File(TString filename);
+      void _OpenPileupHepMC3FileRoot(TString filename);
+      void _OpenPileupHepMC3FileAscii(TString filename);
+      Bool_t _ReadPileupHepMCEvent();
+      Bool_t _failedPileupHepMC();
+
       void _OpenDelphesFile(TString filename);
 
       void _SetOutputFiles();
       void _SetOutputFiles(vector<TString> files){_outputFiles = files;};
 
       void _CreateHepMCBranches();
-      void _CreateHepMC3BranchesSingle(TString particleCollectionName, ParticleData& data, Bool_t extra=kFALSE); // convenience func, used by _CreateHepMCBranches()
+      void _CreateHepMC3BranchesSingle(TString particleCollectionName, ParticleData& data, Int_t extra=0); // convenience func, used by _CreateHepMCBranches()
 
       void _CreateDelphesBranches();
       void _CreateDelphesBranch(TString inputBranchName); // for making a single branch
@@ -252,6 +261,7 @@ namespace NtupleProducer{
       void _DelphesPosition(TString inputBranchName, vector<TString> attributes);
 
       void _FillStableParticles(); // fills the *stable* truth particles, which we always do
+      void _FillStablePileupParticles(); // fills the stable *pileup* truth particles, which we do if given pileup inputs
       void _FillTruthParticles(); // fills any user-specified truth particles
       void _FillDelphesObjects();
       void _IterateDelphesTree(Int_t entry);
@@ -298,8 +308,17 @@ namespace NtupleProducer{
       // event index -- for looping on the HepMC3/Delphes files, since that's done in a "while" loop (due to how HepMC3 works)
       ULong64_t _i = 0;
 
-      // misc
+      // pileup-related stuff
+      Bool_t _hasPileup = kFALSE; // flag for pileup -- may or may not be included
+      HepMC3::ReaderRootTree* _readerPileupRoot = 0;
+      HepMC3::ReaderAscii* _readerPileupAscii = 0;
+      Bool_t _rootModePileup = kTRUE; // kTRUE for ROOT, kFALSE for ASCII
+      HepMC3::GenEvent* _evtPileup = 0;
+      ParticleData _stablePileupParticles;
+
+      // fixed branch names
       TString _truthParticleBranchPrefix = "StableTruthParticles";
+      TString _truthPileupParticleBranchPrefix = "StableTruthPileupParticles";
   };
 }
 

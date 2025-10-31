@@ -51,9 +51,9 @@ using namespace std;
 
 //---------------------------------------------------------------------------
 
-static bool interrupted = false;
+static Bool_t interrupted = false;
 
-void SignalHandler(int sig)
+void SignalHandler(Int_t sig)
 {
   interrupted = true;
 }
@@ -61,7 +61,7 @@ void SignalHandler(int sig)
 //---------------------------------------------------------------------------
 
 // Helper function to check if a string is a valid integer -- used for input parsing.
-Bool_t isInteger(const char* str) {
+Bool_t isInteger(const Char_t* str) {
     if (str == nullptr || *str == '\0') return kFALSE;
 
     // Handle optional minus sign
@@ -80,9 +80,9 @@ Bool_t isInteger(const char* str) {
 
 //---------------------------------------------------------------------------
 
-int main(int argc, char *argv[])
+Int_t main(Int_t argc, Char_t *argv[])
 {
-  char appName[] = "DelphesHepMC3";
+  Char_t appName[] = "DelphesHepMC3";
   stringstream message;
   TString configFile = "";
   TString outputFile = "";
@@ -146,8 +146,8 @@ int main(int argc, char *argv[])
 
   gROOT->SetBatch();
 
-  int appargc = 1;
-  char *appargv[] = {appName};
+  Int_t appargc = 1;
+  Char_t *appargv[] = {appName};
   TApplication app(appName, &appargc, appargv);
 
   try

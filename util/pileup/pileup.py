@@ -180,16 +180,11 @@ class PileupMixer:
 
         # None: use default distribution
         if(self.mu_input is None):
-            # default
-            hist_name = 'PileupOverlay_mu_default'
-            nbins = 80
-            self.mu_distribution = rt.TH1F(hist_name,'',nbins,0,nbins)
             # very approximate for Run 2,
             # see https://atlas.web.cern.ch/Atlas/GROUPS/DATAPREPARATION/PublicPlots/2018/DataSummary/figs/mu_2015_2018.png
-            mu = 33.7
-            sigma = 11.5
-            for i in range(nbins):
-                self.mu_distribution.SetBinContent(i+1,self._gaussian(i,mu,sigma))
+            self.mu_input = [33.7,11.5]
+            self._init_mu_distribution()
+            return
 
         # String: interpret as a filepath, optionally with histogram name after a colon
         elif(isinstance(self.mu_input,str)):
@@ -198,28 +193,19 @@ class PileupMixer:
             if(':' in self.mu_input):
                 hist_name = self.mu_input.split(':')[-1]
             self._init_mu_from_file(file_name,hist_name)
+            self.mixer.InitMuDistribution(self.mu_distribution)
+            return
 
         elif(isinstance(self.mu_input,list) or isinstance(self.mu_input,tuple) or isinstance(self.mu_input,np.ndarray)):
             if(len(self.mu_input) == 2):
-                hist_name = 'PileupOverlay_mu'
-                nbins = 80
-                self.mu_distribution = rt.TH1F(hist_name,'',nbins,0,nbins)
-                mu = self.mu_input[0]
-                sigma = self.mu_input[1]
-                for i in range(nbins):
-                    self.mu_distribution.SetBinContent(i+1,self._gaussian(i,mu,sigma))
-        else:
-            self._print("mu_input not understood.")
-            self._print("Falling back on default mu distribution.")
-            self.mu_input = None
-            self._init_mu_distribution()
+                self.mixer.InitMuDistribution(*self.mu_input) # Gaussian
+                return
 
-        n = self.mu_distribution.GetNbinsX()
-        mu_min = self.mu_distribution.GetXaxis().GetBinLowEdge(1)
-        mu_max = self.mu_distribution.GetXaxis().GetBinLowEdge(n+1)
-        self.available_mu_values = np.arange(mu_min,mu_max)
-        self.mu_probabilities = np.array([self.mu_distribution.GetBinContent(i+1) for i in range(n)],dtype=float)
-        self.mu_probabilities /= np.sum(self.mu_probabilities)
+        self._print("mu_input not understood.")
+        self._print("Falling back on default mu distribution.")
+        self.mu_input = None
+        self._init_mu_distribution()
+        return
 
     def __call__(self,input_file:str,output_file:Optional[str]=None):
         from pyHepMC3 import HepMC3 as hm
@@ -237,8 +223,6 @@ class PileupMixer:
         elif(self.outdir is not None):
             output_file = '{}/{}'.format(self.outdir,output_file)
 
-        #TODO: Fill this in!
-        print('Running with {}, {}'.format(input_file,output_file))
         self.mixer(input_file,output_file) # produces output_file, based on # of events in input_file
         return output_file
 
@@ -312,6 +296,7 @@ class PileupMixer:
             self.metadata_handler.AddElement('Metadata.Pileup.InputMetadata',pileup_metadata)
 
         # Also add info on the mu distribution that was used
+        self.mu_distribution = self.mixer.GetMuDistribution()
         mu_bins = np.array([self.mu_distribution.GetBinLowEdge(x+1) for x in range(self.mu_distribution.GetNbinsX())]) # left edges)
         mu_weights = np.array([self.mu_distribution.GetBinContent(x+1) for x in range(self.mu_distribution.GetNbinsX())])
         self.metadata_handler.AddElement('Metadata.Pileup.MuDistribution.BinEdgesLeft',mu_bins)

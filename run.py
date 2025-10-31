@@ -359,22 +359,29 @@ def main(args):
             processor.SetOutputDirectory(outdir)
             processor.SetMetadataHandler(metadata_handler)
 
-            # Add the correct file extension to "ntuple_file", so we know what it is.
+            # List of ntuple filenames, for the temporary files
+            # (one per input HepMC/Delphes). We'll merge them after the loop.
+            ntuple_files = []
+
+            # Create the filename for the unified ntuple file.
             ntuple_file = '{}.{}'.format(ntuple_file,processor.GetOutputExtension())
 
-            ntuple_files = []
             if(verbose): print('\nProducing separate N-tuple files for each pT bin, and then concatenating these.')
             nentries_per_chunk = int(nentries_per_chunk/nbins)
 
             for i, hepmc_file in enumerate(hepmc_files):
                 delphes_file = None
+                pileup_file = None
                 if(len(delphes_files) > 0):
                     delphes_file = delphes_files[i]
+                if(pileup_files is not None):
+                    pileup_file = pileup_files[i]
+
                 # TODO: Rework this a little. Should just generically loop over HepMC files, since they might have an external source and not be pt-binned.
                 ntuple_file_individual = hepmc_file.split('/')[-1].replace(hepmc_extension,processor.GetOutputExtension())
 
                 processor.SetProgressBarPrefix('\tProducing N-tuple for file {}/{}:'.format(i+1,len(hepmc_files)))
-                processor.ProcessFull(hepmc_file,delphes_file, ntuple_file_individual,verbosity=ntuple_verbosity)
+                processor.ProcessFull(hepmc_file,pileup_file, delphes_file, ntuple_file_individual,verbosity=ntuple_verbosity)
 
                 # # Add information from the pileup handler (if any).
                 # # TODO: This may need a little reworking? The handling of filenames might be a little fragile.
