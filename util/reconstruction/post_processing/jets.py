@@ -15,6 +15,7 @@ import util.reconstruction.post_processing.utils.jhtagger as jhtagger
 import util.reconstruction.post_processing.utils.jet_filter as jet_filter
 import util.reconstruction.post_processing.utils.containment as containment
 import util.reconstruction.post_processing.utils.simple_btag as simple_btag
+import util.reconstruction.post_processing.utils.jet_energy_scale as jes
 
 if(TYPE_CHECKING):
     from util.metadata.meta import MetaDataHandler
@@ -733,6 +734,16 @@ class JetFinder(JetFinderBase):
 
     def Leading(self):
         self.processors.append(jet_filter.Leading())
+        return self
+
+    def JESCalibration(self,formula:str):
+        """
+        This function performs a jet energy scale calibration of the jets.
+        It directly modifies the jets, and doesn't add new branches to output.
+
+        Returns self, so this can be chained with the constructor.
+        """
+        self.processors.append(jes.JetEnergyScale(formula))
         return self
 
 class TruthJetFinder(JetFinderBase):
