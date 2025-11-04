@@ -739,18 +739,36 @@ class JetFinder(JetFinderBase):
     def JESCalibration(self,formula:str):
         """
         This function performs a jet energy scale calibration of the jets.
-        It directly modifies the jets, and doesn't add new branches to output.
+        It directly modifies the jets, so their momenta (and constituent momenta)
+        are calibrated. Also writes the per-jet calibration factor to a new branch,
+        with which one can determine the pre-calibrated momenta.
 
         Returns self, so this can be chained with the constructor.
         """
         self.processors.append(jes.JetEnergyScale(formula))
         return self
 
+    def JESCalibrationATLAS(self):
+        """
+        This function performs a jet energy scale calibration of the jets,
+        corresponding to the one in the ATLAS Delphes card.
+        Returns self, so this can be chained with the constructor.
+        """
+        self.processors.append(jes.JetEnergyScale('atlas'))
+        return self
+
+    def JESCalibrationCMS(self):
+        """
+        This function performs a jet energy scale calibration of the jets,
+        corresponding to the one in the default CMS Delphes card.
+        Returns self, so this can be chained with the constructor.
+        """
+        self.processors.append(jes.JetEnergyScale('cms'))
+        return self
+
 class TruthJetFinder(JetFinderBase):
     """
     A simple jet-finding class, for use with event filters.
-    See the JetFinder in util/reconstruction/post_processing/jets.py
-    for a more complete example (made to work with HDF5 input files).
     """
 
     def __init__(self, jet_algorithm:str='anti_kt',radius:float=0.4, jet_name:str='AK04Jets', n_jets_max:Optional[int]=None,fastjet_dir:Optional[str]=None):

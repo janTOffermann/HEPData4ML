@@ -68,7 +68,6 @@ class EventDisplay:
     def FindObjectNames(self):
         self.object_names = sorted(list(set([key.split('.')[0] for key in self.data.keys()])))
 
-
     def _load_hdf5(self,event_index):
         f = h5.File(self.input_file,'r')
         self.data = {key: f[key][event_index] for key in f.keys()}
@@ -118,7 +117,6 @@ class EventDisplay:
     def LoadData(self,event_index):
         assert self.input_file is not None
         assert pathlib.Path(self.input_file).exists()
-
 
         if(self.mode == 'root'):
             self._load_root(event_index)
@@ -272,8 +270,7 @@ class EventDisplay:
                 # redundant. Other truth particle collections will have these, though.
                 # Whether or not we want to use these is another thing -- for short-lived
                 # truth particles, limiting their visible tracks to their actual lifetime
-                # might be unproductive as they will be effectively invisible in the event
-                # display.
+                # might be pointless as they will be invisible in the event display.
 
                 if(object_name.lower() == 'stabletruthparticles' or not enforce_lifetimes):
                     decay_xmu = np.full((nobj,4),0.)

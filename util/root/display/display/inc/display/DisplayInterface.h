@@ -29,8 +29,6 @@ namespace Display{
       void DisplayEvent(TString delphesCardFilepath);
       EventDisplay* GetEventDisplay(){return eventDisplay_;}; // easy way to access a bunch of functions
 
-
-
       void Test(TString filename);
 
     private:

@@ -255,8 +255,6 @@ class IteratedSoftdrop:
         or it may simply compute the ISD observables.
         """
         self.jets = {}
-        # self.zi =  np.zeros((obj.n_jets_max,self.max_depth))
-        # self.dRi = np.zeros((obj.n_jets_max,self.max_depth))
 
         self.zi = {i:np.zeros(self.max_depth) for i in obj.jets_dict.keys()}
         self.dRi = {i:np.zeros(self.max_depth) for i in obj.jets_dict.keys()}
@@ -381,9 +379,6 @@ class IteratedSoftdrop:
         Note that the pT sorting of obj is applied,
         which will have been filled by obj._ptSort().
         """
-        #NOTE: The embed is not needed, since we've constructed the inputs and the buffer to already match in size.
-        #      The zero-padding is actually being handled within self.ModifyJets(), where the embed function is used.
-
         obj.buffer.set(self.zi_name,obj._i,np.vstack([self.zi[i] for i in obj.jet_ordering]))
         obj.buffer.set(self.dRi_name,obj._i,np.vstack([self.dRi[i] for i in obj.jet_ordering]))
 
