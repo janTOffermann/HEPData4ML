@@ -160,8 +160,7 @@ class GhostAssociator():
         """
         Adds the ghost association tags to the buffer, for writing.
         """
-        obj.output_buffer.set(self.tag_name,obj._i,[self.tags[i] for i in obj.jet_ordering])
-        # embed_array_inplace([self.tags[i] for i in obj.jet_ordering],obj.output_buffer[self.tag_name][obj._i])
+        obj.output_buffer.set(self.tag_name,obj._i,self.tags[i])
 
     def ModifyConstituents(self, obj : 'JetFinder'):
         return

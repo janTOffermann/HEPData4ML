@@ -170,15 +170,6 @@ class Processor:
         output_file_no_extension = output_file
         output_file = '{}/{}'.format(self.outdir,output_file)
 
-        # TODO: Run the process here
-        print()
-        print('Calling self.processor.Process:')
-        print('\t',hepmc_file)
-        print('\t',pileup_file)
-        print('\t',delphes_file)
-        print('\t',output_file)
-        print()
-
         self.processor.Process(hepmc_file, pileup_file, delphes_file, output_file) # <- does the whole n-tuple conversion (to ROOT format)
         return output_file_no_extension
 

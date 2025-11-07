@@ -148,7 +148,7 @@ class ContainmentTagger:
         Note that the pT sorting of obj is applied,
         which will have been filled by obj._ptSort().
         """
-        obj.output_buffer.set(self.tag_name,obj._i,[self.tags[i] for i in obj.jet_ordering])
+        obj.output_buffer.set(self.tag_name,obj._i,self.tags)
 
     def _print(self,val):
         print('{}: {}'.format(self.print_prefix,val))

@@ -82,10 +82,6 @@ class JetFinder(JetFinderBase):
         self.citations = {}
         self._generate_citations()
 
-        # Buffer containing FastJet::PseudoJet objects -- better to use
-        self.pseudojets = None
-        self.pseudojet_init_flag = False
-
     def _print(self,val:Any):
         print('{}: {}'.format(self.print_prefix,val))
         return
@@ -374,24 +370,14 @@ class JetFinder(JetFinderBase):
         # we really just want its pseudorapidity component: slicing like [:,1] but these are cppyy.gbl.std.vector,
         # not numpy arrays, so we have to do it correctly.
 
-        # Collect views/slices without intermediate conversions
+        # Collect views/slices
         with profile_block('rapidity setting'):
             rapidity_views = []
             for cname in self.input_collection_names_rapidity.keys():
                 coll = self.input_collection_arrays_rapidity[cname]
-                rapidity = np.asarray(coll)  # asarray is faster if already numpy-compatible
+                rapidity = np.asarray(coll)
                 rapidity_views.append(rapidity[:, 1] if rapidity.ndim > 1 else rapidity)
             self.SetRapidity(np.concatenate(rapidity_views, axis=0))
-
-        # rapidity_arrays = []
-        # for cname in self.input_collection_names_rapidity.keys():
-        #     if(len(self.input_collection_arrays_rapidity[cname]) == 0):
-        #         continue
-        #     rapidity = np.array(self.input_collection_arrays_rapidity[cname]) # convert cppyy.gbl.std.vector to np.ndarray
-        #     if(rapidity.ndim > 1):
-        #         rapidity = rapidity[:,1]
-        #     rapidity_arrays.append(rapidity)
-        # self.SetRapidity(np.concatenate(rapidity_arrays,axis=0))
 
     @profile_method('JetFinder.Process')
     def Process(self):
@@ -418,30 +404,37 @@ class JetFinder(JetFinderBase):
 
             self._clusterJets() # fills self.jets_dict
 
-            # Optional modification of jets. May be harnessed by some special configurations.
-            self._modifyJets()
-
-            # Pt-sort the jets, and truncate to fixed length given by self.n_jets_max
-            self._ptSort(truncate=True)
-
             # optionally extract information on jet constituents
             if(self.constituents_flag):
                 self._fetchJetConstituents() # fills self.constituent_vectors, self.constituent_indices
 
-                # Optional modification of constituents. May be harnessed by some special configurations.
-                self._modifyConstituents()
+            # Now run post-processing methods -- incl. writing to buffer.
+            # These may modify the jets themselves, so we only call _writeToBuffer() after.
+            # (If these methods need to access the jets, they will access them directly and not from buffer).
+            self.PostProcess()
 
-            # now write to buffer
+            # Pt-sort the jets, and truncate to fixed length given by self.n_jets_max
+            self._ptSort(truncate=True)
+
+            # # Pass the pt ordering to the buffer; will be used for writing out any branches
+            # # that post-processors have currently stored in self.output_buffer.buffer_dicts.
+            # # (This is the preferred way for post-processors to write out jet- and constituent-level
+            # #  branches, because the final ordering of the jets isn't known when they're writing
+            # #  to buffer).
+            # self._print('_i = {}, setting ordering = {}'.format(self._i,self.jet_ordering))
+            # self.output_buffer.set_ordering(self.jet_ordering)
+
+            # now write jets to buffer
             self._writeToBuffer()
-
-            # Optional extension of writing to buffer. May be harnessed by some special configurations.
-            self._modifyWrite()
 
             if(self.verbose):
                 printProgressBarColor(self._i+1,self.nevents,prefix=self.progress_bar_prefix,suffix=self.progress_bar_suffix,length=self.progress_bar_length)
         return
 
     def _modifyInitialization(self):
+        """
+        Initialize the post-processors.
+        """
         for processor in self.processors:
             processor.ModifyInitialization(self)
         return
@@ -451,22 +444,23 @@ class JetFinder(JetFinderBase):
             processor.ModifyInputs(self)
         return
 
-    def _modifyJets(self):
+    def PostProcess(self):
+        """
+        Sequentially run the post-processors, to modify jets (and possibly constituents).
+        This may modify self.jets_dict and its derived quantities, and/or create new
+        branches in the output buffer.
+        """
+        # NOTE: Used to "interleave" post-processors with main jet clustering method,
+        #       but doing this fully sequentially is probably better; allows for nicer
+        #       and clearer interplay between the post-processors (each can access outputs
+        #       of previous ones fully).
+        #
+        #       Note that we *do* still effectively interleave the ModifyInitialization()
+        #       and ModifyInputs() methods with the jet clustering.
         for processor in self.processors:
             processor.ModifyJets(self)
-        return
-
-    def _modifyWrite(self):
-        for processor in self.processors:
-            processor.ModifyWrite(self)
-
-    def _modifyConstituents(self):
-        #NOTE: Considering removing this, might cause weird interplay
-        #      between processors. Its better to modify the actual
-        #      fastjet jet's constituents within _modifyJets(), so that
-        #      the processors' handling of the jets isn't interleaved.
-        for processor in self.processors:
             processor.ModifyConstituents(self)
+            processor.ModifyWrite(self)
         return
 
     def Flush(self, output_file=None):
@@ -590,11 +584,7 @@ class JetFinder(JetFinderBase):
         # Fill jet information in the buffer.
         self.output_buffer.set('{}.N'.format(self.jet_name),event_index,njets)
 
-        # TODO: This needs fixing. The above will trigger a flush once we reach event 1,
-        #       and this might be messing up the input buffer since the output_buffer calls
-        #       clone_tree.SetEntry()
         self._load_data()
-
 
         # TODO: Maybe later clean this up a bit? Have to deal with special case of "single_jet = True".
         if(self.single_jet):
@@ -603,8 +593,8 @@ class JetFinder(JetFinderBase):
             self.output_buffer.set('{}.Pmu_cyl'.format(self.jet_name),event_index,self.jet_vectors_cyl[idx])
 
         else:
-            self.output_buffer.set('{}.Pmu'.format(self.jet_name),event_index,np.vstack([self.jet_vectors[i] for i in self.jet_ordering]))
-            self.output_buffer.set('{}.Pmu_cyl'.format(self.jet_name),event_index,np.vstack([self.jet_vectors_cyl[i] for i in self.jet_ordering]))
+            self.output_buffer.set('{}.Pmu'.format(self.jet_name),event_index,self.jet_vectors)
+            self.output_buffer.set('{}.Pmu_cyl'.format(self.jet_name),event_index,self.jet_vectors_cyl)
 
         # Fill the jet constituent information.
         if(self.constituents_flag):
@@ -622,14 +612,17 @@ class JetFinder(JetFinderBase):
                 self.output_buffer.set('{}.Constituents.Collection.Index'.format(self.jet_name),event_index,self.constituent_indices_dict[idx][:,1])
 
             else:
-                self.output_buffer.set('{}.Constituents.N'.format(self.jet_name),event_index,[len(self.constituent_vectors[i]) for i in self.jet_ordering])
+                self.output_buffer.set('{}.Constituents.N'.format(self.jet_name),event_index,{i:len(self.constituent_vectors[i]) for i in self.constituent_vectors.keys()})
+                self.output_buffer.set('{}.Constituents.Pmu'.format(self.jet_name),event_index,self.constituent_vectors)
+                self.output_buffer.set('{}.Constituents.Pmu_cyl'.format(self.jet_name),event_index,self.constituent_vectors_cyl)
+                self.output_buffer.set('{}.Constituents.Collection'.format(self.jet_name),event_index,{key:val[:,0] for key,val in self.constituent_indices_dict.items()})
+                self.output_buffer.set('{}.Constituents.Collection.Index'.format(self.jet_name),event_index,{key:val[:,1] for key,val in self.constituent_indices_dict.items()})
 
-                # Now we loop, as we're embedding what is really jagged information.
-                for i,j in enumerate(self.jet_ordering):
-                    self.output_buffer.set('{}.Constituents.Pmu'.format(self.jet_name),(event_index,i),self.constituent_vectors[j])
-                    self.output_buffer.set('{}.Constituents.Pmu_cyl'.format(self.jet_name),(event_index,i),self.constituent_vectors_cyl[j])
-                    self.output_buffer.set('{}.Constituents.Collection'.format(self.jet_name),(event_index,i),self.constituent_indices_dict[j][:,0])
-                    self.output_buffer.set('{}.Constituents.Collection.Index'.format(self.jet_name),(event_index,i),self.constituent_indices_dict[j][:,1])
+        # Lastly, we tell the buffer what is the jet ordering for this event.
+        # Next time it flushes (at the top of this loop on the next iteration, or on explicit flush),
+        # it will use this to determine how to actually sort the dictionaries of jets/constituents we've provided.
+        self.output_buffer.set_ordering(self.jet_ordering)
+
         return
 
     # NOTE: Will define various functions for performing some modifications to clustering or post-processing of results.

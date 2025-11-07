@@ -13,7 +13,20 @@ class JetEnergyScale:
     also store the per-jet calibration factor so
     that one can in principle recover the uncalibrated
     jet/constituent momenta.
+
+    If mode='overwrite', will modify the jets and constituents in-place.
+    If mode='decorate', will write calibrated jets/constituents to new branches.
+
+    Also note that the input can be specified; by default this will use the raw
+    jet momenta as inputs, but you can specify other branches -- for example, to
+    use rho-area-corrected momentum produced by a preceding RhoAreaSubtraction module.
     """
+
+    # TODO: The functionality for reading in a custom branch is pretty hacky right now,
+    #       owing to how the post-processors interact; each only fills the "global" output buffer
+    #       in the writing loop, after ModifyJets() has been called for each; so the current
+    #       arrangement doesn't allow the ModifyJets() function of one post-processor to easily
+    #       access the output of another, without some real hackery.
 
     def __init__(self,formula:str=None):
 
@@ -27,6 +40,8 @@ class JetEnergyScale:
         self.branch_name = None
         self.print_prefix = '\n\t{}'.format(self.name)
         self.citations = {}
+
+        self.input_branch = None
 
     def GetCitations(self):
         return self.citations
@@ -42,6 +57,7 @@ class JetEnergyScale:
         """
         This function will compute and apply the jet energy scale calibration.
         """
+        self.scale_factors = {}
 
         # Compute the actual jet energy scale factors and apply them to the jet.
         for i,jet in obj.jets_dict.items():
@@ -50,7 +66,7 @@ class JetEnergyScale:
                 jet.pt(),
                 jet.eta(),
                 jet.phi(),
-                jet.energy()
+                jet.e()
             )
             obj.jets_dict[i] *= self.scale_factors[i] # modify the jet itself!
 
@@ -71,8 +87,8 @@ class JetEnergyScale:
         # scale factors were computed by ModifyJets(), which is always called before.
         for i in obj.jets_dict.keys():
             obj.constituent_vectors[i] *= self.scale_factors[i] # scale (px, py, pz, E)
-            obj.constituent_vectors_cyl[i,:,0] *= self.scale_factors[i] # scale pt
-            obj.constituent_vectors_cyl[i,:,-1] *= self.scale_factors[i] # scale m
+            obj.constituent_vectors_cyl[i][:,0] *= self.scale_factors[i] # scale pt
+            obj.constituent_vectors_cyl[i][:,-1] *= self.scale_factors[i] # scale m
         return
 
     def _initializeBuffer(self,obj : 'JetFinder'):
@@ -81,8 +97,8 @@ class JetEnergyScale:
         """
         self._createBranchNames(obj)
 
-        if(self.branch_name not in obj.buffer.keys()):
-            obj.buffer.create_array(self.branch_name,ndim=1,dtype=np.dtype('f8'))
+        if(self.branch_name not in obj.output_buffer.keys()):
+            obj.output_buffer.create_array(self.branch_name,ndim=1,dtype=np.dtype('f8'))
 
     def _createBranchNames(self,obj : 'JetFinder'):
         self.branch_name = '{}.{}.CalibrationFactor'.format(obj.jet_name,self.name)
@@ -95,7 +111,7 @@ class JetEnergyScale:
         #NOTE: The embed is not needed, since we've constructed the inputs and the buffer to already match in size.
         #      The zero-padding is actually being handled within self.ModifyJets(), where the embed function is used.
 
-        obj.buffer.set(self.branch_name,obj._i,np.vstack([self.scale_factors[i] for i in obj.jet_ordering]))
+        obj.output_buffer.set(self.branch_name,obj._i,self.scale_factors)
 
     def _set_formula(self,formula_str):
 

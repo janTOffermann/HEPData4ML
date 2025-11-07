@@ -449,6 +449,9 @@ class RootOutputBuffer:
         self.clone_tree = None
         self.init_status = False
 
+        self.buffer_dicts = {} # for special handling of "lazily-ordered" inputs
+        self.ordering = None # for ordering the "lazily-ordered" inputs before flush
+
         self.SetFilename(filename)
 
     def SetFilename(self, filename: str):
@@ -549,11 +552,21 @@ class RootOutputBuffer:
         self.t.Branch(key,self.buffers[key])
         return
 
-    def set(self,key: str, index: Optional[int], value: Any):
+    def set_ordering(self, value: Any):
+        self.ordering = np.asarray(value)
+
+    def set(self,key: str, index: Optional[int], value: Any, skip_flush:bool=False):
         """
         For setting values of entries in the buffer.
         In general, this is the function one should use for putting data into the buffer.
+
+        The value should be a scalar (int,float), or a numpy array (or list -- that can be converted to such).
+        Additionally as a special case, you can pass in a *dictionary* for the value, where the dictionary
+        keys are integer indices; this allows for effectively passing in a list where the ordering is not (yet)
+        fixed. In this case, you must separately pass in an ordering via set_ordering(), before flush() is called.
+        In practice, this just means that set_ordering() must be invoked before you make it to the next event.
         """
+
         # We need to cover multiple cases: scalar-type branches, and vector-type branches.
         # For the case of vectors, they can be multi-dimensional (e.g. vector<vector<Double_t>>).
         try:
@@ -575,10 +588,23 @@ class RootOutputBuffer:
         if(isinstance(index,tuple)):
             event_index = index[0]
 
-        if(self.n_filled < event_index):
-            self.flush()
+        if(self.n_filled < event_index and not skip_flush):
+            self.flush(event_index)
 
-        if(is_scalar):
+        # if(skip_flush):
+        #     self._print('skip_flush=True call with key = {}, self.ordering = {}'.format(key,self.ordering))
+
+        # Special case: dictionary input
+        if(isinstance(value,dict)):
+
+            # self._print('Setting dictionary value for key = {}'.format(key))
+
+            # Here, we actually fill a special dictionary buffer.
+            # Its contents will be transferred to self.buffers upon self.flush(),
+            # where we'll use self.ordering to map the dictionary contents to the buffer.
+            self.buffer_dicts[key] = value
+
+        elif(is_scalar):
             self.buffers[key][0] = value # buffer is a 1D length-1 array
         else: # non-scalar -- this possibly gets more complex
 
@@ -606,14 +632,40 @@ class RootOutputBuffer:
                     self.buffers[key][index[1]] = value # reassign
 
             else:
-                self.buffers[key].assign(value) # TODO: Does this work as expected?
+                try:
+                    # In principle, one can copy in a multi-dim array into a "multi-dim vector" branch.
+                    # There are some edge cases where this doesn't work, in which case we can try to
+                    # fall back on a loop with push_back(). That'll be a bit slower so we first try the assign.
+                    # NOTE: Seems to fail for vector<vector<int>>, like <jet_name>.Constituents.Collection?
+                    #       But only for those keys (fortunately).
+                    self.buffers[key].assign(value)
+                except:
+                    # As a workaround, we loop over subarrays.
+                    for i,subvalue in enumerate(value):
+                        self.set(key,(index,i,),subvalue,skip_flush=True) # skip_flush=True should be unnecessary
         return
 
-    def flush(self):
+    def flush(self,event_index=None):
+        if(event_index is None):
+            event_index = self.n_filled
 
         if(self.clone_tree is not None):
             saved_entry = self.clone_tree.GetReadEntry()
             self.clone_tree.GetEntry(self.n_filled)
+
+        # Before calling TTree::Fill(), make sure any contents
+        # of self.buffer_dicts is copied over into self.buffers.
+        for key,value_dict in self.buffer_dicts.items():
+            try:
+                self.set(key,event_index,[value_dict[i] for i in self.ordering],skip_flush=True)
+            except:
+                self._print('Failed set during flush, for key = {}'.format(key))
+                print('self.jet_ordering = ', self.ordering)
+                for key,val in value_dict.items():
+                    print('\t{}'.format(key))
+                    print('\t\t',val)
+                assert False
+
         self.t.Fill()
         if(saved_entry >= 0 and saved_entry != self.n_filled):
             self.clone_tree.GetEntry(saved_entry)
@@ -626,6 +678,8 @@ class RootOutputBuffer:
             if(self.buffer_is_vector[key]):
                 self.buffers[key].clear()
 
+        # As a safety measure, clear self.ordering
+        self.ordering = None
 
     def close(self,output_file:Optional[str]=None):
         self.t.Write()

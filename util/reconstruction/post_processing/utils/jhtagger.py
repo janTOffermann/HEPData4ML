@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING
 import subprocess as sub
 import numpy as np
 import ROOT as rt
-from util.math.embedding import embed_array_inplace
 from util.qol_utils.progress_bar import printProgressBar, printProgressWithOutput
 
 if TYPE_CHECKING: # Only imported during type checking -- avoids circular imports we'd otherwise get, since jets imports this file
@@ -446,12 +445,12 @@ class JohnsHopkinsTagger:
         Note that the pT sorting of obj is applied,
         which will have been filled by obj._ptSort().
         """
-        obj.output_buffer.set(self.w_name,obj._i,[self.w_candidates[i] for i in obj.jet_ordering])
-        obj.output_buffer.set(self.w_name + '_cyl',obj._i,[self.w_candidates_cyl[i] for i in obj.jet_ordering])
+        obj.output_buffer.set(self.w_name,obj._i,self.w_candidates)
+        obj.output_buffer.set(self.w_name + '_cyl',obj._i,self.w_candidates_cyl)
 
-        obj.output_buffer.set(self.w_nconst_name,obj._i,[self.n_constituents[i] for i in obj.jet_ordering])
-        obj.output_buffer.set(self.w_constituents_name,obj._i,[self.w_constituents[i] for i in obj.jet_ordering])
-        obj.output_buffer.set(self.w_constituents_name + '_cyl',obj._i,[self.w_constituents_cyl[i] for i in obj.jet_ordering])
+        obj.output_buffer.set(self.w_nconst_name,obj._i,self.n_constituents)
+        obj.output_buffer.set(self.w_constituents_name,obj._i,self.w_constituents)
+        obj.output_buffer.set(self.w_constituents_name + '_cyl',obj._i,self.w_constituents_cyl)
 
     def _print(self,val):
         print('{}: {}'.format(self.print_prefix,val))
