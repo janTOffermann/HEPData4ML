@@ -8,7 +8,7 @@ from util.pileup.setup import PileupSetup
 from util.qol_utils.pdg import DatabasePDG
 from util.metadata.meta import MetaDataHandler
 from util.config.config import Configurator
-from util.hepmc.setup import HepMCSetup, prepend_to_pythonpath
+from util.hepmc.setup import HepMCSetup
 from typing import Union, Optional, TYPE_CHECKING
 
 if(TYPE_CHECKING):
@@ -24,7 +24,6 @@ class PileupMixer:
     This class performs on-the-fly mixing, to mix in events from some pileup HepMC3 file(s)
     into full "pileup events". These are placed in a new file, to be used as a "sidecar"
     with the HepMC3 files containing the main process.
-
     """
 
     def __init__(self, pileup_files:Optional[Union[str,list]]=None,rng_seed:int=1,mu_input:str=None, add_stable_only=True):
@@ -41,7 +40,8 @@ class PileupMixer:
         self.mixer = rt.Pileup.PileupMixer()
 
         self.verbosity = 1
-        self.print_prefix = 'PileupMixer: '
+        self.name = 'PileupMixer'
+        self.print_prefix = '{}'.format(self.name)
 
         self.require_pileup_input = True
         self.files = None
@@ -337,7 +337,7 @@ class PileupMixer:
             filename_full = '{}/{}'.format(self.outdir,file)
 
             f = rt.TFile(filename_full,'UPDATE')
-            t = rt.TTree('PileupInfo','Pileup information from {}'.format(self.print_prefix.split(':')[0]))
+            t = rt.TTree('PileupInfo','Pileup information from {}'.format(self.name))
 
             buffer_dict = {}
 
