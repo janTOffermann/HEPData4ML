@@ -66,6 +66,11 @@ class EtaFilter(PostProcessorBase):
         if(self.obj_name_input is None):
             self.obj_name_input = obj.jet_name
         self.obj_name_output = self.obj_name_input
+
+        # Set maximum rapidity for ghosts for jet area calculation;
+        # only relevant if using jet areas.
+        obj.SetAreaGhostMaxRapidity(self.eta_max + 1.05 * obj.radius)
+
         return
 
     def ModifyJets(self, obj:'JetFinder'):

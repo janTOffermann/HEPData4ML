@@ -28,7 +28,12 @@ class JetFinderBase:
         self.jet_algorithm = None
         self.jetdef = None
         self.cluster_sequence = None
-        # self.jets = None
+
+        # for jet areas (which certain post-processors might need)
+        self.use_area = False
+        self.area_def = None
+        self.area_ghost_max_rapidity = 5.
+
         self.jets_dict = None
         self.jet_vectors = None
         self.jet_vectors_cyl = None
@@ -100,6 +105,13 @@ class JetFinderBase:
     def SetRapidity(self,val):
         self.rapidity = val
 
+    def SetUseArea(self,val:bool):
+        import fastjet as fj
+        self.use_area = val
+
+    def SetAreaGhostMaxRapidity(self,val:float):
+        self.area_ghost_max_rapidity = val
+
     def _setupFastJet(self):
         verbose = self.configurator.GetPrintFastjet()
         self.fastjet_setup = FastJetSetup(self.configurator.GetFastjetDirectory(),full_setup=True,verbose=verbose)
@@ -146,6 +158,9 @@ class JetFinderBase:
         self._initialize_fastjet()
         import fastjet as fj # hacky, but will work because _setupFastJet() was run in __init__()
 
+        if(self.use_area and self.area_def is None):
+            self.area_def = fj.AreaDefinition(fj.active_area,fj.GhostedAreaSpec(self.area_ghost_max_rapidity))
+
         # Quick check to make sure our PseudoJet buffer is large enough.
         # Ideally, we should prepare this upstream to avoid having to re-initialize.
         n_pseudojets = len(self.input_vecs)
@@ -174,8 +189,14 @@ class JetFinderBase:
                 self.pseudojets[idx].set_python_info(val)
 
         with profile_block('JetFinderBase._clusterJets - ClusterSequence'): # Useful for profiling -- this time block is largely non-negotiable.
-            self.cluster_sequence = fj.ClusterSequence(self.pseudojets[:n_pseudojets], self.jetdef) # member of class, otherwise goes out-of-scope when ref'd later
-        self.jets_dict = {i:jet for i,jet in enumerate(self.cluster_sequence.inclusive_jets())} # NOTE: Repeated calls to ClusterSequence::inclusive_jets() seems OK, I think it is just an accessor.
+
+            if(not self.use_area):
+                self.cluster_sequence = fj.ClusterSequence(self.pseudojets[:n_pseudojets], self.jetdef) # member of class, otherwise goes out-of-scope when ref'd later
+            else:
+                self.cluster_sequence = fj.ClusterSequenceArea(self.pseudojets[:n_pseudojets], self.jetdef, self.area_def) # member of class, otherwise goes out-of-scope when ref'd later
+            self.jets_dict = {i:jet for i,jet in enumerate(self.cluster_sequence.inclusive_jets())} # NOTE: Repeated calls to ClusterSequence::inclusive_jets() seems OK, I think it is just an accessor.
+
+
         self.jet_ordering = np.arange(len(self.jets_dict))
         self.pt_sorting = self.jet_ordering
         self._jetsToVectors()

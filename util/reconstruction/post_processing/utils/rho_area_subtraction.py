@@ -73,6 +73,8 @@ class RhoAreaSubtraction(PostProcessorBase):
         self.obj_name_output = '.'.join([self.obj_name_input,'RhoPileupSubtracted'])
         self.obj_name_constituents_output = self.obj_name_output
 
+        obj.SetUseArea(True) # will need jet areas
+
         if(self.rho_input is not None):
             self._set_rho_input(obj)
             self.compute = False
@@ -126,29 +128,25 @@ class RhoAreaSubtraction(PostProcessorBase):
                 area = jet.area_4vector() # pseudojet
 
             if(area is None):
-                self._print('[{}] No area'.format(i))
                 continue
 
             # determine the appropriate value of rho to use, based on jet's location
             rho = None
-            rho_idx = np.searchsorted(self.rho_eta_edges, pmu_cyl[1], side='right') - 1
+            rho_idx = np.searchsorted(self.rho_eta_edges[:,0], pmu_cyl[1], side='right') - 1
             if(0 <= rho_idx < len(self.rho)):
                 rho = self.rho[rho_idx]
 
             if(rho is None):
-                self._print('[{}] No rho'.format(i))
                 continue
 
             rho_area = rho * area # Fastjet::PseudoJet
 
             if(rho_area.pt() >= pmu_cyl[0]):
-                self._print('[{}] rho_area.pt() >= jet pt'.format(i))
                 delete_indices.append(i)
                 continue
 
             corr_jet = jet - rho_area
             if(corr_jet.pt() < self.pt_min):
-                self._print('[{}] corr_jet.pt() = {}, < self.pt_min'.format(i,corr_jet.pt()))
                 delete_indices.append(i)
                 continue
             self.pmu[i]     = np.array([corr_jet.e(),corr_jet.px(),corr_jet.py(),corr_jet.pz()])
