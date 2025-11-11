@@ -19,7 +19,7 @@ class RhoAreaSubtraction(PostProcessorBase):
     Note that jet vectors are affected, but jet constituents are not.
     """
 
-    def __init__(self,rho_input:Optional[str]=None,pt_min:Annotated[float,"GeV"]=20., rho_eta_edges:Optional[Union[List[Any],NDArray]]=None, eta_bins:Optional[Union[list,NDArray]]=None, phi_bins:Optional[Union[list,NDArray]]=None):
+    def __init__(self,rho_input:Optional[str]=None,pt_min:Annotated[float,"GeV"]=20., rho_eta_edges:Optional[Union[List[Any],NDArray]]=None, eta_bins:Optional[Union[list,NDArray]]=None, phi_bins:Optional[Union[list,NDArray]]=None, save_rho_area:bool=False):
         super().__init__()
 
         # Variables for reading in rho input,
@@ -35,11 +35,17 @@ class RhoAreaSubtraction(PostProcessorBase):
         self.phi_bins = phi_bins
         self.estimators = None
 
+        self.save_rho_area = save_rho_area
+
         # Variables for saving to new branches
-        self.pmu = None
-        self.pmu_cyl = None
-        self.pmu_name = None
-        self.pmu_cyl_name = None
+        self.buffers = {
+            'Pmu':None,
+            'Pmu_cyl':None,
+            'RhoArea.Pmu':None,
+            'RhoArea.Pmu_cyl':None,
+            'Passed':None
+        }
+        self.branch_names = {key:None for key in self.buffers.keys()}
 
         # transient storage
         self.rho = None
@@ -115,18 +121,17 @@ class RhoAreaSubtraction(PostProcessorBase):
         # TODO: Consider storing jet area as a branch; then we can use it here w/out fastjet!
 
         delete_indices = [] # keep track of jets to remove entirely (or assign 0 corrected momentum)
-        self.pmu = {i:np.zeros(4) for i in obj.jets_dict.keys()}
-        self.pmu_cyl = {i:np.zeros(4) for i in obj.jets_dict.keys()}
+        self.buffers['Pmu'] = {i:np.zeros(4) for i in pmu_cyl_dict.keys()}
+        self.buffers['Pmu_cyl'] = {i:np.zeros(4) for i in pmu_cyl_dict.keys()}
+        self.buffers['RhoArea.Pmu'] = {i:np.zeros(4) for i in pmu_cyl_dict.keys()}
+        self.buffers['RhoArea.Pmu_cyl'] = {i:np.zeros(4) for i in pmu_cyl_dict.keys()}
+        self.buffers['Passed'] = {i:False for i in pmu_cyl_dict.keys()}
 
         for i,pmu_cyl in pmu_cyl_dict.items():
-            jet = obj.jets_dict[i]
-            # get the jet area
+            raw_jet = obj.jets_dict[i] # NOTE: we use the original jet from jet clustering here -- not affected by things like jet energy scale calibration! OK for accessing area.
             area = None
-            if(jet.has_area()):
-
-                # Get the area 4-vector
-                area = jet.area_4vector() # pseudojet
-
+            if(raw_jet.has_area()):
+                area = raw_jet.area_4vector() # 4-vector area, Fastjet::PseudoJet
             if(area is None):
                 continue
 
@@ -140,18 +145,26 @@ class RhoAreaSubtraction(PostProcessorBase):
                 continue
 
             rho_area = rho * area # Fastjet::PseudoJet
+            self.buffers['RhoArea.Pmu'][i]     = np.array([rho_area.e(),rho_area.px(),rho_area.py(),rho_area.pz()])
+            self.buffers['RhoArea.Pmu_cyl'][i] = np.array([rho_area.pt(),rho_area.eta(),rho_area.phi(),rho_area.m()])
 
             if(rho_area.pt() >= pmu_cyl[0]):
                 delete_indices.append(i)
                 continue
 
+            # Now, find the corrected jet 4-momentum.
+            # Here, we're careful to use the input jet object,
+            # *not* the raw jet (that we used to access the area).
+            pmu = pmu_dict[i]
+            jet = fj.PseudoJet(pmu[1],pmu[2],pmu[3],pmu[0]) # NOTE: won't have any clustering history, unlike raw_jet, but that's OK here
+
             corr_jet = jet - rho_area
             if(corr_jet.pt() < self.pt_min):
                 delete_indices.append(i)
                 continue
-            self.pmu[i]     = np.array([corr_jet.e(),corr_jet.px(),corr_jet.py(),corr_jet.pz()])
-            self.pmu_cyl[i] = np.array([corr_jet.pt(),corr_jet.eta(),corr_jet.phi(),corr_jet.m()])
-
+            self.buffers['Pmu'][i]     = np.array([corr_jet.e(),corr_jet.px(),corr_jet.py(),corr_jet.pz()])
+            self.buffers['Pmu_cyl'][i] = np.array([corr_jet.pt(),corr_jet.eta(),corr_jet.phi(),corr_jet.m()])
+            self.buffers['Passed'][i] = True
         return
 
     def ModifyWrite(self,obj : 'JetFinder'):
@@ -212,16 +225,20 @@ class RhoAreaSubtraction(PostProcessorBase):
         """
         self._createBranchNames(obj)
 
-        if(self.pmu_name not in obj.output_buffer.keys()):
-            obj.output_buffer.create_array(self.pmu_name,ndim=2,dtype=np.dtype('f8'))
+        for key,value in self.branch_names.items():
+            if('Pmu' not in key):
+                continue
 
-        if(self.pmu_cyl_name not in obj.output_buffer.keys()):
-            obj.output_buffer.create_array(self.pmu_cyl_name,ndim=2,dtype=np.dtype('f8'))
+            if('RhoArea.Pmu' in key and not self.save_rho_area):
+                continue
+
+            if(value not in obj.output_buffer.keys()):
+                obj.output_buffer.create_array(value,ndim=2,dtype=np.dtype('f8'))
+        obj.output_buffer.create_array(self.branch_names['Passed'],ndim=1,dtype=np.dtype('f8'))
         return
 
-    def _createBranchNames(self,obj : 'JetFinder'):
-        self.pmu_name = '{}.Pmu'.format(self.obj_name_output)
-        self.pmu_cyl_name = '{}.Pmu_cyl'.format(self.obj_name_output)
+    def _createBranchNames(self,obj:'JetFinder'):
+        self.branch_names = {key:'{}.{}'.format(self.obj_name_output,key) for key in self.branch_names}
         return
 
     def _addToBuffer(self,obj : 'JetFinder'):
@@ -230,5 +247,7 @@ class RhoAreaSubtraction(PostProcessorBase):
         Note that the pT sorting of obj is applied,
         which will have been filled by obj._ptSort().
         """
-        obj.output_buffer.set(self.pmu_name,obj._i,self.pmu)
-        obj.output_buffer.set(self.pmu_cyl_name,obj._i,self.pmu_cyl)
+        for key,value in self.branch_names.items():
+            if('RhoArea.Pmu' in key and not self.save_rho_area):
+                continue
+            obj.output_buffer.set(value,obj._i,self.buffers[key])

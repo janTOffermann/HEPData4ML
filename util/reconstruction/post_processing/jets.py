@@ -769,12 +769,12 @@ class JetFinder(JetFinderBase):
         self.processors.append(jes.JetEnergyScale('cms',override))
         return self
 
-    def RhoAreaSubtraction(self,rho_input=None,pt_min:Annotated[float,"GeV"]=20.,rho_eta_edges:List[Any]=None,eta_bins:List[Any]=None,phi_bins:List[Any]=None):
+    def RhoAreaSubtraction(self,rho_input=None,pt_min:Annotated[float,"GeV"]=20.,rho_eta_edges:List[Any]=None,eta_bins:List[Any]=None,phi_bins:List[Any]=None, save_rho_area:bool=False):
         """
         This function performs rho area subtraction, for pileup removal.
         Can read in an existing rho branch (e.g. from Delphes), or compute it on-the-fly.
         """
-        self.processors.append(rho_area_sub.RhoAreaSubtraction(rho_input,pt_min,rho_eta_edges,eta_bins,phi_bins))
+        self.processors.append(rho_area_sub.RhoAreaSubtraction(rho_input,pt_min,rho_eta_edges,eta_bins,phi_bins,save_rho_area))
         return self
 
 
