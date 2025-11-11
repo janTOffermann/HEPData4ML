@@ -1,16 +1,18 @@
 import numpy as np
 import ROOT as rt
 from typing import TYPE_CHECKING
+from util.reconstruction.post_processing.utils.postprocessor_base import PostProcessorBase
 
 if TYPE_CHECKING: # Only imported during type checking -- avoids circular imports we'd otherwise get, since jets imports this file
     from util.reconstruction.post_processing.jets import JetFinder
 
-class ContainmentTagger:
+class ContainmentTagger(PostProcessorBase):
     """
     Tags jets based on a deltaR check, against (user-specified) elements of some input collection specified by "key".
     For more advanced containment checks, consider GhostAssociation.
     """
     def __init__(self,key,indices,delta_r=None, mode='filter',use_rapidity=True, tag_name=None):
+        super().__init__()
 
         self.key = key
         self.vec_key = '{}.Pmu_cyl'.format(key)
@@ -29,15 +31,11 @@ class ContainmentTagger:
 
         self.name = 'ContainmentTagger'
         self.print_prefix = '\n\t{}'.format(self.name)
-        self.citations = {}
 
         # Transient, per-jet variables
         self.tag_status = False
         self.vec1 = rt.Math.PtEtaPhiMVector()
         self.vec2 = rt.Math.PtEtaPhiMVector()
-
-    def GetCitations(self):
-        return self.citations
 
     def SetRadius(self,dr:float):
         self.radius2 = np.square(dr)
@@ -53,24 +51,20 @@ class ContainmentTagger:
         else:
             return rt.Math.VectorUtil.DeltaR2(self.vec1,self.vec2)
 
-    def _tag(self,obj : 'JetFinder', key:int):
+    def _tag(self,obj : 'JetFinder', pmu_cyl):
         status = True
-
         # Fetch the vectors from the input buffer; we don't assume that they
         # are necessarily in obj.input_collection_arrays (they likely are not).
         vecs = np.array(obj.input_buffer[self.vec_key])[self.indices] # reminder: using cylindrical
-        jet_vec = obj.jet_vectors_cyl[key]
-
-        # Compute distances. Deal with cases of "vecs" being multiple vectors, or a single one.
 
         if(vecs.ndim == 1):
-            distance2 = self._compute_distance2(jet_vec,vecs)
+            distance2 = self._compute_distance2(pmu_cyl,vecs)
             if(distance2 > self.radius2):
                 status = False
         else:
 
             for i,vec in enumerate(vecs):
-                distance2 = self._compute_distance2(jet_vec,vec)
+                distance2 = self._compute_distance2(pmu_cyl,vec)
                 if(distance2 > self.radius2):
                     status = False
                     break
@@ -84,6 +78,10 @@ class ContainmentTagger:
         the necessary input vectors are loaded into memory, if
         not already present.
         """
+        if(self.obj_name_input is None):
+            self.SetInputObjectName(obj.jet_name)
+        self.obj_name_output = self.obj_name_input # doesn't modify jet -> pass through object name
+
         if(self.indices is not None):
             self.indices = np.atleast_1d(self.indices)
 
@@ -91,39 +89,36 @@ class ContainmentTagger:
         # Note the use of cylindrical coordinates!
         if(self.vec_key not in obj.input_collection_arrays.keys()):
             obj.input_buffer.read_branch(self.vec_key)
-        return
 
-    def ModifyInputs(self,obj : 'JetFinder'):
+        if(self.mode=='tag'):
+            self._initializeBuffer(obj) # will initialize buffer if it doesn't already exist
         return
 
     def ModifyJets(self, obj : 'JetFinder'):
         """
         This function will tag jets, and fill the corresponding branches.
         """
-        # Fetch the jet constituents, just to be safe -- this makes sure that they are up-to-date.
-        obj._fetchJetConstituents()
 
-        self.tags = {i:False for i in obj.jets_dict.keys()}
+        pmu_cyl_key = '{}.Pmu_cyl'.format(self.obj_name_input)
+        pmu_cyl_dict = obj.output_buffer.get(pmu_cyl_key,filter=obj.jet_ordering)
+        self.tags = {i:False for i in pmu_cyl_dict.keys()}
 
-        for key in obj.jets_dict.keys():
-            self._tag(obj,key) # fills self.tag_status
+        for key,pmu_cyl in obj.pmu_cyl_dict.items():
+            self._tag(obj,pmu_cyl) # fills self.tag_status
             self.tags[key] = self.tag_status
 
+        # For filtering mode, we modify obj.jet_ordering
         if(self.mode=='filter'):
             obj.jet_ordering = [key for key in obj.jet_ordering if self.tags[key]]
-            obj._updateJetDictionary()
-            # Refresh vectors and constituents -- always need to do this if we filter jets_dict.
-            obj._jetsToVectors()
-            obj._fetchJetConstituents()
-
-    def ModifyConstituents(self, obj : 'JetFinder'):
-        return
+            # TODO: With the shift to how data I/O is handled, do we actually need to call the below funcs anymore?
+            # obj._updateJetDictionary()
+            # obj._jetsToVectors()
+            # obj._fetchJetConstituents()
 
     def ModifyWrite(self,obj : 'JetFinder'):
         if(self.mode=='filter'):
             return # do nothing
         else:
-            self._initializeBuffer(obj) # will initialize buffer if it doesn't already exist
             self._addFlagToBuffer(obj)
 
     def _initializeBuffer(self,obj : 'JetFinder'):
@@ -140,7 +135,7 @@ class ContainmentTagger:
 
     def _createBranchNames(self,obj : 'JetFinder'):
         if(self.tag_name is None):
-            self.tag_name = '{}.ContainmentTagger'.format(obj.jet_name)
+            self.tag_name = '{}.{}'.format(self.obj_name_output,self.name)
 
     def _addFlagToBuffer(self,obj : 'JetFinder'):
         """
@@ -149,7 +144,3 @@ class ContainmentTagger:
         which will have been filled by obj._ptSort().
         """
         obj.output_buffer.set(self.tag_name,obj._i,self.tags)
-
-    def _print(self,val):
-        print('{}: {}'.format(self.print_prefix,val))
-        return

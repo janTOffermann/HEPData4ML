@@ -32,14 +32,12 @@ class BasicTimer:
         print('({})'.format(elapsed_time_readable))
 
     def summarize_time(self):
-        print('\n#############################')
         self._summarize_main()
         print('Breakdown by step:')
         for key in self.dict.keys():
             elapsed_time = np.sum(np.array(self.dict[key]['end']) - np.array(self.dict[key]['start']))
             elapsed_time_readable = str(datetime.timedelta(seconds=elapsed_time))
             print('\tTime on {} step: {:.1f} seconds\t({})'.format(key, elapsed_time,elapsed_time_readable))
-        print('\n#############################')
         return
 
 

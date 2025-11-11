@@ -1,59 +1,52 @@
 import numpy as np
 from typing import TYPE_CHECKING
+from util.reconstruction.post_processing.utils.postprocessor_base import PostProcessorBase
 
 if TYPE_CHECKING: # Only imported during type checking -- avoids circular imports we'd otherwise get, since jets imports this file
     from util.reconstruction.post_processing.jets import JetFinder
 
 
-class PtFilter:
+class PtFilter(PostProcessorBase):
     """
     Removes jets that fail a minimum pT cut (in GeV).
     """
 
     def __init__(self,pt_min):
+        super().__init__()
+
         self.pt_min = pt_min
         self.name = 'PtFilter'
-        self.print_prefix = '\n\t{}'.format(self.name)
+        self.print_prefix = '{}'.format(self.name)
         self.citations = {}
 
-    def GetCitations(self):
-        return self.citations
-
     def ModifyInitialization(self,obj):
-        return
-
-    def ModifyInputs(self,obj:'JetFinder'):
+        if(self.obj_name_input is None):
+            self.obj_name_input = obj.jet_name
+        self.obj_name_output = self.obj_name_input
         return
 
     def ModifyJets(self, obj:'JetFinder'):
         """
-        This function apply the pt filter.
+        This function applies the pt filter.
         """
-        tags = {i:False for i in obj.jets_dict.keys()}
 
-        for i,jet in obj.jets_dict.items():
-            if(jet.pt() > self.pt_min):
+        pmu_cyl_key = '{}.Pmu_cyl'.format(self.obj_name_input)
+        pmu_cyl_dict = obj.output_buffer.get(pmu_cyl_key,filter=obj.jet_ordering)
+
+        tags = {i:False for i in pmu_cyl_dict.keys()}
+
+        for i,pmu in pmu_cyl_dict.items():
+            if(pmu[0] > self.pt_min):
                 tags[i] = True
 
         obj.jet_ordering = [key for key in obj.jet_ordering if tags[key]]
-        obj._updateJetDictionary()
-        # Refresh vectors and constituents -- always need to do this if we filter jets_dict.
-        obj._ptSort()
-        obj._jetsToVectors()
-        obj._fetchJetConstituents()
+        # obj._updateJetDictionary()
+        # obj._ptSort()
+        # obj._jetsToVectors()
+        # obj._fetchJetConstituents()
         return
 
-    def ModifyWrite(self,obj:'JetFinder'):
-        return # does nothing
-
-    def ModifyConstituents(self, obj:'JetFinder'):
-        return
-
-    def _print(self,val):
-        print('{}: {}'.format(self.print_prefix,val))
-        return
-
-class EtaFilter:
+class EtaFilter(PostProcessorBase):
     """
     Removes jets that fail an eta window cut.
     Note: This is a cut on the eta of the jet vector --
@@ -62,62 +55,56 @@ class EtaFilter:
     """
 
     def __init__(self,eta_max):
+        super().__init__()
+
         self.eta_max = eta_max
         self.name = 'EtaFilter'
-        self.print_prefix = '\n\t{}'.format(self.name)
+        self.print_prefix = '{}'.format(self.name)
         self.citations = {}
 
-    def GetCitations(self):
-        return self.citations
-
     def ModifyInitialization(self,obj:'JetFinder'):
+        if(self.obj_name_input is None):
+            self.obj_name_input = obj.jet_name
+        self.obj_name_output = self.obj_name_input
         return
 
-    def ModifyInputs(self,obj):
-        return
-
-    def ModifyJets(self, obj):
+    def ModifyJets(self, obj:'JetFinder'):
         """
-        This function apply the eta filter.
+        This function applies the eta filter.
         """
-        tags = {i:False for i in obj.jets_dict.keys()}
+        pmu_cyl_key = '{}.Pmu_cyl'.format(self.obj_name_input)
+        pmu_cyl_dict = obj.output_buffer.get(pmu_cyl_key,filter=obj.jet_ordering)
 
-        for i,jet in obj.jets_dict.items():
-            if(np.abs(jet.eta()) < self.eta_max):
+        tags = {i:False for i in pmu_cyl_dict.keys()}
+
+        for i,pmu in pmu_cyl_dict.items():
+            if(np.abs(pmu[1]) < self.eta_max):
                 tags[i] = True
 
         obj.jet_ordering = [key for key in obj.jet_ordering if tags[key]]
-        obj._updateJetDictionary()
-        # Refresh vectors and constituents -- always need to do this if we filter jets_dict.
-        obj._ptSort()
-        obj._jetsToVectors()
-        obj._fetchJetConstituents()
+        # obj._updateJetDictionary()
+        # obj._ptSort()
+        # obj._jetsToVectors()
+        # obj._fetchJetConstituents()
         return
 
-    def ModifyWrite(self,obj:'JetFinder'):
-        return # does nothing
-
-    def ModifyConstituents(self, obj:'JetFinder'):
-        return
-
-    def _print(self,val):
-        print('{}: {}'.format(self.print_prefix,val))
-        return
-
-class Leading:
+class Leading(PostProcessorBase):
     """
     Removes all jets except the highest-pT one.
     """
 
     def __init__(self):
+        super().__init__()
+
         self.name = 'Leading'
-        self.print_prefix = '\n\t{}'.format(self.name)
+        self.print_prefix = '{}'.format(self.name)
         self.citations = {}
 
-    def GetCitations(self):
-        return self.citations
-
     def ModifyInitialization(self,obj:'JetFinder'):
+        if(self.obj_name_input is None):
+            self.obj_name_input = obj.jet_name
+        self.obj_name_output = self.obj_name_input
+
         obj.single_jet = True
         return
 
@@ -126,27 +113,20 @@ class Leading:
 
     def ModifyJets(self, obj:'JetFinder'):
         """
-        This function apply the leading (highest-pT) cut.
+        This function applies the leading (highest-pT) cut.
         """
-        tags = {i:False for i in obj.jets_dict.keys()}
+        pmu_cyl_key = '{}.Pmu_cyl'.format(self.obj_name_input)
+        pmu_cyl_dict = obj.output_buffer.get(pmu_cyl_key,filter=obj.jet_ordering)
 
-        jet_pt = np.array([jet.pt() for jet in obj.jets_dict.values()])
-        tags[list(obj.jets_dict.keys())[np.argmax(jet_pt)]] = True
+        tags = {i:False for i in pmu_cyl_dict.keys()}
+
+        jet_pt = np.array([pmu[0] for pmu in pmu_cyl_dict.values()])
+        tags[list(pmu_cyl_dict.keys())[np.argmax(jet_pt)]] = True
 
         obj.jet_ordering = [key for key in obj.jet_ordering if tags[key]]
-        obj._updateJetDictionary()
-        # Refresh vectors and constituents -- always need to do this if we filter jets_dict.
-        obj._ptSort()
-        obj._jetsToVectors()
-        obj._fetchJetConstituents()
-        return
-
-    def ModifyWrite(self,obj:'JetFinder'):
-        return # does nothing
-
-    def ModifyConstituents(self, obj:'JetFinder'):
-        return
-
-    def _print(self,val):
-        print('{}: {}'.format(self.print_prefix,val))
+        # obj._updateJetDictionary()
+        # # Refresh vectors and constituents -- always need to do this if we filter jets_dict.
+        # obj._ptSort()
+        # obj._jetsToVectors()
+        # obj._fetchJetConstituents()
         return

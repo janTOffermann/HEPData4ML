@@ -2,11 +2,12 @@ import ROOT as rt
 import numpy as np
 from numpy.typing import NDArray
 from typing import TYPE_CHECKING, Optional,Union,List,Annotated,Any
+from util.reconstruction.post_processing.utils.postprocessor_base import PostProcessorBase
 
 if TYPE_CHECKING: # Only imported during type checking -- avoids circular imports we'd otherwise get, since jets imports this file
     from util.reconstruction.post_processing.jets import JetFinder
 
-class RhoAreaSubtraction:
+class RhoAreaSubtraction(PostProcessorBase):
     """
     Performs "rho-area subtraction", to remove pileup from jets.
     Rho is an estimate of the pileup activity/density; it can be
@@ -18,20 +19,8 @@ class RhoAreaSubtraction:
     Note that jet vectors are affected, but jet constituents are not.
     """
 
-    def __init__(self,rho_input:Optional[str]=None,pt_min:Annotated[float,"GeV"]=20., rho_eta_edges:Optional[Union[List[Any],NDArray]]=None, eta_bins:Optional[Union[list,NDArray]]=None, phi_bins:Optional[Union[list,NDArray]]=None,mode='decorate'):
-
-        self.mode = mode
-        assert mode in ['overwrite','decorate']
-
-        # Print a warning if the mode is "overwrite", since this
-        # is sort of non-standard; it'll actually modify jet momenta,
-        # but not the constituent momenta.
-        if(mode=='overwrite'):
-            self._print('Warning: Using \'overwrite\' mode, will replace')
-            self._print('raw jet momenta with rho-area-corrected momenta,')
-            self._print('but will *not* affect jet constituents.')
-            self._print('Constituent momenta may no longer sum up to jet momentum!')
-            print()
+    def __init__(self,rho_input:Optional[str]=None,pt_min:Annotated[float,"GeV"]=20., rho_eta_edges:Optional[Union[List[Any],NDArray]]=None, eta_bins:Optional[Union[list,NDArray]]=None, phi_bins:Optional[Union[list,NDArray]]=None):
+        super().__init__()
 
         # Variables for reading in rho input,
         # for pre-computed rho (from Delphes).
@@ -58,7 +47,7 @@ class RhoAreaSubtraction:
 
         self.name = 'RhoAreaSubtraction'
         self.branch_name = None
-        self.print_prefix = '\n\t{}'.format(self.name)
+        self.print_prefix = '{}'.format(self.name)
         self.citations = {
             "Rho-Area Subtraction":
             """
@@ -77,10 +66,12 @@ class RhoAreaSubtraction:
 }
             """
         }
-    def GetCitations(self):
-        return self.citations
 
     def ModifyInitialization(self,obj):
+        if(self.obj_name_input is None):
+            self.SetInputObjectName(obj.jet_name)
+        self.obj_name_output = '.'.join([self.obj_name_input,'RhoPileupSubtracted'])
+        self.obj_name_constituents_output = self.obj_name_output
 
         if(self.rho_input is not None):
             self._set_rho_input(obj)
@@ -88,9 +79,8 @@ class RhoAreaSubtraction:
         else:
             self._init_estimator()
             self.compute = True # will do on-the-fly computation
-        return
 
-    def ModifyInputs(self,obj : 'JetFinder'):
+        self._initializeBuffer(obj) # will initialize buffer if it doesn't already exist
         return
 
     def ModifyJets(self, obj : 'JetFinder'):
@@ -108,17 +98,26 @@ class RhoAreaSubtraction:
 
         # fetch/compute rho
         if(self.compute):
-            self._compute_rho() # fills self.rho (self.rho_eta_edges must be already filled in this case)
+            self._compute_rho(obj) # fills self.rho (self.rho_eta_edges must be already filled in this case)
         else:
-            self._fetch_rho() # fills self.rho, self.rho_eta_edges
+            self._fetch_rho(obj) # fills self.rho, self.rho_eta_edges
+
+        pmu_key = '{}.Pmu'.format(self.obj_name_input)
+        pmu_cyl_key = '{}.Pmu_cyl'.format(self.obj_name_input)
+
+        pmu_dict = obj.output_buffer.get(pmu_key,filter=obj.jet_ordering)
+        pmu_cyl_dict = obj.output_buffer.get(pmu_cyl_key,filter=obj.jet_ordering)
+
+        # NOTE: This post-processor directly accesses the original jets, because it needs information
+        #       on jet areas. We implicitly assume these are unchanged by any prior post-processors.
+        # TODO: Consider storing jet area as a branch; then we can use it here w/out fastjet!
 
         delete_indices = [] # keep track of jets to remove entirely (or assign 0 corrected momentum)
-
         self.pmu = {i:np.zeros(4) for i in obj.jets_dict.keys()}
         self.pmu_cyl = {i:np.zeros(4) for i in obj.jets_dict.keys()}
 
-        for i,jet in obj.jets_dict.items():
-
+        for i,pmu_cyl in pmu_cyl_dict.items():
+            jet = obj.jets_dict[i]
             # get the jet area
             area = None
             if(jet.has_area()):
@@ -127,59 +126,43 @@ class RhoAreaSubtraction:
                 area = jet.area_4vector() # pseudojet
 
             if(area is None):
+                self._print('[{}] No area'.format(i))
                 continue
 
             # determine the appropriate value of rho to use, based on jet's location
             rho = None
-            rho_idx = np.searchsorted(self.rho_eta_edges, jet.eta(), side='right') - 1
+            rho_idx = np.searchsorted(self.rho_eta_edges, pmu_cyl[1], side='right') - 1
             if(0 <= rho_idx < len(self.rho)):
                 rho = self.rho[rho_idx]
 
             if(rho is None):
+                self._print('[{}] No rho'.format(i))
                 continue
 
             rho_area = rho * area # Fastjet::PseudoJet
 
-            if(rho_area.pt() >= jet.pt()):
+            if(rho_area.pt() >= pmu_cyl[0]):
+                self._print('[{}] rho_area.pt() >= jet pt'.format(i))
                 delete_indices.append(i)
                 continue
 
-            if(self.mode=='overwrite'):
-                obj.jets_dict[i] -= rho_area
-                if(obj.jets_dict[i].pt() < self.pt_min):
-                    delete_indices.append(i)
-                    continue
-
-            else:
-                corr_jet = jet - rho_area
-                if(corr_jet.pt() < self.pt_min):
-                    delete_indices.append(i)
-                    continue
-                self.pmu[i]     = np.array([jet.e(),jet.px(),jet.py(),jet.pz()])
-                self.pmu_cyl[i] = np.array([jet.pt(),jet.eta(),jet.phi(),jet.m()])
-
-        if(self.mode=='overwrite'):
-            # Now, drop any jets that failed the minimum pt check
-            # or were totally removed by rho-area subtraction
-            for idx in delete_indices:
-                del obj.jets_dict[idx]
-            self._jetsToVectors() # force computation of jet vectors again (pseudojets -> numpy arrays)
+            corr_jet = jet - rho_area
+            if(corr_jet.pt() < self.pt_min):
+                self._print('[{}] corr_jet.pt() = {}, < self.pt_min'.format(i,corr_jet.pt()))
+                delete_indices.append(i)
+                continue
+            self.pmu[i]     = np.array([corr_jet.e(),corr_jet.px(),corr_jet.py(),corr_jet.pz()])
+            self.pmu_cyl[i] = np.array([corr_jet.pt(),corr_jet.eta(),corr_jet.phi(),corr_jet.m()])
 
         return
 
     def ModifyWrite(self,obj : 'JetFinder'):
-        if(self.mode=='decorate'):
-            self._initializeBuffer(obj) # will initialize buffer if it doesn't already exist
-            self._addToBuffer(obj)
-        return
-
-    def ModifyConstituents(self, obj : 'JetFinder'):
-        # TODO figure out what, if anything, to do here
+        self._addToBuffer(obj)
         return
 
     def _set_rho_input(self,obj : 'JetFinder'):
         self.rho_name = '{}.Rho'.format(self.rho_input)
-        self.rho_edge_name = '{}.Edges'.format(self.rho_input)
+        self.rho_edge_name = '{}.Edges.Eta'.format(self.rho_input)
 
         for name in [self.rho_name, self.rho_edge_name]:
             if(name not in obj.input_collection_arrays.keys()):
@@ -188,7 +171,7 @@ class RhoAreaSubtraction:
 
     def _fetch_rho(self,obj : 'JetFinder'):
         self.rho = np.array(obj.input_buffer[self.rho_name])
-        self.rho_eta_edges = np.array(obj.input_buffer[self.rho_eta_edges])
+        self.rho_eta_edges = np.array(obj.input_buffer[self.rho_edge_name])
 
     def _compute_rho(self,obj):
         import fastjet as fj # can do this since JetFinder has imported for us
@@ -239,10 +222,8 @@ class RhoAreaSubtraction:
         return
 
     def _createBranchNames(self,obj : 'JetFinder'):
-        self.branch_name_prefixname = '{}.{}'.format(obj.jet_name,self.name)
-
-        self.pmu_name = '{}.Pmu'.format(self.branch_name_prefixname)
-        self.pmu_cyl_name = '{}.Pmu_cyl'.format(self.branch_name_prefixname)
+        self.pmu_name = '{}.Pmu'.format(self.obj_name_output)
+        self.pmu_cyl_name = '{}.Pmu_cyl'.format(self.obj_name_output)
         return
 
     def _addToBuffer(self,obj : 'JetFinder'):
@@ -253,7 +234,3 @@ class RhoAreaSubtraction:
         """
         obj.output_buffer.set(self.pmu_name,obj._i,self.pmu)
         obj.output_buffer.set(self.pmu_cyl_name,obj._i,self.pmu_cyl)
-
-    def _print(self,val):
-        print('{}: {}'.format(self.print_prefix,val))
-        return

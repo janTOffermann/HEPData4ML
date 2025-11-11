@@ -3,7 +3,7 @@ import ROOT as rt
 import h5py as h5
 import numpy as np
 from typing import TYPE_CHECKING, Optional, Union
-# from numpy.typing import NDArray
+from util.reconstruction.post_processing.utils.postprocessor_base import PostProcessorBase
 
 if TYPE_CHECKING: # Only imported during type checking -- avoids circular imports we'd otherwise get, since jets imports this file
     from util.reconstruction.post_processing.jets import JetFinder
@@ -11,7 +11,7 @@ if TYPE_CHECKING: # Only imported during type checking -- avoids circular import
 # TODO: Something seems broken, ghost is (occasionally?) throwing off <jet_name>.Constituents.Collection.
 #       Appears at end of Constituents.Pmu, but not end of that branch.
 
-class GhostAssociator():
+class GhostAssociator(PostProcessorBase):
     """
     Ghost-associates jets with particles labeled by `key`,
     at the given particle indices (within each event).
@@ -20,6 +20,7 @@ class GhostAssociator():
     """
 
     def __init__(self,key:str,indices,mode:str='filter',tag_name:Optional[str]=None):
+        super().__init__()
 
         self.key = key
         self.vec_key_cyl = '{}.Pmu_cyl'.format(key)
@@ -31,7 +32,7 @@ class GhostAssociator():
         self.tag_name=tag_name
         self.tags = None
         self.name = 'GhostAssociator'
-        self.print_prefix = '\n\t{}'.format(self.name)
+        self.print_prefix = '{}'.format(self.name)
 
         self.citations = {
             "GhostAssociation":
@@ -52,11 +53,6 @@ class GhostAssociator():
             """
         }
 
-    def GetCitations(self):
-        return self.citations
-
-
-
     def _makeGhosts(self,vecs:Union[list,np.ndarray], a:float=1.0e-10):
         """Make the ghosts, in both Cartesian and cylindrical."""
         result = (np.zeros(vecs.shape),np.zeros(vecs.shape))
@@ -67,11 +63,27 @@ class GhostAssociator():
             result[1][i] = np.array([v.Pt(), v.Eta(), v.Phi(), v.M()])
         return result
 
+    def _input_check(self,obj:'JetFinder'):
+        if(self.obj_name_input is not None):
+            if(self.obj_name_input != obj.jet_name):
+                print()
+                self._print('Attempted to set input object name to: {}'.format(self.obj_name_input),level=1)
+                self._print('This post-processor operates by modifying the base jet clustering itself,',level=1)
+                self._print('so it doesn\'t take modified input. Will ignore this setting.',level=1)
+                self._print('You might want to put this post-processor first in the chain;',level=1)
+                self._print('that\'s effectively where it already operates.',level=1)
+
     def ModifyInitialization(self,obj:'JetFinder'):
         """
         This function will modify the initialization so that
         the ghost vectors are generated and loaded into memory.
         """
+        self._input_check(obj)
+
+        # NOTE: obj_name_input effectively unused, but want to pass info through
+        if(self.obj_name_input is None):
+            self.SetInputObjectName(obj.jet_name)
+        self.obj_name_output = self.obj_name_input # doesn't modify jet -> pass through object name
 
         self.indices = np.atleast_1d(self.indices)
 
@@ -126,11 +138,9 @@ class GhostAssociator():
 
         if(self.mode=='filter'):
             obj.jet_ordering = [key for key in obj.jet_ordering if self.tags[key]]
-            obj._updateJetDictionary()
-            # Refresh vectors and constituents -- always need to do this if we filter jets_dict.
-            obj._jetsToVectors()
-            obj._fetchJetConstituents()
-
+            # obj._updateJetDictionary()
+            # obj._jetsToVectors()
+            # obj._fetchJetConstituents()
         return
 
     def ModifyWrite(self,obj : 'JetFinder'):
@@ -150,21 +160,13 @@ class GhostAssociator():
         #      each jet is ghost-associated, but I think that gets a bit complicated
         #      and it's not clear that it would be worthwhile.
         if(self.tag_name is None):
-            self.tag_name = '{}.{}.GhostAssociated'.format(obj.jet_name,self.key)
+            self.tag_name = '{}.{}.GhostAssociated'.format(obj.jet_name,self.key) # NOTE: use of obj.jet_name
         if(self.tag_name not in obj.output_buffer.keys()):
             obj.output_buffer.create_array(self.tag_name,ndim=1,dtype=bool)
-            # obj.output_buffer[self.tag_name] = np.full((obj.nevents,obj.n_jets_max),False,dtype=bool)
         return
 
     def _addFlagToBuffer(self,obj : 'JetFinder'):
         """
         Adds the ghost association tags to the buffer, for writing.
         """
-        obj.output_buffer.set(self.tag_name,obj._i,self.tags[i])
-
-    def ModifyConstituents(self, obj : 'JetFinder'):
-        return
-
-    def _print(self,val):
-        print('{}: {}'.format(self.print_prefix,val))
-        return
+        obj.output_buffer.set(self.tag_name,obj._i,self.tags)

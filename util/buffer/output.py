@@ -694,5 +694,12 @@ class RootOutputBuffer:
         """Return the keys in the buffer."""
         return self.buffers.keys()
 
+    def get(self,key,dictionary=True,filter=None):
+        if(dictionary):
+            if(filter is None):
+                return self.buffer_dicts[key]
+            return {k:v for k,v in self.buffer_dicts[key].items() if k in filter}
+        return self.buffers[key]
+
     def _print(self,val:str):
         print('{} {}'.format(self.print_prefix,val))

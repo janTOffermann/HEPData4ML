@@ -162,7 +162,10 @@ class JetFinderBase:
             # If we've supplied (rapidity,phi) of inputs to JetFinderBase, we can pass these to FastJet to avoid
             # having it recompute these quantities internally.
             if(has_rapidity):
-                self.pseudojets[i].set_cached_rap_phi(self.rapidity[i],self.input_vecs_cyl[i,2])
+                try: # NOTE: We do a try/except because currently post-processors like GhostAssociation will add inputs w/out corresponding self.rapidity entry
+                    self.pseudojets[i].set_cached_rap_phi(self.rapidity[i],self.input_vecs_cyl[i,2])
+                except:
+                    pass
 
         # Attach any optional information to the pseudojet objects. This can be leveraged by other classes
         # or extensions.
@@ -265,7 +268,7 @@ class JetFinderBase:
         and truncated if requested.
         """
         if not jet.has_constituents():
-            return np.empty((0, 4)), np.empty((0, 4)), np.empty((0, 4))
+            return []
 
         constituents = jet.constituents()
         n = len(constituents)

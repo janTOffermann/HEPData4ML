@@ -426,7 +426,15 @@ def main(args):
                 sub.check_call(comm)
             timer.end_timestamp('reconstruction')
         timer.end_main()
+        print('\n#############################')
         timer.summarize_time()
+        # Give a further breakdown of the post-processing.
+
+        if(processor.post_processing is not None):
+            for i,post_proc in enumerate(processor.post_processing):
+                post_proc.SummarizeRuntime(level=2)
+        print('\n#############################')
+
 
         if(profiler is not None): profiler.report()
 

@@ -339,21 +339,27 @@ namespace NtupleProducer{
   }
 
   void Converter::_DelphesCalorimeter(TString inputBranchName, vector<TString> attributes){
+    Bool_t isCalo = kFALSE;
     if(_CheckStringVector(attributes,"Eem")){
       _delphesData[inputBranchName]->Eem = std::make_unique<TTreeReaderArray<Float_t>>(*_delphesReader,Form("%s.Eem", inputBranchName.Data()));
       TString branchName = Form("%s.E.EM", inputBranchName.Data());
       _outputTree->Branch(branchName,&_delphesData[inputBranchName]->output.caloData.Eem);
+      isCalo = kTRUE;
     }
     if(_CheckStringVector(attributes,"Ehad")){
       _delphesData[inputBranchName]->Ehad = std::make_unique<TTreeReaderArray<Float_t>>(*_delphesReader,Form("%s.Ehad", inputBranchName.Data()));
       TString branchName = Form("%s.E.Hadronic", inputBranchName.Data());
       _outputTree->Branch(branchName,&_delphesData[inputBranchName]->output.caloData.Ehad);
+      isCalo = kTRUE;
     }
     if(_CheckStringVector(attributes,"Etrk")){
       _delphesData[inputBranchName]->Etrack = std::make_unique<TTreeReaderArray<Float_t>>(*_delphesReader,Form("%s.Etrk", inputBranchName.Data()));
       TString branchName = Form("%s.E.Track", inputBranchName.Data());
       _outputTree->Branch(branchName,&_delphesData[inputBranchName]->output.caloData.Etrack);
+      isCalo = kTRUE;
     }
+
+    if(!isCalo) return; // avoid accidentally triggering edges code below, which could otherwise be triggered by other data types like Rho
     // We handle Edges specially -- the name passed to TTreeReaderArray must include [N] suffix, where N is fixed array size
 
     if(_CheckStringVector(attributes,"Edges")){
@@ -392,8 +398,62 @@ namespace NtupleProducer{
     }
   }
 
-  void Converter::_CreateDelphesBranch(TString inputBranchName){
+  void Converter::_DelphesMET(TString inputBranchName, vector<TString> attributes){
+    if(_CheckStringVector(attributes,"MET")){
+      // Connect it to the input Delphes branches.
+      _delphesData[inputBranchName]->MET = std::make_unique<TTreeReaderArray<Float_t>>(*_delphesReader,Form("%s.MET", inputBranchName.Data()));
 
+      // Assuming there's also Eta and Phi. (Should be safe, given how Delphes data is structured)
+      _delphesData[inputBranchName]->eta = std::make_unique<TTreeReaderArray<Float_t>>(*_delphesReader,Form("%s.Eta", inputBranchName.Data()));
+      _delphesData[inputBranchName]->phi = std::make_unique<TTreeReaderArray<Float_t>>(*_delphesReader,Form("%s.Phi", inputBranchName.Data()));
+
+      // if(_CheckStringVector(attributes,"Mass")){
+      //   _delphesData[inputBranchName]->mass = std::make_unique<TTreeReaderArray<Float_t>>(*_delphesReader,Form("%s.Mass", inputBranchName.Data()));
+      // }
+
+      // Connect it to the output tree branches.
+      TString branchName;
+      branchName = Form("%s.Pmu", inputBranchName.Data());
+      _outputTree->Branch(branchName,&_delphesData[inputBranchName]->output.momentum.pmu);
+      branchName = Form("%s.Pmu_cyl", inputBranchName.Data());
+      _outputTree->Branch(branchName,&_delphesData[inputBranchName]->output.momentum.pmu_cyl);
+    }
+    return;
+  }
+
+  void Converter::_DelphesRho(TString inputBranchName, vector<TString> attributes){
+    if(_CheckStringVector(attributes,"Rho")){
+      _delphesData[inputBranchName]->rho = std::make_unique<TTreeReaderArray<Float_t>>(*_delphesReader,Form("%s.Rho", inputBranchName.Data()));
+      TString branchName = Form("%s.Rho", inputBranchName.Data());
+      _outputTree->Branch(branchName,&_delphesData[inputBranchName]->output.rhoData.rho);
+    }
+    else return;
+    // We handle Edges specially -- the name passed to TTreeReaderArray must include [N] suffix, where N is fixed array size
+
+    if(_CheckStringVector(attributes,"Edges")){
+      _delphesData[inputBranchName]->hasEdges = kTRUE; // TODO: DEBUG
+      TLeaf* edgesLeaf = _delphesTree->GetLeaf(Form("%s.Edges", inputBranchName.Data()));
+      _delphesData[inputBranchName]->edgesSize = edgesLeaf->GetLen();  // typically 2, for Rho
+      TString branchNameFull = Form("%s.Edges[%i]",inputBranchName.Data(),_delphesData[inputBranchName]->edgesSize);
+      _delphesTree->SetBranchAddress(branchNameFull,&_delphesData[inputBranchName]->Edges);
+
+      TString branchName;
+
+      // Special case for edgesLeaf->GetLen() == 2
+      if(_delphesData[inputBranchName]->edgesSize == 2){
+        branchName = Form("%s.Edges.Eta", inputBranchName.Data());
+        _outputTree->Branch(branchName,&_delphesData[inputBranchName]->output.rhoData.edgesEta);
+      }
+      else{
+        branchName = Form("%s.Edges.Eta", inputBranchName.Data());
+        _outputTree->Branch(branchName,&_delphesData[inputBranchName]->output.rhoData.edgesEta);
+        branchName = Form("%s.Edges.Phi", inputBranchName.Data());
+        _outputTree->Branch(branchName,&_delphesData[inputBranchName]->output.rhoData.edgesPhi);
+      }
+    }
+  }
+
+  void Converter::_CreateDelphesBranch(TString inputBranchName){
     TString branchName;
 
     // Determine what leaves this branch has.
@@ -442,6 +502,12 @@ namespace NtupleProducer{
 
     // 6) Handling position information (for non-track objects)
     _DelphesPosition(inputBranchName,attributes);
+
+    // 7) Handling MET-specific information
+    _DelphesMET(inputBranchName, attributes);
+
+    // 8) Handling rho-specific information
+    _DelphesRho(inputBranchName, attributes);
 
     return;
   }
@@ -604,142 +670,167 @@ namespace NtupleProducer{
   void Converter::_FillDelphesObjects(){
     ROOT::Math::PtEtaPhiMVector v;
     for(auto& [branchName, data] : _delphesData){
-        data->Clear();
+      data->Clear();
 
-        // TODO: Package these chunks up into their own functions
-        if(data->pt){
-          Int_t N = data->pt->GetSize();
+      // TODO: Package these chunks up into their own functions
+      if(data->pt){
+        Int_t N = data->pt->GetSize();
+        data->output.N = N;
+        for(Int_t i = 0; i < N; i++){
+          Double_t pt = (*data->pt)[i];
+          Double_t eta = (*data->eta)[i];
+          Double_t phi = (*data->phi)[i];
+          Double_t m   = data->mass ? (*data->mass)[i] :
+            _delphesMassDefault.find(branchName) != _delphesMassDefault.end() ? _delphesMassDefault[branchName] :
+            0.0;
+          v.SetCoordinates(pt,eta,phi,m);
+          data->output.momentum.pmu.push_back({v.E(), v.Px(), v.Py(), v.Pz()});
+          data->output.momentum.pmu_cyl.push_back({pt, eta, phi, m});
+        }
+      }
+      if(data->d0){
+        Int_t N = data->d0->GetSize();
+        data->output.N = N;
+        for(Int_t i = 0; i < N; i++){
+          data->output.trackData.d0.push_back((*data->d0)[i]);
+          data->output.trackData.d0Error.push_back((*data->d0Error)[i]);
+          data->output.trackData.z0.push_back((*data->z0)[i]);
+          data->output.trackData.z0Error.push_back((*data->z0Error)[i]);
+
+        }
+      }
+
+      if(_delphesFillXd[branchName]){ // checking this way since there are two conditions under which we fill
+        if(data->xd){
+          Int_t N = data->xd->GetSize();
           data->output.N = N;
           for(Int_t i = 0; i < N; i++){
-            Double_t pt = (*data->pt)[i];
-            Double_t eta = (*data->eta)[i];
-            Double_t phi = (*data->phi)[i];
-            Double_t m   = data->mass ? (*data->mass)[i] :
-              _delphesMassDefault.find(branchName) != _delphesMassDefault.end() ? _delphesMassDefault[branchName] :
-              0.0;
-            v.SetCoordinates(pt,eta,phi,m);
-            data->output.momentum.pmu.push_back({v.E(), v.Px(), v.Py(), v.Pz()});
-            data->output.momentum.pmu_cyl.push_back({pt, eta, phi, m});
+            data->output.trackData.Xd.push_back({(*data->xd)[i], (*data->yd)[i], (*data->zd)[i]});
           }
         }
-        if(data->d0){
+        else{ // earlier setup should guarantee that the necessary inputs exist
           Int_t N = data->d0->GetSize();
           data->output.N = N;
           for(Int_t i = 0; i < N; i++){
-            data->output.trackData.d0.push_back((*data->d0)[i]);
-            data->output.trackData.d0Error.push_back((*data->d0Error)[i]);
-            data->output.trackData.z0.push_back((*data->z0)[i]);
-            data->output.trackData.z0Error.push_back((*data->z0Error)[i]);
-
+            Double_t d0 = (*data->d0)[i];
+            Double_t z0 = (*data->z0)[i];
+            Double_t phi = (*data->phi)[i];
+            Double_t xd = d0 * TMath::Cos(phi);
+            Double_t yd = d0 * TMath::Sin(phi);
+            data->output.trackData.Xd.push_back({xd, yd, z0});
           }
         }
+      }
+      if(data->pdgId){
+        Int_t N = data->pdgId->GetSize();
+        data->output.N = N;
+        for(Int_t i = 0; i < N; i++){
+          data->output.pdgId.push_back((*data->pdgId)[i]);
+        }
+      }
+      if(data->charge){
+        Int_t N = data->charge->GetSize();
+        data->output.N = N;
+        for(Int_t i = 0; i < N; i++){
+          data->output.charge.push_back((*data->charge)[i]);
+        }
+      }
+      if(data->Eem){
+        Int_t N = data->Eem->GetSize();
+        data->output.N = N;
+        for(Int_t i = 0; i < N; i++){
+          data->output.caloData.Eem.push_back((*data->Eem)[i]);
+        }
+      }
 
-        if(_delphesFillXd[branchName]){ // checking this way since there are two conditions under which we fill
-          if(data->xd){
-            Int_t N = data->xd->GetSize();
-            data->output.N = N;
-            for(Int_t i = 0; i < N; i++){
-              data->output.trackData.Xd.push_back({(*data->xd)[i], (*data->yd)[i], (*data->zd)[i]});
+      if(data->Ehad){
+        Int_t N = data->Ehad->GetSize();
+        data->output.N = N;
+        for(Int_t i = 0; i < N; i++){
+          data->output.caloData.Ehad.push_back((*data->Ehad)[i]);
+        }
+      }
+
+      if(data->Etrack){
+        Int_t N = data->Etrack->GetSize();
+        data->output.N = N;
+        for(Int_t i = 0; i < N; i++){
+          data->output.caloData.Etrack.push_back((*data->Etrack)[i]);
+        }
+      }
+      if(data->rho){
+        Int_t N = data->rho->GetSize();
+        data->output.N = N;
+        for(Int_t i = 0; i < N; i++){
+          Double_t rho = (*data->rho)[i];
+          data->output.rhoData.rho.push_back(rho);
+        }
+      }
+      if(data->hasEdges){
+        Int_t N = data->output.N; // assuming we got this already
+        Int_t idx = 0;
+        for(Int_t i = 0; i < N; i++) {
+
+          if(idx + data->edgesSize >= data->edgesMax){
+            cout << Form("NtupleProducer::Converter::_FillDelphesObjects(): Warning, more edges for branch %s.Edges than allowed by buffer, truncating.",branchName.Data()) << endl;
+            cout << Form("\t(edgesMax = %i, but there are %i objects for event %llu, with %i edges each)",data->edgesMax,N,_i,data->edgesSize);
+            break;
+          }
+
+          if(data->edgesSize == 2){
+            vector<Double_t> rapidityEdges = {(Double_t)data->Edges[idx], (Double_t)data->Edges[idx + 1]};
+
+            if(data->rho) data->output.rhoData.edgesEta.push_back(rapidityEdges);
+            else data->output.caloData.edgesEta.push_back(rapidityEdges);
+          }
+          else{
+            vector<Double_t> etaEdges = {};
+            vector<Double_t> phiEdges = {};
+            for(Int_t j = 0; j < data->edgesSize; j++){
+              Double_t val = (Double_t)data->Edges[idx + j];
+              if(j < data->edgesSize / 2) etaEdges.push_back(val);
+              else phiEdges.push_back(val);
             }
-          }
-          else{ // earlier setup should guarantee that the necessary inputs exist
-            Int_t N = data->d0->GetSize();
-            data->output.N = N;
-            for(Int_t i = 0; i < N; i++){
-              Double_t d0 = (*data->d0)[i];
-              Double_t z0 = (*data->z0)[i];
-              Double_t phi = (*data->phi)[i];
-              Double_t xd = d0 * TMath::Cos(phi);
-              Double_t yd = d0 * TMath::Sin(phi);
-              data->output.trackData.Xd.push_back({xd, yd, z0});
-            }
-          }
-        }
-
-        if(data->pdgId){
-          Int_t N = data->pdgId->GetSize();
-          data->output.N = N;
-          for(Int_t i = 0; i < N; i++){
-            data->output.pdgId.push_back((*data->pdgId)[i]);
-          }
-        }
-        if(data->charge){
-          Int_t N = data->charge->GetSize();
-          data->output.N = N;
-          for(Int_t i = 0; i < N; i++){
-            data->output.charge.push_back((*data->charge)[i]);
-          }
-        }
-
-        if(data->Eem){
-          Int_t N = data->Eem->GetSize();
-          data->output.N = N;
-          for(Int_t i = 0; i < N; i++){
-            data->output.caloData.Eem.push_back((*data->Eem)[i]);
-          }
-        }
-
-        if(data->Ehad){
-          Int_t N = data->Ehad->GetSize();
-          data->output.N = N;
-          for(Int_t i = 0; i < N; i++){
-            data->output.caloData.Ehad.push_back((*data->Ehad)[i]);
-          }
-        }
-
-        if(data->Etrack){
-          Int_t N = data->Etrack->GetSize();
-          data->output.N = N;
-          for(Int_t i = 0; i < N; i++){
-            data->output.caloData.Etrack.push_back((*data->Etrack)[i]);
-          }
-        }
-
-        if(data->hasEdges){
-
-          // TODO: Could consider something even safer, but we should have picked up N from something above.
-          Int_t N = data->output.N; // assuming we got this already
-
-          Int_t idx = 0;
-
-          for(Int_t i = 0; i < N; i++) {
-
-            if(idx + data->edgesSize >= data->edgesMax){
-              cout << Form("NtupleProducer::Converter::_FillDelphesObjects(): Warning, more edges for branch %s.Edges than allowed by buffer, truncating.",branchName.Data()) << endl;
-              cout << Form("\t(edgesMax = %i, but there are %i objects for event %llu, with %i edges each)",data->edgesMax,N,_i,data->edgesSize);
-              break;
-            }
-
-            if(data->edgesSize == 2){
-              vector<Double_t> rapidityEdges = {(Double_t)data->Edges[idx], (Double_t)data->Edges[idx + 1]};
-              data->output.caloData.edgesEta.push_back(rapidityEdges);
+            if(data->rho){
+              data->output.rhoData.edgesEta.push_back(etaEdges);
+              data->output.rhoData.edgesPhi.push_back(phiEdges);
             }
             else{
-              vector<Double_t> etaEdges = {};
-              vector<Double_t> phiEdges = {};
-              for(Int_t j = 0; j < data->edgesSize; j++){
-                Double_t val = (Double_t)data->Edges[idx + j];
-                if(j < data->edgesSize / 2) etaEdges.push_back(val);
-                else phiEdges.push_back(val);
-              }
               data->output.caloData.edgesEta.push_back(etaEdges);
               data->output.caloData.edgesPhi.push_back(phiEdges);
             }
-            idx += data->edgesSize;
           }
+          idx += data->edgesSize;
         }
-        if(data->X){
-          Int_t N = data->X->GetSize();
-          data->output.N = N;
-          for(Int_t i = 0; i < N; i++){
-            Double_t t = (*data->T)[i];
-            Double_t x = (*data->X)[i];
-            Double_t y = (*data->Y)[i];
-            Double_t z = (*data->Z)[i];
+      }
 
-            data->output.positionData.push_back({t, x, y, z});
-          }
+      if(data->X){
+        Int_t N = data->X->GetSize();
+        data->output.N = N;
+        for(Int_t i = 0; i < N; i++){
+          Double_t t = (*data->T)[i];
+          Double_t x = (*data->X)[i];
+          Double_t y = (*data->Y)[i];
+          Double_t z = (*data->Z)[i];
+
+          data->output.positionData.push_back({t, x, y, z});
         }
+      }
+      if(data->MET){
+        Int_t N = data->MET->GetSize();
+        data->output.N = N;
+        for(Int_t i = 0; i < N; i++){
+          Double_t pt = (*data->MET)[i];
+          Double_t eta = (*data->eta)[i];
+          Double_t phi = (*data->phi)[i];
+          Double_t m   = data->mass ? (*data->mass)[i] :
+            _delphesMassDefault.find(branchName) != _delphesMassDefault.end() ? _delphesMassDefault[branchName] :
+            0.0;
+          v.SetCoordinates(pt,eta,phi,m);
+          data->output.momentum.pmu.push_back({v.E(), v.Px(), v.Py(), v.Pz()});
+          data->output.momentum.pmu_cyl.push_back({pt, eta, phi, m});
+        }
+      }
     }
   }
 

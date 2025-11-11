@@ -5,6 +5,7 @@ import subprocess as sub
 import numpy as np
 import ROOT as rt
 from util.qol_utils.progress_bar import printProgressBar, printProgressWithOutput
+from util.reconstruction.post_processing.utils.postprocessor_base import PostProcessorBase
 
 if TYPE_CHECKING: # Only imported during type checking -- avoids circular imports we'd otherwise get, since jets imports this file
     from util.reconstruction.post_processing.jets import JetFinder
@@ -227,8 +228,7 @@ class JHTaggerSetup:
                 if return_code != 0:
                     raise sub.CalledProcessError(return_code, command)
 
-
-class JohnsHopkinsTagger:
+class JohnsHopkinsTagger(PostProcessorBase):
     """
     The Johns Hopkins top tagger. This class leverages our custom
     ROOT::JHTagger::JohnnyTagger() class, that interfaces with the Fastjet
@@ -238,6 +238,8 @@ class JohnsHopkinsTagger:
 
     """
     def __init__(self,delta_p=0.1,delta_r=0.19,cos_theta_W_max=0.7,top_mass_range=(150.,200.),W_mass_range=(65.,95.), mode='filter',tag_name=None):
+        super().__init__()
+
         self.mode = mode
         assert self.mode in ['tag','filter']
         self.tag_name = tag_name
@@ -268,7 +270,7 @@ class JohnsHopkinsTagger:
         self.w_constituents_cyl = None
 
         self.name = 'JohnsHopkinsTagger'
-        self.print_prefix = '\n\t{}'.format(self.name)
+        self.print_prefix = '{}'.format(self.name)
         self.citations = {
             "JohnsHopkinsTopTagger":
             """
@@ -286,10 +288,6 @@ class JohnsHopkinsTagger:
 }
             """
         }
-
-    def GetCitations(self):
-        return self.citations
-
 
     def SetDeltaP(self,p,init=True):
         self.delta_p = p
@@ -318,8 +316,7 @@ class JohnsHopkinsTagger:
         self.tagger = rt.JHTagger.JohnnyTagger(self.delta_p,self.delta_r,self.cos_theta_W_max,*self.top_mass_range,*self.W_mass_range)
 
     def _tag(self,obj, vecs,i:int):
-        #NOTE: This usage of TagJet() is a bit awkward, but I've had some issues when trying to pass a fastjet.PseudoJet object.
-        #      I think this has to do with some weirdness around the Fastjet Python interface, or Python/C++ interfaces in general.
+
         self.tagger.TagJet(
             rt.std.vector('double')(vecs[:,0].flatten()),
             rt.std.vector('double')(vecs[:,1].flatten()),
@@ -350,34 +347,38 @@ class JohnsHopkinsTagger:
         return
 
     def ModifyInitialization(self, obj : 'JetFinder'):
+        if(self.obj_name_input is None):
+            self.obj_name_input = obj.jet_name
+        self.obj_name_output = self.obj_name_input
+        self.obj_name_constituents_output = self.obj_name_output
+
         #NOTE: Might want to move this to constructor, which will need to take obj as input.
         self.jh_setup = JHTaggerSetup(obj.configurator)
-        # self.jh_setup.SetConfigurator(obj.configurator)
         self.jh_setup.FullPreparation()
         self.InitTagger()
-        return
-
-    def ModifyInputs(self,obj : 'JetFinder'):
         return
 
     def ModifyJets(self, obj : 'JetFinder'):
         """
         This function will tag jets with the JH tagger, and fill the corresponding branches.
         """
-        import fastjet as fj # NOTE: In practice, fastjet will have been initialized already by JetFinder. Can similarly do this in Softdrop
+
+        # TODO: Make sure the below works -- earlier post-processors might write a new jet branch, but not new constituent branches!
+        constituent_pmu_key = '{}.Constituents.Pmu'.format(self.obj_name_constituents_input)
+        constituent_pmu_dict = obj.output_buffer.get(constituent_pmu_key,filter=obj.jet_ordering)
 
         # Fetch the jet constituents, just to be safe -- this makes sure that they are up-to-date.
         obj._fetchJetConstituents()
 
         self.tags = {}
-        self.w_candidates = {i:[] for i in obj.jets_dict.keys()}
-        self.w_candidates_cyl = {i:[] for i in obj.jets_dict.keys()}
-        self.n_constituents = {i:0 for i in obj.jets_dict.keys()}
-        self.w_constituents = {i:np.zeros((0,4)) for i in obj.jets_dict.keys()}
-        self.w_constituents_cyl = {i:np.zeros((0,4)) for i in obj.jets_dict.keys()}
+        self.w_candidates = {i:[] for i in constituent_pmu_dict.keys()}
+        self.w_candidates_cyl = {i:[] for i in constituent_pmu_dict.keys()}
+        self.n_constituents = {i:0 for i in constituent_pmu_dict.keys()}
+        self.w_constituents = {i:np.zeros((0,4)) for i in constituent_pmu_dict.keys()}
+        self.w_constituents_cyl = {i:np.zeros((0,4)) for i in constituent_pmu_dict.keys()}
 
-        for key in obj.jets_dict.keys():
-            self._tag(obj,obj.constituent_vectors[key],key) # fills self.tag_status, self.w_candidates[key], self.w_candidates_cyl[key]
+        for key in constituent_pmu_dict.keys():
+            self._tag(obj,constituent_pmu_dict[key],key) # fills self.tag_status, self.w_candidates[key], self.w_candidates_cyl[key]
             self.tags[key] = self.tag_status
             if(self.tag_status): # if not tagged, there is no W -- so we can safely skip filling
                 self._getWConstituents(key) # fills self.w_constituents[key], self.w_constituents_cyl[key], self.n_constituents[key]
@@ -388,9 +389,6 @@ class JohnsHopkinsTagger:
             # Refresh vectors and constituents -- always need to do this if we filter jets_dict.
             obj._jetsToVectors()
             obj._fetchJetConstituents()
-
-    def ModifyConstituents(self, obj : 'JetFinder'):
-        return
 
     def ModifyWrite(self,obj : 'JetFinder'):
         if(self.mode=='filter'):
@@ -423,7 +421,7 @@ class JohnsHopkinsTagger:
 
     def _createBranchNames(self,obj : 'JetFinder'):
         if(self.tag_name is None):
-            self.tag_name = '{}.JHTag'.format(obj.jet_name)
+            self.tag_name = '{}.JHTag'.format(self.obj_name_output)
 
         # Also create keys corresponding to the W-boson candidate, and its constituents,
         # that are identified by the JH tagger.
@@ -451,7 +449,3 @@ class JohnsHopkinsTagger:
         obj.output_buffer.set(self.w_nconst_name,obj._i,self.n_constituents)
         obj.output_buffer.set(self.w_constituents_name,obj._i,self.w_constituents)
         obj.output_buffer.set(self.w_constituents_name + '_cyl',obj._i,self.w_constituents_cyl)
-
-    def _print(self,val):
-        print('{}: {}'.format(self.print_prefix,val))
-        return
