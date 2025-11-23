@@ -5,7 +5,6 @@ from contextlib import nullcontext
 from util.generation.generation import PythiaGenerator
 from util.simulation.simulation import DelphesSimulator
 from util.reconstruction.conversion import Processor
-from util.hdf5.hdf5 import SplitH5
 from util.hepmc.hepmc import CompressHepMC
 from util.config.config import Configurator,GetConfigFileContent, GetConfigDictionary
 from util.config.args import parse_mc_steps, FloatListAction, none_or_str
@@ -351,6 +350,7 @@ def main(args):
         # and add new branches to them.
         #
 
+        processor = None
         if('reconstruction' in steps):
             timer.start_timestamp('reconstruction')
             # Do reco and put everything into an n-tuple file.
@@ -429,11 +429,11 @@ def main(args):
         print('\n#############################')
         timer.summarize_time()
         # Give a further breakdown of the post-processing.
-
-        if(processor.post_processing is not None):
-            for i,post_proc in enumerate(processor.post_processing):
-                post_proc.SummarizeRuntime(level=2)
-        print('\n#############################')
+        if(processor is not None):
+            if(processor.post_processing is not None):
+                for i,post_proc in enumerate(processor.post_processing):
+                    post_proc.SummarizeRuntime(level=2)
+            print('\n#############################')
 
 
         if(profiler is not None): profiler.report()
