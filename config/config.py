@@ -1,7 +1,7 @@
 import util.reconstruction.post_processing.jets as jets
 import util.particle_selection.particle_selection as parsel
 import util.particle_selection.selection_algos as algos
-import util.pileup.pileup as pu
+from util.pileup.pileup import PileupMixer
 
 config = {
     'generation' : {
@@ -16,8 +16,12 @@ config = {
     },
 
     'pileup' : {
-        'handler':None,
-        # 'handler': pu.PileupOverlay("/Users/jan/tmp/pileup/part0/events_0.root",rng_seed=1) # For example, you can overlay pileup events from some pre-existing HepMC3 files (ideally in ROOT format!), which you can generate with this package too.
+        'handler': None, # If None, we don't mix in any pileup.
+        # 'handler': PileupMixer(
+        #     pileup_files="/path/to/files/events*.root",
+        #     rng_seed=0,
+        #     #mu_input=(200,14.14)
+        # )
     },
 
     'simulation' : {
@@ -29,12 +33,8 @@ config = {
 
     # NOTE: Object names (keys) should not have periods (".") in them. These are used internally to indicate objects' properties ("leaves" in ROOT-speak), and including these in names may break stuff down-the-line (such as in the visualization scripts).
     'reconstruction' : {
-        'n_stable' : 200, # max number of stable truth-level particles to save per event (HDF5 doesn't support jagged arrays)
-        'n_delphes': [200], # max number of Delphes objects to save per event -- list corresponding to entries in 'delphes_output'. If single value, will be broadcast to appropriate shape.
         'fastjet_dir' : None, # Directory containing the Fastjet installation. If None, will build in a local directory "external/fastjet". Note that the Fastjet installation you use must have the Python bindings set up.
-        'n_truth' : 1 + 60, # Maximum number of truth particles to save per event. (HDF5 doesn't support jagged arrays)
         'event_filter' : None, # Deprecated.
-        'event_filter_flag': None, # Deprecated.
         'particle_selection' : { # Here, you can specify collections of truth-level particles to save, using various (provided) particle selection algorithms. These typically search for particles matching some PdgID and/or generator status.
             'TruthParticlesTopAndChildren':
             parsel.MultiSelection(
@@ -42,7 +42,7 @@ config = {
                     parsel.FirstSelector(22, 6), # top quark
                     parsel.FirstSelector(23, 5), # bottom quark
                     parsel.FirstSelector(22,24), # W boson
-                    parsel.AlgoSelection(algos.SelectFinalStateDaughters(parsel.FirstSelector(22,24)),n=120) # up to 120 stable daughters of W
+                    parsel.AlgoSelection(algos.SelectFinalStateDaughters(parsel.FirstSelector(22,24))) # stable daughters of W
                 ]
             ),
             'TruthParticlesAntiTopAndChildren':
@@ -51,7 +51,7 @@ config = {
                     parsel.FirstSelector(22, -6), # top anti-quark
                     parsel.FirstSelector(23, -5), # bottom anti-quark
                     parsel.FirstSelector(22,-24), # W boson
-                    parsel.AlgoSelection(algos.SelectFinalStateDaughters(parsel.FirstSelector(22,-24)),n=120) # up to 120 stable daughters of W
+                    parsel.AlgoSelection(algos.SelectFinalStateDaughters(parsel.FirstSelector(22,-24))) # stable daughters of W
                 ]
             )
         },

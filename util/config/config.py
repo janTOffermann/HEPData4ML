@@ -256,15 +256,6 @@ class Configurator:
     def GetFastjetDirectory(self):
         return self.config['reconstruction']['fastjet_dir']
 
-    def GetReconstructionOutputFormat(self):
-        try:
-            format = self.config['reconstruction']['format']
-            if(format.lower() == 'h5'):
-                format = 'hdf5'
-            return format
-        except:
-            return 'hdf5'
-
     def GetReconstructionTreeName(self):
         try:
             return self.config['reconstruction']['tree_name']

@@ -231,19 +231,25 @@ class MetaDataHandler:
         print('{}: {}'.format(self.print_prefix,val))
         return
 
-    def AddMetaDataWithReference(self,ntuple_file,cwd=None,overwrite=False, copts=9):
+    def AddMetaDataWithReference(self,ntuple_file,cwd=None,overwrite=False, format=None, copts=9):
         """
         Adds an entry to the metadata -- if under an existing key, appends it to the list at that key.
         Also creates a column in the dataset that will point to this metadata's index.
         Somewhat redundant for file generation but this type of logic will be useful when concatenating files
         with different entries in the metadata fields.
         """
-        if(self.configurator.GetReconstructionOutputFormat().lower() == 'hdf5'): # TODO: Rethink this? Reconstruction will always make ROOT -- conversion to HDF5 is a post-processing step, but nice to keep ability to handle metadata there?
+        if(format is None):
+            format = 'root'
+        elif(ntuple_file.split('.')[-1] in ['h5','hdf5']):
+            format = 'hdf5'
+
+
+        if(format == 'hdf5'): # TODO: Rethink this? Reconstruction will always make ROOT -- conversion to HDF5 is a post-processing step, but nice to keep ability to handle metadata there?
             self.AddMetaDataWithReferenceH5(ntuple_file,cwd,overwrite,copts)
-        elif(self.configurator.GetReconstructionOutputFormat().lower() == 'root'):
+        elif(format == 'root'):
             self.AddMetaDataWithReferenceRoot(ntuple_file,self.configurator.GetReconstructionTreeName(),cwd)
         else:
-            self._print('Warning: AddMetaDataWithReference() not implemented for file format {}.'.format(self.configurator.GetReconstructionOutputFormat()))
+            self._print('Warning: AddMetaDataWithReference() not implemented for file format {}.'.format(format))
         return
 
     def AddMetaDataWithReferenceH5(self,ntuple_file,cwd=None,overwrite=False, copts=9):

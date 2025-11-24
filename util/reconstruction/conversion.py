@@ -82,19 +82,6 @@ class Processor:
         for entry in self.configurator.GetDelphesObjects():
             self.processor.AddDelphesObject(entry)
 
-    def _set_output_format(self):
-        self.output_format = self.configurator.GetReconstructionOutputFormat()
-
-        self.output_format = 'root' # TODO: Only doing ROOT now (HDF5 conversion can come later)
-
-        if(self.output_format.lower() == 'hdf5'):
-            self.output_extension = 'h5'
-        elif(self.output_format.lower() == 'root'):
-            self.output_extension = 'root'
-        else:
-            self._print('Error: Output format {} not recognized.'.format(self.output_format))
-            return
-
     def GetOutputExtension(self):
         return self.output_extension
 
