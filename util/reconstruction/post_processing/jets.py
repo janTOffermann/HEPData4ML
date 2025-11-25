@@ -18,6 +18,7 @@ import util.reconstruction.post_processing.utils.containment as containment
 import util.reconstruction.post_processing.utils.simple_btag as simple_btag
 import util.reconstruction.post_processing.utils.jet_energy_scale as jes
 import util.reconstruction.post_processing.utils.rho_area_subtraction as rho_area_sub
+import util.reconstruction.post_processing.utils.n_subjetiness as n_subjetiness
 
 if(TYPE_CHECKING):
     from util.metadata.meta import MetaDataHandler
@@ -777,6 +778,13 @@ class JetFinder(JetFinderBase):
         self.processors.append(rho_area_sub.RhoAreaSubtraction(rho_input,pt_min,rho_eta_edges,eta_bins,phi_bins,save_rho_area))
         return self
 
+    def NSubjetiness(self,N=2):
+        """
+        This function computes the N-subjetiness of the jet.
+        Returns self, so this can be chained with the constructor.
+        """
+        self.processors.append(n_subjetiness.NSubjetiness(N))
+        return self
 
 class TruthJetFinder(JetFinderBase):
     """
