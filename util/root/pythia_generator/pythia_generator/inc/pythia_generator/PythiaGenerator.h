@@ -13,6 +13,8 @@
 #include <vector>
 #include <utility> // std::pair
 #include <tuple> // std::tuple
+#include <mutex>
+#include <string> // std::string (should probably use instead of TString)
 
 // // forward declarations for Pythia8
 namespace Pythia8{
@@ -39,7 +41,7 @@ namespace PythiaGenerator{
 
       void createGenerator(Bool_t parallel=kFALSE);
       void readString(TString string); // access to Pythia8's readString functionality
-      void setQuiet();
+      void setQuiet(Bool_t value=kTRUE, Int_t numberShowEvent=3);
       void init(); // access to Pythia8's initialization function
       void setArrayMode(Bool_t value=kTRUE){_arrayMode=value;};
       void setHepMC3Mode(Bool_t value=kTRUE){_hepmcMode=value;};
@@ -206,6 +208,18 @@ namespace PythiaGenerator{
 
       Bool_t _parallel = kFALSE;
       Bool_t _initialized = kFALSE;
+      Bool_t _verbose = kFALSE;
+
+      // Variables for keeping track of event listings
+      // and printing them -- currently implemented
+      // for PythiaParallel specifically.
+      Int_t _numberShowEvent = 3;
+      Int_t _numberShowEventCounter = 0;
+      vector<string> _eventListings;
+      mutex _eventListingMutex;
+
+
+
       void _ClearParticleContainers();
       void _ClearContainers();
       void _FillArrays(Pythia8::Pythia* pythia);

@@ -4,6 +4,7 @@
 
 //standard library includes
 #include <algorithm> // std::transform
+#include <sstream> // std::ostringstream
 
 // Pythia8 includes
 #include "Pythia8/Pythia.h"
@@ -52,9 +53,13 @@ namespace PythiaGenerator{
     return;
   }
 
-  void Generator::setQuiet(){
-    if(!_parallel) _pythia->readString("Print:quiet = on");
-    else _pythiaParallel->readString("Print:quiet = on");
+  void Generator::setQuiet(Bool_t value, Int_t numberShowEvent){
+    _verbose = !value;
+    if(!_verbose){
+      if(!_parallel) _pythia->readString("Print:quiet = on");
+      else _pythiaParallel->readString("Print:quiet = on");
+    }
+    _numberShowEvent = numberShowEvent;
   }
 
   void Generator::init(){
@@ -319,7 +324,26 @@ namespace PythiaGenerator{
       nevents,
       [&](Pythia8::Pythia* pythiaPtr) {
 
-        // TODO: Put event filter here.
+        // If verbose mode is on, we will possibly print the event listing.
+        if(_verbose && _numberShowEventCounter < _numberShowEvent){
+          ostringstream oss;
+
+          // Save the old cout buffer and redirect cout to our stringstream
+          streambuf* oldCoutBuf = cout.rdbuf();
+          cout.rdbuf(oss.rdbuf());
+          pythiaPtr->event.list();
+
+          // restore cout
+          std::cout.rdbuf(oldCoutBuf);
+
+          // thread-safe stuff
+          {
+            lock_guard<mutex> lock(_eventListingMutex);
+            _eventListings.push_back(oss.str());
+            _numberShowEventCounter++;
+          }
+        }
+
         Bool_t passedFilter = kTRUE;
 
         for(auto filter : _eventFilters){
@@ -339,8 +363,13 @@ namespace PythiaGenerator{
       }
     );
 
+    for(const auto& listing : _eventListings) {
+      std::cout << listing << std::endl;
+    }
+
     // In array mode, we take the opportunity to compute the number of particles per event.
     if(_arrayMode) _nParticlesPerEvent = get2VectorCounts(_status);
+
     return;
   }
 

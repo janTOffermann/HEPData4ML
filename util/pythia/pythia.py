@@ -425,6 +425,10 @@ class PythiaWrapper(BasicWrapper):
     def UseHepMCStatus(self,val:bool):
         self.use_hepmc_status = val
 
+    def SetVerbose(self,flag=True):
+        super().SetVerbose(flag)
+        self.pythia.setQuiet(not flag)
+
     def Generate(self, n):
         """
         Generate events.
