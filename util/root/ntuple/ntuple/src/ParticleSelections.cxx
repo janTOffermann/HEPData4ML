@@ -56,6 +56,26 @@ namespace NtupleProducer{
     return {static_cast<Int_t>(distance(particles.begin(), it))};
   }
 
+  // BasicSelection::BasicSelection(Int_t status, Int_t pdgId, Bool_t hadronization){
+  //   _status = status;
+  //   _pdgId = pdgId;
+  //   SetHadronization(hadronization);
+  // }
+
+  vector<Int_t> BasicSelection::operator()(HepMC3::GenEvent* evt) const{
+    // Find *all* instances of a particle with _status and _pdgId.
+    vector<shared_ptr<HepMC3::GenParticle>> particles = evt->particles();
+    vector<Int_t> result = {};
+
+    for(Size_t i = 0; i < particles.size(); i++){
+      shared_ptr<HepMC3::GenParticle> par = particles.at(i);
+      if(!(par->status() == _status) && (_status != 0)) continue;
+      if(!(par->pid() == _pdgId)) continue;
+      result.push_back((Int_t)i);
+    }
+    return result;
+  }
+
   MultiSelection::MultiSelection(std::vector<BaseSelector*> selections, Bool_t enforceUnique)
   : _enforceUnique(enforceUnique) {
     for (auto selector : selections) {

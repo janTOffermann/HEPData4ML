@@ -64,8 +64,19 @@ namespace NtupleProducer{
       Bool_t _hadronization;
   };
 
-  // Note the use of "___Selector" for classes that return an Int_t,
-  // versus "___Selection" for classes that return vector<Int_t>
+  // Note the use of "___Selector" for classes that return a single value
+  // versus "___Selection" for classes that return a list of values.
+  // (all are implemented as returning vector<Int_t> for simplicity).
+  class BasicSelection : public FirstSelector{
+    public:
+      BasicSelection(Int_t status, Int_t pdgId, Bool_t hadronization=kTRUE) : FirstSelector(status, pdgId, hadronization){};
+      ~BasicSelection(){};
+      void Print(){};
+
+      vector<Int_t> operator()(HepMC3::GenEvent* evt) const;
+
+  };
+
   class MultiSelection : public BaseSelector{
     public:
       MultiSelection(std::vector<BaseSelector*> selections, Bool_t enforceUnique=kFALSE);
