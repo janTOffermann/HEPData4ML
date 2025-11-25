@@ -190,6 +190,7 @@ class JetFinderBase:
 
         with profile_block('JetFinderBase._clusterJets - ClusterSequence'): # Useful for profiling -- this time block is largely non-negotiable.
 
+            # NOTE: need the :n_pseudojets since self.pseudojets is a buffer that can be longer than necessary
             if(not self.use_area):
                 self.cluster_sequence = fj.ClusterSequence(self.pseudojets[:n_pseudojets], self.jetdef) # member of class, otherwise goes out-of-scope when ref'd later
             else:

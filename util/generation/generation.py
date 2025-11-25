@@ -1,8 +1,6 @@
 import os
 import numpy as np
-import subprocess as sub
 from util.pythia.pythia import PythiaWrapper
-from util.hepmc.hepmc import Pythia8HepMC3Writer
 from util.hepmc.Pythia8ToHepMC3 import PythiaToHepMC
 from util.hepmc.setup import HepMCSetup, prepend_to_pythonpath, uncache_hepmc3
 from util.qol_utils.progress_bar import printProgressBarColor
