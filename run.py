@@ -31,16 +31,14 @@ def main(args):
     parser.add_argument('-c',            '--compress',          type=int,          default=0,                help='Whether or not to compress HepMC files from the generation step.')
     parser.add_argument('-npc',          '--nentries_per_chunk',type=int,          default=int(1e4),         help='Number of entries to process per chunk, for jet clustering & conversion to HDF5.')
     parser.add_argument('-pb',           '--progress_bar',      type=int,          default=1,                help='Whether or not to print progress bar during event generation')
-    parser.add_argument('-sp',           '--split',             type=int,          default=1,                help='Whether or not to split HDF5 file into training/validation/testing files.')
-    parser.add_argument('-tf',           '--train_fraction',    type=float,        default=0.7,              help='Fraction of events to place in the training file.')
-    parser.add_argument('-vf',           '--val_fraction',      type=float,        default=0.2,              help='Fraction of events to place in the validation file.')
-    parser.add_argument('-df',           '--delete_full',       action='store_true',                         help='Whether or not to delete the full HDF5 file after splitting into train/validation/testing files.')
     parser.add_argument('-co',           '--compression_opts',  type=int,          default=7,                help='Compression option for final HDF5 file (0-9). Higher value means more compression.')
     parser.add_argument('-pc',           '--pythia_config',     type=none_or_str,  default=None,             help='Path to Pythia configuration template (for setting the process).')
     parser.add_argument('-index_offset', '--index_offset',      type=int,          default=0,                help='Offset for Event.Index.')
     parser.add_argument('-config',       '--config',            type=str,          default=None,             help='Path to configuration Python file. Default will use config/config.py .')
 
     # Overrides for things set in the config file.
+    # TODO: There are a lot of settings in the config. Is there some nice programmatic way
+    #       to make lots of corresponding arguments?
     parser.add_argument('-rng',          '--rng',               type=int,          default=None,             help='Pythia RNG seed. Overides the config file.')
     parser.add_argument('-pileup',       '--pileupFiles',       type=str,          default=None,             help='Glob-compatible string for input pileup files, for the pileup step. Overides the config file.')
 
@@ -67,23 +65,11 @@ def main(args):
     force = args['force']
     nentries_per_chunk = args['nentries_per_chunk']
     progress_bar = args['progress_bar']
-    compression_opts = args['compression_opts']
     pythia_config = args['pythia_config']
     index_offset = args['index_offset']
     config_file = args['config']
 
     nbins = len(pt_bin_edges) - 1
-
-    split_files = args['split'] > 0
-    train_frac = args['train_fraction']
-    val_frac = args['val_fraction']
-    test_frac = 1. - train_frac - val_frac
-    delete_full = args['delete_full']
-    if(not split_files): delete_full = False # otherwise we are throwing out all the final files
-
-    if(test_frac < 0. and split_files):
-        print('Error: Requested training fraction and validation fraction sum to more than 1, this leaves no events for the test file.')
-        assert(False)
 
     pythia_rng = args['rng']
     pileup_input_files = args['pileupFiles']
@@ -269,15 +255,6 @@ def main(args):
                 if(pileup_input_files is not None): # overriding config file
                     pileup_handler.SetPileupFiles(pileup_input_files)
 
-                # TODO: Maybe rework this code, it's a bit ugly to have to check attributes like this? -Jan
-                if(hasattr(pileup_handler,'SetGenerator')):
-                    pileup_handler.SetGenerator(generator)
-
-                # Some pileup handlers might require some extra initialization after construction,
-                # that leverages the configurator.
-                if(hasattr(pileup_handler,'Initialize')):
-                    pileup_handler.Initialize()
-
                 # Special cases, where we use the Pythia RNG seed
                 if(pileup_handler.GetRNGSeed() < 0): # Case 1: Seed in the config file is negative.
                     pileup_handler.SetRNGSeed(pythia_rng)
@@ -285,25 +262,23 @@ def main(args):
                 elif(args['rng'] is not None): # Case 2: The Pythia RNG seed was specified at command line -- in practice we may want to then use this for pileup too (e.g. HTCondor usage).
                     pileup_handler.SetRNGSeed(pythia_rng)
 
-                # for file in hepmc_files:
-                #     pileup_handler(file)
-
-                # # TODO: Rework the Process() step, should switch to producing sidecar files.
-                pileup_files = pileup_handler.Process(hepmc_files) # will overwrite the hepmc_files
+                # Now, we actually run the pileup production.
+                pileup_files = pileup_handler.Process(hepmc_files)
 
                 # TODO: Now we fetch some information from the pileup handler, that will propagate into the final dataset:
                 # info on the number of interactions per bunch crossing, the actual indices of pileup events used,
                 # plus some other optional pieces of info that depend on what handler we used and how it was configured.
 
-                #===================================
-                # STEP 2.5: Metadata for HepMC3/ROOT
-                #===================================
-                # Similar to Step 1.5 -- we again add metadata to HepMC3/ROOT files.
-                # We need to do this again since, if we're doing this pileup step,
-                # the HepMC3/ROOT files have been overwritten. Plus, there's more
-                # metadata to add to them now.
-                if(hepmc_extension == 'root'):
-                    metadata_handler.StashMetaDataInROOTFile(hepmc_files,cwd=outdir)
+                #TODO Rework this bit -- pileup handling was changed since this snippet was written
+                # #===================================
+                # # STEP 2.5: Metadata for HepMC3/ROOT
+                # #===================================
+                # # Similar to Step 1.5 -- we again add metadata to HepMC3/ROOT files.
+                # # We need to do this again since, if we're doing this pileup step,
+                # # the HepMC3/ROOT files have been overwritten. Plus, there's more
+                # # metadata to add to them now.
+                # if(hepmc_extension == 'root'):
+                #     metadata_handler.StashMetaDataInROOTFile(hepmc_files,cwd=outdir)
             timer.end_timestamp('pileup')
 
         #===============================
@@ -420,10 +395,10 @@ def main(args):
             #     test_name = 'test.h5'
             #     SplitH5(ntuple_file, split_ratio,cwd=outdir,copts=compression_opts, train_name=train_name,val_name=val_name,test_name=test_name,verbose=True,seed=configurator.GetSplitSeed())
 
-            # Optionally delete the full N-tuple file.
-            if(delete_full):
-                comm = ['rm','{}/{}'.format(outdir,ntuple_file)]
-                sub.check_call(comm)
+            # # Optionally delete the full N-tuple file.
+            # if(delete_full):
+            #     comm = ['rm','{}/{}'.format(outdir,ntuple_file)]
+            #     sub.check_call(comm)
             timer.end_timestamp('reconstruction')
         timer.end_main()
         print('\n#############################')

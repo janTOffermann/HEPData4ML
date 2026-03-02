@@ -12,7 +12,7 @@ def main(args):
     parser.add_argument('-O',                '--outdir',          type=str, help='Output directory for the jobs', default=None)
     parser.add_argument('-R',                '--rundir',          type=str, help='Run directory -- where the condor jobs will go.', default='run0')
     parser.add_argument('-rng',              '--rng',             type=int, help='Pythia RNG seed offset -- seed will be offset + job number.',default=1)
-    parser.add_argument('-sp',               '--split',           type=int, help='Whether or not to split HDF5 file into training/validation/testing files.',default=1)
+    parser.add_argument('-sp',               '--split',           type=int, help='Whether or not to split output file into training/validation/testing files.',default=1)
     parser.add_argument('-pc',               '--pythia_config',   type=str, help='Path to Pythia configuration template (for setting the process).',default=[None], nargs='+')
     parser.add_argument('-N',                '--Njobs',           type=int, help='Number of jobs per config.',default=1)
     parser.add_argument('-sq',               '--shortqueue',      type=int, help='Whether or not to use the condor short queue (for UChicago Analysis Facility).',default=0)
@@ -83,12 +83,13 @@ def main(args):
     ptbins_str = ','.join([str(x) for x in ptbins])
     steps_str = ','.join(steps)
 
+    # TODO: Clean this up; really clunky string building.
     template = '{} {} {} {} {} {} {} {} {}'.format(
         nevents, # $1 Number of events per pT bin.
         ptbins_str, #$2 pT bins (list of bin edges)
         steps_str, #3 steps to run
         '{}', #$4 RNG seed for generation. (can be used to overwrite the builtin config file)
-        split, #$5 whether or not to split final HDF5 file into train/validation/test files.
+        split, #$5 whether or not to split final output file into train/validation/test files.
         '{}', #$6 Pythia config (can be used to overwrite the builtin config file)
         '{}', #$7 Event index offset,
         '{}', #$8 Job number,

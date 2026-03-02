@@ -5,35 +5,33 @@
 # $2 pT bins (list of bin edges)
 # $3 which steps to run
 # $4 RNG seed for generation. (can be used to overwrite the builtin config file)
-# $5 whether or not to split final HDF5 file into train/validation/test files. Only relevant if making the HDF5 file.
-# $6 Pythia config (can be used to overwrite the builtin config file)
-# $7 Event index offset.
-# $8 Job number (TODO: redundant with Process number).
-# $9 Total number of jobs.
+# $5 Pythia config (can be used to overwrite the builtin config file)
+# $6 Event index offset.
+# $7 Job number (TODO: redundant with Process number).
+# $8 Total number of jobs.
 
-# $10 Configuration file (Python).
-# $11 Output directory (for the condor job).
-# $12 Process number (for naming the output).
-# $13 OpenBLAS max thread count (for multithreading).
-# $14 Git option. Determines if we do a git clone here, or if the code has been shipped in as a tarball.
-# $15 Git branch.
+# $9 Configuration file (Python).
+# $10 Output directory (for the condor job).
+# $11 Process number (for naming the output).
+# $12 OpenBLAS max thread count (for multithreading).
+# $13 Git option. Determines if we do a git clone here, or if the code has been shipped in as a tarball.
+# $14 Git branch.
 #
 
 nevents_per_bin=$1
 pt_bins=$2
 steps=$3
 rng_seed=$4
-do_split=$5
-pythia_config=$6
-event_idx_offset=$7
-job_number=$8
-njobs_total=$9
-config_file=${10}
-outdir=${11}
-proc_number=${12}
-openblas_max_thread=${13}
-git_option=${14}
-git_branch=${15}
+pythia_config=$5
+event_idx_offset=$6
+job_number=$7
+njobs_total=$8
+config_file=$9
+outdir=${10}
+proc_number=${11}
+openblas_max_thread=${12}
+git_option=${13}
+git_branch=${14}
 
 local_mode=0
 
@@ -71,10 +69,6 @@ outdir_local="output_${proc_number}"
 output_filename=events.h5
 output_file="${outdir_local}/${output_filename}"
 
-delete_delphes=0
-training_faction=0.6
-validation_fraction=0.2
-
 # ===========================================================
 echo "Invoking run.py..."
 python ${gitdir}/run.py \
@@ -85,9 +79,7 @@ python ${gitdir}/run.py \
   -o ${output_filename} \
   -rng ${rng_seed} \
   -pb 1 \
-  --split 0 \
   -pc ${pythia_config} \
-  -df \
   --index_offset ${event_idx_offset} \
   --config ${config_file} \
   --condor \
@@ -101,26 +93,8 @@ copy_script=${gitdir}/util/condor/copy_output.py
 #       and that we'll capture further below.
 
 if test -f "${output_file}"; then
-  if [ "${do_split}" == "1" ]; then
-    echo "Splitting output."
-
-    python ${gitdir}/util/tools/split.py \
-      -i $output_file \
-      -o ${outdir_local} \
-      -f1 $training_faction \
-      -f2 $validation_fraction \
-      -s 1 \
-      -c 9
-    rm $output_file
-    python $copy_script -i ${outdir_local}/train.h5 -e "h5" -o ${outdir} -n ${proc_number}
-    python $copy_script -i ${outdir_local}/test.h5  -e "h5" -o ${outdir} -n ${proc_number}
-    python $copy_script -i ${outdir_local}/valid.h5 -e "h5" -o ${outdir} -n ${proc_number}
-    rm ${outdir_local}/train.h5 ${outdir_local}/test.h5 ${outdir_local}/valid.h5
-
-  else
-    python $copy_script -i $output_file -e "h5" -o ${outdir} -n ${proc_number}
-    rm $output_file
-  fi
+  python $copy_script -i $output_file -e "h5" -o ${outdir} -n ${proc_number}
+  rm $output_file
 fi
 
 # Compress the full output and extract it.
