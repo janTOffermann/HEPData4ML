@@ -55,40 +55,29 @@ namespace Pileup{
   }
 
   void PileupMixer::_InitializeIndexMap(){
-    _indexingMap = {};
-    _nPileupEvents = 0;
+      _fileRanges.clear();
+      _nPileupEvents = 0;
 
-    ULong_t indexOffset = 0;
-    for(TString filename : _pileupFilenames){
-      // Assuming the input pileup files are ROOT format,
-      // so we can figure out how many events they have easily
-      // using ROOT. For ASCII this would be quite a mess, and
-      // likely much slower.
-      TFile* f = new TFile(filename,"READ");
-      // cout << filename << endl;
-      // f->ls();
-      TTree* t = dynamic_cast<TTree*>(f->Get("hepmc3_tree"));
-      if(!t){
-        f->Close();
-        continue;
+      for(TString filename : _pileupFilenames){
+          TFile* f = new TFile(filename, "READ");
+          TTree* t = dynamic_cast<TTree*>(f->Get("hepmc3_tree"));
+          if(!t){ f->Close(); delete f; continue; }
+
+          ULong_t nentries = t->GetEntries();
+          _fileRanges.push_back({_nPileupEvents, _nPileupEvents + nentries - 1, filename});
+          _nPileupEvents += nentries;
+          f->Close();
+          delete f;
       }
-      ULong_t nentries = t->GetEntries();
-      _indexingMap[filename] = make_pair(indexOffset, indexOffset + nentries - 1);
-      indexOffset += nentries;
-      _nPileupEvents += nentries;
-      f->Close();
-    }
-    _indexingMapInitialized = kTRUE;
+      // Already sorted by construction since we iterate files in order
+      // and assign ranges sequentially, but sort explicitly for safety:
+      std::sort(_fileRanges.begin(), _fileRanges.end(),
+                [](const FileRange& a, const FileRange& b){ return a.start < b.start; });
 
-    // This is also the place where we'll initialize the index mask.
-    _ResetMask();
-    return;
+      _indexingMapInitialized = kTRUE;
+      _usedPileupIndices.clear();
   }
 
-  void PileupMixer::_ResetMask(){
-    _pileupEventIndicesMask = vector<Bool_t>(_nPileupEvents, kTRUE);
-    return;
-  }
 
   void PileupMixer::InitMuDistribution(Double_t muAvg, Double_t muSigma){
     if(_muDistribution) delete _muDistribution;
@@ -130,40 +119,33 @@ namespace Pileup{
   }
 
   void PileupMixer::_PickEventIndices(Int_t nEvents){
-    // Do "reservoir sampling"
-    _selectedGlobalPileupIndices.clear();
-    _selectedGlobalPileupIndices.reserve(nEvents);
+      _selectedGlobalPileupIndices.clear();
+      _selectedGlobalPileupIndices.reserve(nEvents);
 
-    Int_t seen = 0;
-    for(ULong_t i = 0; i < _nPileupEvents; i++){
-      if(!_pileupEventIndicesMask.at(i)) continue;
-      if(seen < nEvents){
-        _selectedGlobalPileupIndices.push_back(i);
+      if(_allowReuse){
+          for(Int_t i = 0; i < nEvents; i++){
+              _selectedGlobalPileupIndices.push_back(_rng->Integer(_nPileupEvents));
+          }
+      } else {
+          // Check if we're close to exhaustion before starting
+          ULong_t nRemaining = _nPileupEvents - _usedPileupIndices.size();
+          if((ULong_t)nEvents > nRemaining){
+              if(_nWarning < _nWarningMax){
+                  cout << "Warning: Running low on unused pileup events, resetting." << endl;
+                  _nWarning++;
+              }
+              _usedPileupIndices.clear();
+          }
+
+          while((Int_t)_selectedGlobalPileupIndices.size() < nEvents){
+              ULong_t candidate = _rng->Integer(_nPileupEvents);
+              if(_usedPileupIndices.find(candidate) == _usedPileupIndices.end()){
+                  _selectedGlobalPileupIndices.push_back(candidate);
+                  _usedPileupIndices.insert(candidate);
+              }
+          }
       }
-      else{
-        // Int_t j = _mersenneTwister->
-        Int_t j = _rng->Integer(seen + 1); // TODO: Check
-        if(j < nEvents) _selectedGlobalPileupIndices[j] = i;
-      }
-      seen++;
-    }
-
-    if(_selectedGlobalPileupIndices.size() != nEvents){
-      if(_nWarning < _nWarningMax){
-        cout << "Warning: Running out of pileup, will recycle (resetting event mask)." << endl;
-        _nWarning++;
-      }
-      _ResetMask();
-      _PickEventIndices(nEvents);
-    }
-    std::sort(_selectedGlobalPileupIndices.begin(), _selectedGlobalPileupIndices.end());
-
-    // If we don't allow reuse of indices, now we mask out the ones we picked.
-    if(!_allowReuse) _UpdateMask();
-  }
-
-  void PileupMixer::_UpdateMask(){
-    for(ULong_t idx : _selectedGlobalPileupIndices) _pileupEventIndicesMask[idx] = kFALSE;
+      std::sort(_selectedGlobalPileupIndices.begin(), _selectedGlobalPileupIndices.end());
   }
 
   void PileupMixer::_FetchEventSingleFile(const TString& filename, const vector<ULong_t>& localIndices, vector<HepMC3::GenEvent*> &events){
@@ -181,30 +163,26 @@ namespace Pileup{
     return;
   }
 
-  map<TString, vector<ULong_t>> PileupMixer::_GetLocalIndices(){
-    map<TString, vector<ULong_t>> localIndexMapping = {};
-    for(ULong_t globalIdx : _selectedGlobalPileupIndices){
-      for (const auto& entry : _indexingMap){
-        if(globalIdx >= entry.second.first && globalIdx <= entry.second.second){
-          if(localIndexMapping.find(entry.first) == localIndexMapping.end()){
-            localIndexMapping[entry.first] = {};
-          }
-          localIndexMapping[entry.first].push_back(globalIdx - entry.second.first);
-          break;
-        }
-      }
-    }
-    return localIndexMapping;
-  }
-
   vector<HepMC3::GenEvent*> PileupMixer::_FetchEvents(){
-    // Convert from the globalIndices to filenames and localIndices
-    map<TString, vector<ULong_t>> indexMap = _GetLocalIndices(); // the global indices are sorted, so local index lists will be too
-    vector<HepMC3::GenEvent*> evts = {};
-    for (const auto& entry : indexMap){
-      _FetchEventSingleFile(entry.first, entry.second, evts);
-    }
-    return evts;
+      vector<vector<ULong_t>> localIndicesByFile(_fileRanges.size());
+
+      for(ULong_t globalIdx : _selectedGlobalPileupIndices){
+          auto it = std::upper_bound(
+              _fileRanges.begin(), _fileRanges.end(), globalIdx,
+              [](ULong_t val, const FileRange& r){ return val < r.start; }
+          );
+          if(it == _fileRanges.begin()) continue;
+          --it;
+          localIndicesByFile[std::distance(_fileRanges.begin(), it)].push_back(globalIdx - it->start);
+      }
+
+      vector<HepMC3::GenEvent*> evts;
+      for(ULong_t i = 0; i < _fileRanges.size(); i++){
+          if(!localIndicesByFile[i].empty()){
+              _FetchEventSingleFile(_fileRanges[i].filename, localIndicesByFile[i], evts);
+          }
+      }
+      return evts;
   }
 
   vector<Double_t> PileupMixer::_generateDisplacement(){
@@ -233,7 +211,7 @@ namespace Pileup{
     // The tricky part is handling the vertices, we don't want to
     // accidentally adjust the same vertex twice.
     ROOT::Math::RotationZ rotation(phiRotation);
-    vector<Int_t> accessedIDs = {};
+    unordered_set<Int_t> accessedIDs;
 
     for(auto particle : pileupParticles){
 
@@ -242,12 +220,12 @@ namespace Pileup{
       if(prodVertex){
         Int_t id = prodVertex->id();
         // Only modify this vertex if we haven't modified it already.
-        if(find(accessedIDs.begin(),accessedIDs.end(),id) != accessedIDs.end()){
+        if(accessedIDs.find(id) == accessedIDs.end()){
           HepMC3::FourVector oldPosition = prodVertex->position();
           vector<Double_t> newPositionCoords = _rotateAndTranslateVector(&oldPosition, pileupDisplacement, rotation);
           HepMC3::FourVector newPosition(newPositionCoords[1],newPositionCoords[2],newPositionCoords[3],newPositionCoords[0]);
           prodVertex->set_position(newPosition);
-          accessedIDs.push_back(id);
+          accessedIDs.insert(id);
         }
       }
 
@@ -256,12 +234,12 @@ namespace Pileup{
       if(endVertex){
         Int_t id = endVertex->id();
         // Only modify this vertex if we haven't modified it already.
-        if(find(accessedIDs.begin(),accessedIDs.end(),id) != accessedIDs.end()){
-          HepMC3::FourVector oldPosition = prodVertex->position();
+        if(accessedIDs.find(id) == accessedIDs.end()){
+          HepMC3::FourVector oldPosition = endVertex->position();
           vector<Double_t> newPositionCoords = _rotateAndTranslateVector(&oldPosition, pileupDisplacement, rotation);
           HepMC3::FourVector newPosition(newPositionCoords[1],newPositionCoords[2],newPositionCoords[3],newPositionCoords[0]);
-          prodVertex->set_position(newPosition);
-          accessedIDs.push_back(id);
+          endVertex->set_position(newPosition);
+          accessedIDs.insert(id);
         }
       }
 
@@ -469,6 +447,7 @@ vector<HepMC3::GenEvent*> PileupMixer::_CreatePileupEvents(Int_t nEvents){
     TTree* t = (TTree*)f->Get("hepmc3_tree");
     ULong_t nEvents = t->GetEntries();
     f->Close();
+    delete f;
 
     return this->operator()(nEvents,outputFile);
   }

@@ -15,6 +15,7 @@
 #include <utility> // std::pair
 #include <tuple> // std::tuple
 #include <random> // std::mt19937, std::random_device
+#include <unordered_set>
 
 // forward declarations for HepMC3
 namespace HepMC3{
@@ -25,6 +26,12 @@ namespace HepMC3{
 
 using namespace std;
 namespace Pileup{
+
+  struct FileRange {
+      ULong_t start;
+      ULong_t end;
+      TString filename;
+  };
 
   // A helper class, for using ROOT's RNG with things like std::shuffle
   class TRandomAdapter{
@@ -83,11 +90,8 @@ namespace Pileup{
 
       Int_t _SampleMuDistribution();
       void _PickEventIndices(Int_t nEvents);
-      void _UpdateMask();
-      void _ResetMask();
       void _FetchEventSingleFile(const TString& filename, const vector<ULong_t>& localIndices, vector<HepMC3::GenEvent*> &events);
       vector<HepMC3::GenEvent*> _FetchEvents();
-      map<TString, vector<ULong_t>> _GetLocalIndices();
       void _AddPileupSingle(HepMC3::GenEvent* evt, HepMC3::GenEvent* pileup_evt, const vector<Double_t>& pileupDisplacement, const Double_t& phiRotation);
       void _AddPileupSingleStableOnly(HepMC3::GenEvent* evt, HepMC3::GenEvent* pileup_evt, const vector<Double_t>& pileupDisplacement, const Double_t& phiRotation);
 
@@ -114,9 +118,9 @@ namespace Pileup{
       // Pileup event-related things
       vector<TString> _pileupFilenames = {};
       ULong_t _nPileupEvents = 0; // total number of pileup events in input
-      vector<Bool_t> _pileupEventIndicesMask = {};
-      map<TString, pair<ULong_t, ULong_t>> _indexingMap = {};
+      vector<FileRange> _fileRanges; // sorted by start index
       Bool_t _indexingMapInitialized = kFALSE;
+      std::unordered_set<ULong_t> _usedPileupIndices;
 
       // Mu and chosen pileup event indices
       TH1D* _muDistribution = 0;

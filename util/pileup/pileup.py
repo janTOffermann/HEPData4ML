@@ -9,7 +9,7 @@ from util.qol_utils.pdg import DatabasePDG
 from util.metadata.meta import MetaDataHandler
 from util.config.config import Configurator
 from util.hepmc.setup import HepMCSetup
-from typing import Union, Optional, TYPE_CHECKING
+from typing import Union, List, Tuple, Optional, TYPE_CHECKING
 
 if(TYPE_CHECKING):
     setup = HepMCSetup(verbose=False)
@@ -26,7 +26,7 @@ class PileupMixer:
     with the HepMC3 files containing the main process.
     """
 
-    def __init__(self, pileup_files:Optional[Union[str,list]]=None,rng_seed:int=1,mu_input:str=None, add_stable_only=True):
+    def __init__(self, pileup_files:Optional[Union[str,list]]=None,rng_seed:int=1,mu_input:Optional[Union[str,List[Union[int,float]],Tuple[Union[int,float],Union[int,float]],np.ndarray]]=None, add_stable_only:bool=True, batch_size:int=10):
 
         # Immediately handle setup.
         # Out of an excess of caution,
@@ -38,6 +38,7 @@ class PileupMixer:
         self.setup.FullPreparation()
 
         self.mixer = rt.Pileup.PileupMixer()
+        self.mixer.SetBatchSize(batch_size)
 
         self.verbosity = 1
         self.name = 'PileupMixer'
