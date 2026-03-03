@@ -78,7 +78,6 @@ namespace Pileup{
       _usedPileupIndices.clear();
   }
 
-
   void PileupMixer::InitMuDistribution(Double_t muAvg, Double_t muSigma){
     if(_muDistribution) delete _muDistribution;
 
@@ -122,12 +121,22 @@ namespace Pileup{
       _selectedGlobalPileupIndices.clear();
       _selectedGlobalPileupIndices.reserve(nEvents);
 
-      if(_allowReuse){
+      if(_useContiguousSampling){
+          // Pick a random start index and take nEvents contiguous indices, wrapping around.
+          ULong_t start = _rng->Integer(_nPileupEvents);
+          for(Int_t i = 0; i < nEvents; i++){
+              _selectedGlobalPileupIndices.push_back((start + i) % _nPileupEvents);
+          }
+          // Sort so that per-file index lists are sequential, for I/O performance
+          std::sort(_selectedGlobalPileupIndices.begin(), _selectedGlobalPileupIndices.end());
+      }
+      else if(_allowReuse){
           for(Int_t i = 0; i < nEvents; i++){
               _selectedGlobalPileupIndices.push_back(_rng->Integer(_nPileupEvents));
           }
-      } else {
-          // Check if we're close to exhaustion before starting
+          std::sort(_selectedGlobalPileupIndices.begin(), _selectedGlobalPileupIndices.end());
+      }
+      else{ // the "old" case -- this could potentially be much slower
           ULong_t nRemaining = _nPileupEvents - _usedPileupIndices.size();
           if((ULong_t)nEvents > nRemaining){
               if(_nWarning < _nWarningMax){
@@ -136,7 +145,6 @@ namespace Pileup{
               }
               _usedPileupIndices.clear();
           }
-
           while((Int_t)_selectedGlobalPileupIndices.size() < nEvents){
               ULong_t candidate = _rng->Integer(_nPileupEvents);
               if(_usedPileupIndices.find(candidate) == _usedPileupIndices.end()){
@@ -144,8 +152,8 @@ namespace Pileup{
                   _usedPileupIndices.insert(candidate);
               }
           }
+          std::sort(_selectedGlobalPileupIndices.begin(), _selectedGlobalPileupIndices.end());
       }
-      std::sort(_selectedGlobalPileupIndices.begin(), _selectedGlobalPileupIndices.end());
   }
 
   void PileupMixer::_FetchEventSingleFile(const TString& filename, const vector<ULong_t>& localIndices, vector<HepMC3::GenEvent*> &events){

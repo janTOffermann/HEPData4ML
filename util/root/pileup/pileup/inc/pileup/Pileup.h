@@ -63,6 +63,7 @@ namespace Pileup{
 
       // Setters
       void SetPileupFiles(vector<TString> filenames){_pileupFilenames = filenames;};
+      void SetUseContiguousSampling(Bool_t flag){_useContiguousSampling = flag;}
 
       void SetStableOnly(Bool_t flag){_stableOnly = flag;};
       void SetHTCondorInfo(Bool_t flag, Int_t jobNumber, Int_t nJobs);
@@ -106,7 +107,7 @@ namespace Pileup{
       vector<Double_t> _rotateAndTranslateVector(HepMC3::FourVector* v, const vector<Double_t>& displacementCoordinates, const ROOT::Math::RotationZ& rotation);
 
       Bool_t _initialized = kFALSE; // when initialized, will actually count number of pileup events available
-      Int_t _batchSize = 10;
+      Int_t _batchSize = 100;
       Bool_t _stableOnly = kTRUE;
       Bool_t _condorFlag = kFALSE;
       Int_t _jobNumber = -1;
@@ -121,6 +122,7 @@ namespace Pileup{
       vector<FileRange> _fileRanges; // sorted by start index
       Bool_t _indexingMapInitialized = kFALSE;
       std::unordered_set<ULong_t> _usedPileupIndices;
+      Bool_t _useContiguousSampling = kFALSE;
 
       // Mu and chosen pileup event indices
       TH1D* _muDistribution = 0;

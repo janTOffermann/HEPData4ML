@@ -26,7 +26,7 @@ class PileupMixer:
     with the HepMC3 files containing the main process.
     """
 
-    def __init__(self, pileup_files:Optional[Union[str,list]]=None,rng_seed:int=1,mu_input:Optional[Union[str,List[Union[int,float]],Tuple[Union[int,float],Union[int,float]],np.ndarray]]=None, add_stable_only:bool=True, batch_size:int=10):
+    def __init__(self, pileup_files:Optional[Union[str,list]]=None,rng_seed:int=1,mu_input:Optional[Union[str,List[Union[int,float]],Tuple[Union[int,float],Union[int,float]],np.ndarray]]=None, add_stable_only:bool=True, batch_size:int=100, contiguous_sampling:bool=True):
 
         # Immediately handle setup.
         # Out of an excess of caution,
@@ -38,7 +38,10 @@ class PileupMixer:
         self.setup.FullPreparation()
 
         self.mixer = rt.Pileup.PileupMixer()
-        self.mixer.SetBatchSize(batch_size)
+        self.batch_size = batch_size
+        self.mixer.SetBatchSize(self.batch_size)
+        self.contiguous_sampling = contiguous_sampling
+        self.mixer.SetUseContiguousSampling(self.contiguous_sampling)
 
         self.verbosity = 1
         self.name = 'PileupMixer'
